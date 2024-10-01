@@ -14,6 +14,7 @@ import {
   initializeWalletManager,
   walletManager,
 } from "./managers/walletManager";
+import { VaultRecreationManager } from "./managers/vaultRecreationManager";
 import {
   UploadConfig,
   FileUploadInfo,
@@ -25,11 +26,13 @@ import Arweave from "arweave";
 import { ArweaveSyncSettingTab } from "./settings/settings";
 import { JWKInterface } from "arweave/node/lib/wallet";
 import { encrypt, decrypt } from "./utils/encryption";
-
+import { debounce } from "./utils/helpers";
+import "./styles.css";
 export default class ArweaveSync extends Plugin {
   settings: ArweaveSyncSettings;
   private arweaveUploader: ArweaveUploader;
   private aoManager: AOManager;
+  private vaultRecreationManager: VaultRecreationManager;
   private arweave: Arweave;
   private walletAddress: string | null = null;
   private statusBarItem: HTMLElement;
@@ -39,22 +42,34 @@ export default class ArweaveSync extends Plugin {
     super(app, manifest);
     this.arweaveUploader = new ArweaveUploader();
     this.aoManager = new AOManager();
-    this.arweave = Arweave.init({});
+    this.arweave = Arweave.init({
+      host: "arweave.net",
+      port: 443,
+      protocol: "https",
+    });
   }
 
   async onload() {
     await this.loadSettings();
 
+    this.vaultRecreationManager = new VaultRecreationManager(
+      this.app.vault,
+      this.settings.encryptionPassword,
+      this.settings.remoteUploadConfig,
+    );
+
     // Initialize wallet manager
     initializeWalletManager();
 
-    walletManager.on("wallet-loaded", () => {
-      const jwk = walletManager.getJWK();
-      this.handleWalletConnection(jwk);
-    });
+    if (walletManager.isWalletLoaded()) {
+      const cachedWalletJson = walletManager.getWalletJson();
+      if (cachedWalletJson) {
+        await this.handleWalletConnection(cachedWalletJson);
+      }
+    }
 
-    walletManager.on("wallet-connected", (walletJson: string) => {
-      this.handleWalletConnection(JSON.parse(walletJson));
+    walletManager.on("wallet-connected", async (walletJson: string) => {
+      await this.handleWalletConnection(walletJson);
     });
 
     walletManager.on("wallet-disconnected", () => {
@@ -98,18 +113,20 @@ export default class ArweaveSync extends Plugin {
     // Add status bar item
     this.createStatusBarItem();
 
-    // Add sync button to note headers
+    const debouncedAddSyncButtonToLeaf = debounce((leaf: WorkspaceLeaf) => {
+      if (leaf) {
+        this.addSyncButtonToLeaf(leaf);
+      }
+    }, 100); // 100ms debounce time
+
     this.registerEvent(
-      this.app.workspace.on("active-leaf-change", (leaf) => {
-        if (leaf) {
-          this.addSyncButtonToLeaf(leaf);
-        }
-      }),
+      this.app.workspace.on("active-leaf-change", debouncedAddSyncButtonToLeaf),
     );
 
-    // Add sync buttons to existing leaves
-    this.app.workspace.iterateAllLeaves((leaf) => {
-      this.addSyncButtonToLeaf(leaf);
+    this.addCommand({
+      id: "recreate-vault",
+      name: "Recreate Vault from Arweave",
+      callback: () => this.vaultRecreationManager.recreateVault(),
     });
 
     this.addSettingTab(new ArweaveSyncSettingTab(this.app, this));
@@ -134,12 +151,12 @@ export default class ArweaveSync extends Plugin {
     }
   }
 
-  private addSyncButton(view: MarkdownView) {
+  private async addSyncButton(view: MarkdownView) {
     const headerEl = view.containerEl.querySelector(".view-header");
     if (!headerEl) return;
 
     // Remove existing sync button if any
-    const existingButton = headerEl.querySelector(".arweave-sync-button");
+    let existingButton = headerEl.querySelector(".arweave-sync-button");
     if (existingButton) {
       existingButton.remove();
     }
@@ -152,18 +169,63 @@ export default class ArweaveSync extends Plugin {
 
     syncButton.innerHTML = svgIcon;
 
-    syncButton.addEventListener("click", async (e) => {
-      e.stopPropagation(); // Prevent event from bubbling up
-      const file = view.file;
-      if (file) {
-        syncButton.addClass("uploading");
-        await this.syncFile(file);
-        syncButton.removeClass("uploading");
-      }
-    });
+    const file = view.file;
+    if (file) {
+      const currentContent = await this.app.vault.read(file);
+      const currentFileHash = await this.getFileHash(file);
+      const remoteConfig = this.settings.remoteUploadConfig[file.path];
 
-    // Insert the button as the first child of the header
-    headerEl.insertBefore(syncButton, headerEl.firstChild);
+      if (!remoteConfig) {
+        syncButton.classList.add("new-file");
+        const svgPath = syncButton.querySelector("svg path");
+        if (svgPath) {
+          svgPath.setAttribute("fill", "red");
+        }
+        syncButton.setAttribute("title", "New file, click to sync");
+      } else if (remoteConfig.fileHash !== currentFileHash) {
+        syncButton.classList.add("updated-file");
+        const svgPath = syncButton.querySelector("svg path");
+        if (svgPath) {
+          svgPath.setAttribute("fill", "orange");
+        }
+        syncButton.setAttribute("title", "File updated, click to sync");
+      } else {
+        syncButton.classList.add("synced");
+        const svgPath = syncButton.querySelector("svg path");
+        if (svgPath) {
+          svgPath.setAttribute("fill", "green");
+        }
+        syncButton.setAttribute("disabled", "true");
+        syncButton.setAttribute("title", "File is up to date with Arweave");
+      }
+
+      syncButton.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (!syncButton.hasAttribute("disabled")) {
+          syncButton.addClass("uploading");
+          await this.syncFile(file);
+          syncButton.removeClass("uploading");
+        }
+      });
+    }
+
+    // Find or create a container for the right-aligned icons
+    let rightIconsContainer = headerEl.querySelector(".view-actions");
+    if (!rightIconsContainer) {
+      rightIconsContainer = headerEl.createEl("div", {
+        cls: "view-header-right-icons",
+      });
+      headerEl.appendChild(rightIconsContainer);
+    }
+
+    // Move existing Obsidian icons to the left
+    const viewActions = headerEl.querySelector(".view-actions");
+    if (viewActions) {
+      headerEl.insertBefore(viewActions, rightIconsContainer);
+    }
+
+    // Insert the sync button as the last child of the right icons container
+    rightIconsContainer.appendChild(syncButton);
   }
 
   private addSyncButtonToLeaf(leaf: WorkspaceLeaf) {
@@ -173,23 +235,51 @@ export default class ArweaveSync extends Plugin {
     }
   }
 
-  async handleWalletConnection(jwk: JWKInterface | null) {
-    if (!jwk) {
-      console.error("No wallet JWK provided");
-      new Notice("Failed to connect wallet. No JWK provided.");
-      return;
-    }
+  async handleWalletConnection(walletJson: string) {
+    const wallet = JSON.parse(walletJson);
+    await this.aoManager.initialize(wallet);
+    this.walletAddress = await this.arweave.wallets.jwkToAddress(wallet);
+    this.arweaveUploader.setWallet(wallet);
+
+    this.updateStatusBar();
 
     try {
-      this.walletAddress = await this.arweave.wallets.jwkToAddress(jwk);
-      this.arweaveUploader.setWallet(jwk);
-      await this.aoManager.initialize(jwk);
-      this.updateStatusBar();
-      new Notice("Wallet connected successfully");
-      await this.fetchUploadConfigFromAO();
+      // Fetch upload config from AO
+      const aoUploadConfig = await this.aoManager.getUploadConfig();
+
+      if (aoUploadConfig) {
+        // Update remote config
+        this.settings.remoteUploadConfig = aoUploadConfig;
+        // Merge remote config with local config
+        this.mergeUploadConfigs();
+      }
+
+      this.vaultRecreationManager = new VaultRecreationManager(
+        this.app.vault,
+        this.settings.encryptionPassword,
+        this.settings.remoteUploadConfig,
+      );
+
+      new Notice("Wallet connected. Recreating vault...");
+      await this.vaultRecreationManager.recreateVault();
+      new Notice("Vault recreation completed!");
     } catch (error) {
-      console.error("Failed to handle wallet connection:", error);
-      new Notice("Failed to connect wallet. Please try again.");
+      console.error(
+        "Error during wallet connection or vault recreation:",
+        error,
+      );
+      new Notice(
+        `Error: ${error.message}\nCheck the console for more details.`,
+      );
+
+      if (
+        error instanceof Error &&
+        error.message.includes("Failed to recreate")
+      ) {
+        new Notice(
+          "Some files could not be recreated. Please check your encryption password and try again.",
+        );
+      }
     }
   }
 
@@ -201,11 +291,34 @@ export default class ArweaveSync extends Plugin {
     new Notice("Wallet disconnected successfully");
   }
 
+  private mergeUploadConfigs() {
+    for (const [filePath, fileInfo] of Object.entries(
+      this.settings.remoteUploadConfig,
+    )) {
+      if (!this.settings.localUploadConfig[filePath]) {
+        this.settings.localUploadConfig[filePath] = fileInfo as FileUploadInfo;
+      } else {
+        // If the file exists in both configs, use the one with the latest timestamp
+        if (
+          (fileInfo as FileUploadInfo).timestamp >
+          this.settings.localUploadConfig[filePath].timestamp
+        ) {
+          this.settings.localUploadConfig[filePath] =
+            fileInfo as FileUploadInfo;
+        }
+      }
+    }
+    this.saveSettings();
+  }
+
   async fetchUploadConfigFromAO() {
     try {
       const aoUploadConfig = await this.aoManager.getUploadConfig();
+      console.log("aoUploadConfig");
+      console.log(aoUploadConfig);
       if (aoUploadConfig) {
-        this.settings.uploadConfig = aoUploadConfig;
+        this.settings.remoteUploadConfig = aoUploadConfig;
+        this.mergeUploadConfigs();
         await this.saveSettings();
         console.log("Upload config fetched from AO and saved");
       }
@@ -217,8 +330,11 @@ export default class ArweaveSync extends Plugin {
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-    if (!this.settings.uploadConfig) {
-      this.settings.uploadConfig = {};
+    if (!this.settings.localUploadConfig) {
+      this.settings.localUploadConfig = {};
+    }
+    if (!this.settings.remoteUploadConfig) {
+      this.settings.remoteUploadConfig = {};
     }
   }
 
@@ -251,7 +367,7 @@ export default class ArweaveSync extends Plugin {
         fileHash,
       );
 
-      this.settings.uploadConfig[file.path] = {
+      const fileUploadInfo: FileUploadInfo = {
         txId,
         timestamp: Date.now(),
         fileHash,
@@ -259,14 +375,24 @@ export default class ArweaveSync extends Plugin {
         filePath: file.path,
       };
 
+      // Update both local and remote configs
+      this.settings.localUploadConfig[file.path] = fileUploadInfo;
+      this.settings.remoteUploadConfig[file.path] = fileUploadInfo;
+
       await this.saveSettings();
-      await this.aoManager.updateUploadConfig(this.settings.uploadConfig);
+      await this.aoManager.updateUploadConfig(this.settings.localUploadConfig);
 
       this.modifiedFiles.delete(file.path);
 
       new Notice(`File ${file.name} synced to Arweave (encrypted)`);
+
+      // Update the sync button state
+      if (syncButton) {
+        this.updateSyncButtonState(syncButton, file);
+      }
     } catch (error) {
       new Notice(`Failed to sync file: ${error.message}`);
+      this.modifiedFiles.add(file.path);
     } finally {
       if (syncButton) {
         syncButton.removeClass("uploading");
@@ -279,61 +405,134 @@ export default class ArweaveSync extends Plugin {
 
     const newHash = await this.getFileHash(file);
 
-    if (!this.settings.uploadConfig[file.path]) {
-      console.log("File not in uploadConfig, adding it");
-      this.settings.uploadConfig[file.path] = {
-        txId: "", // You might want to set this to a proper value
+    if (
+      !this.settings.localUploadConfig[file.path] ||
+      this.settings.localUploadConfig[file.path].fileHash !== newHash
+    ) {
+      this.settings.localUploadConfig[file.path] = {
+        txId: this.settings.localUploadConfig[file.path]?.txId || "",
         timestamp: Date.now(),
         fileHash: newHash,
-        encrypted: false,
+        encrypted: true,
         filePath: file.path,
       };
       this.modifiedFiles.add(file.path);
-    } else if (this.settings.uploadConfig[file.path].fileHash !== newHash) {
-      console.log("File hash changed, updating");
-      this.settings.uploadConfig[file.path].fileHash = newHash;
-      this.settings.uploadConfig[file.path].timestamp = Date.now();
-      this.modifiedFiles.add(file.path);
-    } else {
-      console.log("File hash unchanged, no update needed");
-      return;
+      await this.saveSettings();
     }
 
-    console.log("Saving updated uploadConfig");
-    await this.saveSettings();
-    await this.aoManager.updateUploadConfig(this.settings.uploadConfig);
+    // Refresh the existing sync button for the current file
+    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (activeView && activeView.file === file) {
+      const syncButton = activeView.containerEl.querySelector(
+        ".arweave-sync-button",
+      ) as HTMLElement;
+      if (syncButton) {
+        this.updateSyncButtonState(syncButton, file);
+      }
+    }
+  }
+
+  private updateSyncButtonState(syncButton: HTMLElement, file: TFile) {
+    syncButton.removeClass("new-file", "updated-file", "synced");
+    syncButton.removeAttribute("disabled");
+
+    if (this.modifiedFiles.has(file.path)) {
+      syncButton.addClass("updated-file");
+      const svgPath = syncButton.querySelector("svg path");
+      if (svgPath) {
+        svgPath.setAttribute("fill", "orange");
+      }
+      syncButton.setAttribute("title", "File updated, click to sync");
+    } else {
+      syncButton.addClass("synced");
+      const svgPath = syncButton.querySelector("svg path");
+      if (svgPath) {
+        svgPath.setAttribute("fill", "green");
+      }
+      syncButton.setAttribute("disabled", "true");
+      syncButton.setAttribute("title", "File is up to date with Arweave");
+    }
   }
 
   async handleFileRename(file: TFile, oldPath: string) {
-    if (this.settings.uploadConfig[oldPath]) {
-      console.log("file renamed");
-      this.settings.uploadConfig[file.path] =
-        this.settings.uploadConfig[oldPath];
-      delete this.settings.uploadConfig[oldPath];
-      this.modifiedFiles.delete(oldPath);
+    if (
+      this.settings.localUploadConfig[oldPath] ||
+      this.settings.remoteUploadConfig[oldPath]
+    ) {
+      console.log(`File renamed from ${oldPath} to ${file.path}`);
+
+      // Update local configs
+      if (this.settings.localUploadConfig[oldPath]) {
+        this.settings.localUploadConfig[file.path] = {
+          ...this.settings.localUploadConfig[oldPath],
+          filePath: file.path,
+        };
+        delete this.settings.localUploadConfig[oldPath];
+      }
+
+      if (this.settings.remoteUploadConfig[oldPath]) {
+        this.settings.remoteUploadConfig[file.path] = {
+          ...this.settings.remoteUploadConfig[oldPath],
+          filePath: file.path,
+        };
+        delete this.settings.remoteUploadConfig[oldPath];
+      }
+
+      // Mark the file as modified
       this.modifiedFiles.add(file.path);
+      this.modifiedFiles.delete(oldPath);
+
       await this.saveSettings();
-      await this.aoManager.updateUploadConfig(this.settings.uploadConfig);
+
+      // Update AO upload config
+      await this.aoManager.renameUploadConfig(oldPath, file.path);
+
+      // Update the sync button for the renamed file
+      const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+      if (activeView && activeView.file === file) {
+        const syncButton = activeView.containerEl.querySelector(
+          ".arweave-sync-button",
+        ) as HTMLElement;
+        if (syncButton) {
+          this.updateSyncButtonState(syncButton, file);
+        }
+      }
     }
   }
 
   async handleFileDelete(file: TFile) {
-    if (this.settings.uploadConfig[file.path]) {
-      console.log("file deleted");
-      delete this.settings.uploadConfig[file.path];
+    if (
+      this.settings.localUploadConfig[file.path] ||
+      this.settings.remoteUploadConfig[file.path]
+    ) {
+      console.log("File deleted:", file.path);
+
+      // Remove from local configs
+      delete this.settings.localUploadConfig[file.path];
+      delete this.settings.remoteUploadConfig[file.path];
+
+      // Remove from modified files set
       this.modifiedFiles.delete(file.path);
+
+      // Save local settings
       await this.saveSettings();
-      await this.aoManager.updateUploadConfig(this.settings.uploadConfig);
+
+      // Delete from AO upload config
+      try {
+        await this.aoManager.deleteUploadConfig(file.path);
+        console.log("File deleted from remote config:", file.path);
+      } catch (error) {
+        console.error("Error deleting file from remote config:", error);
+        new Notice(
+          `Failed to delete ${file.path} from remote config. Please try again later.`,
+        );
+      }
     }
   }
 
   async getFileHash(file: TFile): Promise<string> {
     const content = await this.app.vault.read(file);
-    let dataToHash = content;
-    if (this.settings.encryptionPassword) {
-      dataToHash = encrypt(content, this.settings.encryptionPassword);
-    }
-    const buffer = await this.arweave.utils.stringToBuffer(dataToHash);
+    const buffer = await this.arweave.utils.stringToBuffer(content);
     return await this.arweave.utils.bufferTob64Url(
       await this.arweave.crypto.hash(buffer),
     );
@@ -352,6 +551,10 @@ export default class ArweaveSync extends Plugin {
   }
 
   getModifiedFiles(): string[] {
+    return Array.from(this.modifiedFiles);
+  }
+
+  getUnsyncedFiles(): string[] {
     return Array.from(this.modifiedFiles);
   }
 }

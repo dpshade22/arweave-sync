@@ -24,13 +24,25 @@
 
 .view-header {
     position: relative;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.view-header-title-container {
+    flex-grow: 1;
+}
+
+.view-header-right-icons {
+    display: flex;
+    align-items: center;
+}
+
+.view-header .view-actions {
+    margin-right: 8px;
 }
 
 .arweave-sync-button {
-    position: absolute;
-    top: 50%;
-    right: 10px;
-    transform: translateY(-50%);
     background: transparent;
     border: none;
     cursor: pointer;
@@ -40,7 +52,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1; /* Ensure the button is above other elements */
 }
 
 .arweave-sync-button svg {
@@ -58,6 +69,24 @@
     animation: rotate 1s linear infinite;
 }
 
+.arweave-sync-button svg path {
+    transition: fill 0.2s ease;
+}
+
+.arweave-sync-button.synced svg path {
+    fill: green;
+}
+
+.arweave-sync-button:not(.synced):not([disabled]) svg path {
+    fill: orange;
+}
+
+.arweave-sync-button[disabled] {
+    /* opacity: 0.5; */
+    cursor: default;
+    /* pointer-events: none; */
+}
+
 @keyframes rotate {
     from {
         transform: rotate(0deg);
@@ -65,4 +94,8 @@
     to {
         transform: rotate(360deg);
     }
+}
+
+button:not(.clickable-icon) {
+    box-shadow: none;
 }

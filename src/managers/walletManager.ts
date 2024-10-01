@@ -74,6 +74,10 @@ export class WalletManager extends Events {
     }
   }
 
+  isWalletLoaded(): boolean {
+    return this.address !== null && this.jwk !== null;
+  }
+
   getAddress(): string | null {
     return this.address;
   }

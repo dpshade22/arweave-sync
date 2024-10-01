@@ -8,9 +8,7 @@ export function decrypt(encryptedData: string, password: string): string {
   try {
     const bytes = CryptoJS.AES.decrypt(encryptedData, password);
     const decryptedText = bytes.toString(CryptoJS.enc.Utf8);
-    if (!decryptedText) {
-      throw new Error("Decryption resulted in empty string");
-    }
+    // Return the decryptedText even if it's an empty string
     return decryptedText;
   } catch (error) {
     console.error("Decryption error:", error);

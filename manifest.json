@@ -6,5 +6,7 @@
   "description": "Sync your Obsidian vault with Arweave.",
   "author": "Your Name",
   "authorUrl": "https://your-website.com",
-  "isDesktopOnly": false
+  "isDesktopOnly": false,
+  "js": "main.js",
+  "css": "styles.css"
 }
