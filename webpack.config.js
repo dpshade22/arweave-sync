@@ -12,7 +12,7 @@ module.exports = (env, argv) => {
       path: path.resolve(__dirname, "."),
       libraryTarget: "commonjs",
     },
-    target: "web", // Change this from 'node' to 'web'
+    target: "web",
     mode: isDevelopment ? "development" : "production",
     devtool: isDevelopment ? "eval-source-map" : false,
     module: {
@@ -33,20 +33,14 @@ module.exports = (env, argv) => {
       fallback: {
         crypto: require.resolve("crypto-browserify"),
         stream: require.resolve("stream-browserify"),
+        assert: require.resolve("assert/"),
+        http: require.resolve("stream-http"),
+        https: require.resolve("https-browserify"),
+        os: require.resolve("os-browserify/browser"),
         buffer: require.resolve("buffer/"),
         process: require.resolve("process/browser"),
-        vm: require.resolve("vm-browserify"),
       },
     },
-    plugins: [
-      new MiniCssExtractPlugin({
-        filename: "styles.css",
-      }),
-      new webpack.ProvidePlugin({
-        process: "process/browser",
-        Buffer: ["buffer", "Buffer"],
-      }),
-    ],
     externals: {
       obsidian: "commonjs2 obsidian",
     },

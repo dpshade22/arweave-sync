@@ -1,20 +1,20 @@
 export interface ArweaveSyncSettings {
   encryptionPassword: string;
   lastConfigUploadTxId: string;
+  uploadConfig: UploadConfig;
 }
 
 export const DEFAULT_SETTINGS: ArweaveSyncSettings = {
   encryptionPassword: "",
   lastConfigUploadTxId: "",
+  uploadConfig: {},
 };
 
 export interface FileUploadInfo {
   encrypted: boolean;
   timestamp: number;
-  folderPath: string;
   fileHash: string;
   filePath: string;
-  fileName: string;
   txId: string;
 }
 

@@ -21,3 +21,48 @@
 .arweave-sync-icon.synced {
     color: var(--text-accent);
 }
+
+.view-header {
+    position: relative;
+}
+
+.arweave-sync-button {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1; /* Ensure the button is above other elements */
+}
+
+.arweave-sync-button svg {
+    width: 100%;
+    height: 100%;
+    fill: var(--text-muted);
+    transition: fill 0.2s ease;
+}
+
+.arweave-sync-button:hover svg {
+    fill: var(--text-normal);
+}
+
+.arweave-sync-button.uploading svg {
+    animation: rotate 1s linear infinite;
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}

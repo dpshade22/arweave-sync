@@ -68,10 +68,8 @@ export class WalletConnectModal extends Modal {
 
   async handleFileUpload(file: File) {
     try {
-      const fileContent = await file.text();
-      const jwk = JSON.parse(fileContent) as JWKInterface;
+      await walletManager.connect(file);
       this.close();
-      await this.plugin.handleWalletConnection(jwk);
     } catch (error) {
       console.error("Failed to connect wallet:", error);
       new Notice("Failed to connect wallet. Please try again.");

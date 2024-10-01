@@ -13,6 +13,23 @@ export class WalletManager extends Events {
   constructor() {
     super();
     this.arweave = Arweave.init({});
+    this.loadCachedWallet();
+  }
+
+  private async loadCachedWallet() {
+    const cachedAddress = localStorage.getItem("cachedWalletAddress");
+    const cachedJWK = localStorage.getItem("cachedJWK");
+
+    if (cachedAddress && cachedJWK) {
+      try {
+        await this.initializeWallet(cachedJWK);
+        console.log("Loaded cached wallet:", this.address);
+        this.trigger("wallet-connected", this.getWalletJson());
+      } catch (error) {
+        console.error("Failed to load cached wallet:", error);
+        this.clearCache();
+      }
+    }
   }
 
   async initializeWallet(jwkJson: string): Promise<void> {
@@ -22,7 +39,7 @@ export class WalletManager extends Events {
       this.walletJson = jwkJson;
       this.address = await this.arweave.wallets.jwkToAddress(jwk);
       console.log("Wallet initialized:", this.address);
-      this.trigger("wallet-initialized");
+      this.cacheWalletInfo();
     } catch (error) {
       console.error("Failed to initialize wallet:", error);
       throw error;
@@ -31,9 +48,9 @@ export class WalletManager extends Events {
 
   async connect(jwkFile: File): Promise<string> {
     try {
-      await this._connectWithJWK(jwkFile);
+      const jwkJson = await this._readJWKFile(jwkFile);
+      await this.initializeWallet(jwkJson);
       if (this.address) {
-        this._cacheWalletInfo();
         console.log("Wallet connected successfully:", this.address);
         this.trigger("wallet-connected", this.getWalletJson());
         return this.address;
@@ -47,9 +64,10 @@ export class WalletManager extends Events {
 
   async disconnect(): Promise<void> {
     try {
-      this._clearCache();
+      this.clearCache();
       this._resetState();
       console.log("Wallet disconnected successfully");
+      this.trigger("wallet-disconnected");
     } catch (error) {
       console.error("Error disconnecting wallet:", error);
       throw error;
@@ -60,12 +78,12 @@ export class WalletManager extends Events {
     return this.address;
   }
 
-  getJWK(): JWKInterface | null {
-    return this.jwk;
-  }
-
   getUploadConfig(): UploadConfig | null {
     return this.uploadConfig;
+  }
+
+  getJWK(): JWKInterface | null {
+    return this.jwk;
   }
 
   getWalletJson(): string | null {
@@ -76,31 +94,18 @@ export class WalletManager extends Events {
     return this.address !== null && this.jwk !== null;
   }
 
-  private async _connectWithJWK(jwkFile: File): Promise<void> {
+  private async _readJWKFile(jwkFile: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = async (e) => {
-        try {
-          const fileContent = e.target?.result as string;
-          this.walletJson = fileContent;
-          const jwk = JSON.parse(fileContent) as JWKInterface;
-          this.jwk = jwk;
-          this.address = await this.arweave.wallets.jwkToAddress(jwk);
-          console.log("JWK wallet connected:", this.address);
-          new Notice("JWK wallet connected successfully");
-          resolve();
-        } catch (error) {
-          console.error("Failed to connect with JWK:", error);
-          new Notice("Failed to connect with JWK. Please try again.");
-          reject(error);
-        }
+      reader.onload = (e) => {
+        resolve(e.target?.result as string);
       };
       reader.onerror = (error) => reject(error);
       reader.readAsText(jwkFile);
     });
   }
 
-  private _cacheWalletInfo(): void {
+  private cacheWalletInfo(): void {
     if (this.address) {
       localStorage.setItem("cachedWalletAddress", this.address);
     }
@@ -109,7 +114,7 @@ export class WalletManager extends Events {
     }
   }
 
-  private _clearCache(): void {
+  private clearCache(): void {
     localStorage.removeItem("cachedWalletAddress");
     localStorage.removeItem("cachedJWK");
   }

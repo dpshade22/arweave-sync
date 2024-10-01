@@ -13,11 +13,15 @@ export class ArweaveUploader {
     });
   }
 
-  async setWallet(jwk: JWKInterface) {
+  async setWallet(jwk: JWKInterface | null) {
     this.wallet = jwk;
   }
 
-  async uploadFile(filePath: string, content: string): Promise<string> {
+  async uploadFile(
+    filePath: string,
+    content: string,
+    fileHash: string,
+  ): Promise<string> {
     if (!this.wallet) {
       throw new Error("Wallet not set. Please set a wallet before uploading.");
     }
@@ -34,7 +38,8 @@ export class ArweaveUploader {
       // Add tags to the transaction
       transaction.addTag("Content-Type", "text/markdown");
       transaction.addTag("App-Name", "ArweaveSync");
-      transaction.addTag("File-Path", filePath);
+      // transaction.addTag("File-Path", filePath);
+      transaction.addTag("File-Hash", fileHash);
 
       // Sign the transaction
       await this.arweave.transactions.sign(transaction, this.wallet);
