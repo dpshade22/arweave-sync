@@ -1,0 +1,23 @@
+/* Add any custom styles here */
+.wallet-drag-area {
+    border: 2px dashed var(--text-muted);
+    border-radius: 4px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.wallet-drag-area:hover,
+.wallet-drag-area.drag-active {
+    border-color: var(--interactive-accent);
+    background-color: var(--background-modifier-hover);
+}
+
+.arweave-sync-icon {
+    color: var(--text-muted);
+}
+
+.arweave-sync-icon.synced {
+    color: var(--text-accent);
+}

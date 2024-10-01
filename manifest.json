@@ -1,0 +1,10 @@
+{
+  "id": "arweave-sync",
+  "name": "Arweave Sync",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Sync your Obsidian vault with Arweave.",
+  "author": "Your Name",
+  "authorUrl": "https://your-website.com",
+  "isDesktopOnly": false
+}
