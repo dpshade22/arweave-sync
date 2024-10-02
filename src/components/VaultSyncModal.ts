@@ -273,12 +273,15 @@ export class VaultSyncModal extends Modal {
     if (Array.isArray(files)) {
       files.forEach((file) => {
         if (file instanceof TFile) {
+          const localConfig = this.plugin.settings.localUploadConfig[file.path];
           processFile(file.path, {
-            txId: this.plugin.settings.localUploadConfig[file.path]?.txId || "",
+            txId: localConfig?.txId || "",
             timestamp: file.stat.mtime,
             fileHash: "",
             encrypted: false,
             filePath: file.path,
+            previousVersionTxId: localConfig?.previousVersionTxId || null,
+            versionNumber: localConfig?.versionNumber || 1,
           });
         } else {
           processFile(file.path, file.fileInfo);
@@ -358,7 +361,8 @@ export class VaultSyncModal extends Modal {
       if (node.fileInfo) {
         contentEl.setAttribute(
           "title",
-          `Last modified: ${new Date(node.fileInfo.timestamp).toLocaleString()}`,
+          `Last modified: ${new Date(node.fileInfo.timestamp).toLocaleString()}
+Version: ${node.fileInfo.versionNumber}`,
         );
       }
 

@@ -8,6 +8,8 @@ export interface FileUploadInfo {
   fileHash: string;
   encrypted: boolean;
   filePath: string;
+  previousVersionTxId: string | null;
+  versionNumber: number;
 }
 
 export interface ArweaveSyncSettings {
