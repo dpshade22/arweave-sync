@@ -90,6 +90,7 @@
     from {
         transform: rotate(0deg);
     }
+
     to {
         transform: rotate(360deg);
     }
@@ -119,7 +120,7 @@
     fill: var(--text-normal);
 }
 
-button:not(.clickable-icon) {
+.arweave-sync-button {
     box-shadow: none;
     background: none;
 }
@@ -271,16 +272,16 @@ button:not(.clickable-icon) {
     color: var(--text-muted);
 }
 
-.vault-sync-modal .file-item.selected > .tree-item-content,
-.vault-sync-modal .folder-item.selected > .tree-item-content {
+.vault-sync-modal .file-item.selected>.tree-item-content,
+.vault-sync-modal .folder-item.selected>.tree-item-content {
     background-color: var(--background-modifier-active);
 }
 
-.vault-sync-modal .folder-item > .tree-item-content {
+.vault-sync-modal .folder-item>.tree-item-content {
     cursor: pointer;
 }
 
-.vault-sync-modal .folder-item.expanded > .tree-item-content .folder-toggle {
+.vault-sync-modal .folder-item.expanded>.tree-item-content .folder-toggle {
     transform: rotate(90deg);
 }
 
