@@ -30,14 +30,14 @@ Handlers.add(
             ao.send({
                 Target = msg.From,
                 Action = "CreateUploadConfigResponse",
-                Data = "Upload config created/updated"
+                Data = json.encode({ success = true, message = "Upload config created/updated" })
             })
         else
             print("Error: Invalid data format in CreateUploadConfig")
             ao.send({
                 Target = msg.From,
                 Action = "CreateUploadConfigResponse",
-                Data = "Error: Invalid data format"
+                Data = json.encode({ success = false, message = "Error: Invalid data format" })
             })
         end
     end
@@ -58,14 +58,14 @@ Handlers.add(
                 ao.send({
                     Target = msg.From,
                     Action = "RenameUploadConfigResponse",
-                    Data = "Upload config renamed"
+                    Data = json.encode({ success = true, message = "Upload config renamed" })
                 })
             else
                 print("Error: Old path not found in upload config - " .. data.oldPath)
                 ao.send({
                     Target = msg.From,
                     Action = "RenameUploadConfigResponse",
-                    Data = "Error: Old path not found in upload config"
+                    Data = json.encode({ success = false, message = "Error: Old path not found in upload config" })
                 })
             end
         else
@@ -73,7 +73,7 @@ Handlers.add(
             ao.send({
                 Target = msg.From,
                 Action = "RenameUploadConfigResponse",
-                Data = "Error: Invalid data format"
+                Data = json.encode({ success = false, message = "Error: Invalid data format" })
             })
         end
     end
@@ -98,15 +98,19 @@ Handlers.add(
                 ao.send({
                     Target = msg.From,
                     Action = "GetUploadConfigResponse",
-                    Data = "Error: Upload config not found"
+                    Data = json.encode({ success = false, message = "Error: Upload config not found" })
                 })
             end
         else
             print("Sending full upload config")
+            local result = {}
+            for key, value in pairs(State.uploadConfig) do
+                table.insert(result, { key = key, value = value })
+            end
             ao.send({
                 Target = msg.From,
                 Action = "GetUploadConfigResponse",
-                Data = json.encode(State.uploadConfig)
+                Data = json.encode(result)
             })
         end
     end
@@ -117,8 +121,10 @@ Handlers.add(
     Handlers.utils.hasMatchingTag("Action", "UpdateUploadConfig"),
     function(msg)
         local data = json.decode(msg.Data)
-        if data and type(data) == "table" then
-            for key, value in pairs(data) do
+        if data and type(data) == "table" and data.uploadConfig then
+            for _, item in ipairs(data.uploadConfig) do
+                local key = item.key
+                local value = item.value
                 if value.txId and value.txId ~= "" then
                     State.uploadConfig[key] = value
                     print("Updated upload config for: " .. key)
@@ -131,14 +137,14 @@ Handlers.add(
             ao.send({
                 Target = msg.From,
                 Action = "UpdateUploadConfigResponse",
-                Data = "Upload config updated"
+                Data = json.encode({ success = true, message = "Upload config updated" })
             })
         else
             print("Error: Invalid data format in UpdateUploadConfig")
             ao.send({
                 Target = msg.From,
                 Action = "UpdateUploadConfigResponse",
-                Data = "Error: Invalid data format"
+                Data = json.encode({ success = false, message = "Error: Invalid data format" })
             })
         end
     end
@@ -158,14 +164,18 @@ Handlers.add(
                 ao.send({
                     Target = msg.From,
                     Action = "DeleteUploadConfigResponse",
-                    Data = "Upload config deleted"
+                    Data = json.encode({ success = true, message = "Upload config deleted" })
                 })
             else
                 print("Warning: Upload config not found for deletion - " .. key)
                 ao.send({
                     Target = msg.From,
                     Action = "DeleteUploadConfigResponse",
-                    Data = "Warning: Upload config not found, but operation completed"
+                    Data = json.encode({
+                        success = true,
+                        message =
+                        "Warning: Upload config not found, but operation completed"
+                    })
                 })
             end
         else
@@ -173,7 +183,7 @@ Handlers.add(
             ao.send({
                 Target = msg.From,
                 Action = "DeleteUploadConfigResponse",
-                Data = "Error: Missing key"
+                Data = json.encode({ success = false, message = "Error: Missing key" })
             })
         end
     end

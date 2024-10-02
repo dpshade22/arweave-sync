@@ -5,9 +5,11 @@ import {
   Notice,
   App,
   WorkspaceLeaf,
+  TFolder,
 } from "obsidian";
 import { ArweaveUploader } from "./managers/arweaveUploader";
 import { AOManager } from "./managers/aoManager";
+import { ArPublishManager } from "./managers/arPublishManager";
 import {
   initializeWalletManager,
   walletManager,
@@ -32,6 +34,7 @@ export default class ArweaveSync extends Plugin {
   private arweaveUploader: ArweaveUploader;
   private aoManager: AOManager;
   private vaultImportManager: VaultImportManager;
+  private arPublishManager: ArPublishManager;
   private arweave: Arweave;
   private walletAddress: string | null = null;
   private statusBarItem: HTMLElement;
@@ -60,6 +63,29 @@ export default class ArweaveSync extends Plugin {
         "active-leaf-change",
         this.logActiveFileInfo.bind(this),
       ),
+    );
+
+    this.arPublishManager = new ArPublishManager(this.app, this);
+
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu, file) => {
+        if (file instanceof TFolder) {
+          menu.addItem((item) => {
+            item
+              .setTitle("Publish to ArPublish")
+              .setIcon("upload-cloud")
+              .onClick(async () => {
+                try {
+                  await this.arPublishManager.publishFolder(file);
+                  new Notice(`Folder "${file.name}" published successfully!`);
+                } catch (error) {
+                  console.error("Error publishing folder:", error);
+                  new Notice(`Error publishing folder: ${error.message}`);
+                }
+              });
+          });
+        }
+      }),
     );
   }
 
@@ -315,6 +341,7 @@ export default class ArweaveSync extends Plugin {
       if (!syncButton.hasAttribute("disabled")) {
         syncButton.addClass("uploading");
         await this.syncFile(file);
+        await this.refreshRemoteConfig();
         syncButton.removeClass("uploading");
       }
     });
@@ -408,7 +435,7 @@ export default class ArweaveSync extends Plugin {
       if (
         !this.settings.localUploadConfig[filePath] ||
         (fileInfo as FileUploadInfo).timestamp >
-        this.settings.localUploadConfig[filePath].timestamp
+          this.settings.localUploadConfig[filePath].timestamp
       ) {
         this.settings.localUploadConfig[filePath] = fileInfo as FileUploadInfo;
       }
@@ -462,13 +489,44 @@ export default class ArweaveSync extends Plugin {
 
     try {
       const { content, fileHash } = await this.prepareFileContent(file);
+      const currentFileInfo = this.settings.localUploadConfig[file.path];
+      const previousVersionTxId = currentFileInfo ? currentFileInfo.txId : null;
+      const versionNumber = currentFileInfo
+        ? currentFileInfo.versionNumber + 1
+        : 1;
+
       const txId = await this.arweaveUploader.uploadFile(
         file.path,
         content,
         fileHash,
+        previousVersionTxId,
+        versionNumber,
       );
-      await this.updateFileConfigs(file, txId, fileHash);
+
+      const newFileInfo: FileUploadInfo = {
+        txId,
+        timestamp: Date.now(),
+        fileHash,
+        encrypted: true,
+        filePath: file.path,
+        previousVersionTxId,
+        versionNumber,
+      };
+
+      // Update both local and remote configs
+      this.settings.localUploadConfig[file.path] = newFileInfo;
+      this.settings.remoteUploadConfig[file.path] = newFileInfo;
+
+      await this.saveSettings();
+      await this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
+
+      console.log(
+        "Updated remoteUploadConfig:",
+        this.settings.remoteUploadConfig,
+      );
+
       this.updateUIAfterSync(file);
+      new Notice(`File ${file.name} synced to Arweave (encrypted)`);
     } catch (error) {
       this.handleSyncError(file, error);
     } finally {
@@ -492,13 +550,21 @@ export default class ArweaveSync extends Plugin {
     return { content: encryptedContent, fileHash };
   }
 
-  private async updateFileConfigs(file: TFile, txId: string, fileHash: string) {
+  private async updateFileConfigs(
+    file: TFile,
+    txId: string,
+    fileHash: string,
+    previousVersionTxId: string | null,
+    versionNumber: number,
+  ) {
     const fileUploadInfo: FileUploadInfo = {
       txId,
       timestamp: Date.now(),
       fileHash,
       encrypted: true,
       filePath: file.path,
+      previousVersionTxId,
+      versionNumber,
     };
 
     this.settings.localUploadConfig[file.path] = fileUploadInfo;
@@ -506,6 +572,23 @@ export default class ArweaveSync extends Plugin {
 
     await this.saveSettings();
     await this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
+    console.log("Remote config after sync:", this.settings.remoteUploadConfig);
+  }
+
+  async refreshRemoteConfig() {
+    try {
+      const remoteConfig = await this.aoManager.getUploadConfig();
+      if (remoteConfig) {
+        this.settings.remoteUploadConfig = remoteConfig;
+        await this.saveSettings();
+        console.log(
+          "Remote config refreshed:",
+          this.settings.remoteUploadConfig,
+        );
+      }
+    } catch (error) {
+      console.error("Failed to refresh remote config:", error);
+    }
   }
 
   private updateUIAfterSync(file: TFile) {
@@ -536,6 +619,8 @@ export default class ArweaveSync extends Plugin {
         fileHash: newHash,
         encrypted: true,
         filePath: file.path,
+        previousVersionTxId: currentConfig?.txId || null,
+        versionNumber: (currentConfig?.versionNumber || 0) + 1,
       };
       this.modifiedFiles.add(file.path);
       await this.saveSettings();
@@ -631,19 +716,31 @@ export default class ArweaveSync extends Plugin {
             this.settings.encryptionPassword,
           );
           const fileHash = await this.getFileHash(file);
+
+          const currentFileInfo = this.settings.localUploadConfig[filePath];
+          const previousVersionTxId = currentFileInfo
+            ? currentFileInfo.txId
+            : null;
+          const versionNumber = currentFileInfo
+            ? currentFileInfo.versionNumber + 1
+            : 1;
+
           const txId = await this.arweaveUploader.uploadFile(
             filePath,
             encryptedContent,
             fileHash,
+            previousVersionTxId,
+            versionNumber,
           );
 
-          // Update local and remote configs
           const fileInfo: FileUploadInfo = {
             txId,
             timestamp: Date.now(),
             fileHash,
             encrypted: true,
             filePath: file.path,
+            previousVersionTxId,
+            versionNumber,
           };
           this.settings.localUploadConfig[filePath] = fileInfo;
           this.settings.remoteUploadConfig[filePath] = fileInfo;

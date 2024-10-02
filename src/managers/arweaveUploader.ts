@@ -21,13 +21,14 @@ export class ArweaveUploader {
     filePath: string,
     content: string,
     fileHash: string,
+    previousVersionTxId: string | null,
+    versionNumber: number,
   ): Promise<string> {
     if (!this.wallet) {
       throw new Error("Wallet not set. Please set a wallet before uploading.");
     }
 
     try {
-      // Create a transaction
       const transaction = await this.arweave.createTransaction(
         {
           data: content,
@@ -35,16 +36,13 @@ export class ArweaveUploader {
         this.wallet,
       );
 
-      // Add tags to the transaction
       transaction.addTag("Content-Type", "text/markdown");
       transaction.addTag("App-Name", "ArweaveSync");
-      // transaction.addTag("File-Path", filePath);
       transaction.addTag("File-Hash", fileHash);
+      transaction.addTag("Previous-Version", previousVersionTxId || "");
+      transaction.addTag("Version-Number", versionNumber.toString());
 
-      // Sign the transaction
       await this.arweave.transactions.sign(transaction, this.wallet);
-
-      // Submit the transaction
       const response = await this.arweave.transactions.post(transaction);
 
       if (response.status === 200) {

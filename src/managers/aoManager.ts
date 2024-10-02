@@ -50,7 +50,7 @@ export class AOManager {
       this.signer = null;
       this.initialized = false;
     }
-    this.processId = "j7Z5SYFHJo8dNi47p53eDuTj1fqY-mKO0-xbzuWQ0hE"; // Replace with your actual process ID
+    this.processId = "j7Z5SYFHJo8dNi47p53eDuTj1fqY-mKO0-xbzuWQ0hE";
   }
 
   isInitialized(): boolean {
@@ -99,12 +99,42 @@ export class AOManager {
   }
 
   async updateUploadConfig(uploadConfig: UploadConfig): Promise<void> {
-    await this.sendMessage("CreateUploadConfig", uploadConfig);
+    try {
+      const uploadConfigArray = Object.entries(uploadConfig).map(
+        ([key, value]) => ({ key, value }),
+      );
+      const result = await this.sendMessage("UpdateUploadConfig", {
+        uploadConfig: uploadConfigArray,
+      });
+      console.log("Upload config sent to AO:", uploadConfigArray);
+      console.log("AO response:", result);
+      const parsedResult = JSON.parse(result);
+      if (!parsedResult.success) {
+        throw new Error(
+          parsedResult.message || "Failed to update upload config in AO",
+        );
+      }
+    } catch (error) {
+      console.error("Failed to update upload config in AO:", error);
+      throw error;
+    }
   }
 
   async getUploadConfig(): Promise<UploadConfig | null> {
     const result = await this.dryRun("GetUploadConfig");
-    return result ? JSON.parse(result) : null;
+    console.log("Raw AO response for GetUploadConfig:", result);
+    if (result) {
+      const parsedResult = JSON.parse(result) as Array<{
+        key: string;
+        value: FileUploadInfo;
+      }>;
+      console.log("Parsed AO response for GetUploadConfig:", parsedResult);
+      return parsedResult.reduce((acc: UploadConfig, { key, value }) => {
+        acc[key] = value;
+        return acc;
+      }, {});
+    }
+    return null;
   }
 
   async deleteUploadConfig(filePath: string): Promise<void> {
