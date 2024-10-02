@@ -118,7 +118,12 @@ export class VaultExportModal extends Modal {
       this.plugin,
       this.plugin.settings.remoteUploadConfig,
     );
-    await importModal.onOpen();
+
+    // Clear the current content container
+    this.contentContainer.empty();
+
+    // Render the import modal content directly in the current modal
+    await importModal.renderContent();
   }
 
   private buildFileTree(files: TFile[]): FileNode[] {

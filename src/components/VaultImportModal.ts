@@ -45,9 +45,12 @@ export class VaultImportModal extends Modal {
     for (const [filePath, remoteFileInfo] of Object.entries(
       remoteUploadConfig,
     )) {
+
+      console.log(filePath);
       const localFile = this.app.vault.getAbstractFileByPath(filePath);
       if (localFile instanceof TFile) {
         const localHash = await this.plugin.getFileHash(localFile);
+        console.log(localHash);
         if (localHash !== remoteFileInfo.fileHash) {
           filesToImport.push(this.createFileNode(filePath, remoteFileInfo));
         }
@@ -56,7 +59,8 @@ export class VaultImportModal extends Modal {
         filesToImport.push(this.createFileNode(filePath, remoteFileInfo));
       }
     }
-
+    console.log("filesToImport");
+    console.log(filesToImport);
     return filesToImport;
   }
 
@@ -153,8 +157,13 @@ export class VaultImportModal extends Modal {
     });
     this.remoteContainer = container.createDiv({ cls: "remote-files" });
     this.importContainer = container.createDiv({ cls: "import-files" });
+  
+    console.log("Rendering remote files:", this.remoteFiles);
     this.renderFileTree(this.remoteFiles, this.remoteContainer, true);
+  
+    console.log("Rendering files to import:", this.filesToImport);
     this.renderFileTree(this.filesToImport, this.importContainer, false);
+  
 
     if (this.filesToImport.length === 0) {
       this.importContainer.createEl("p", {

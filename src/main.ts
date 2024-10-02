@@ -27,6 +27,7 @@ import { ArweaveSyncSettingTab } from "./settings/settings";
 import { encrypt, decrypt } from "./utils/encryption";
 import { debounce } from "./utils/helpers";
 import "./styles.css";
+import { VaultSyncModal } from "./components/VaultSyncModal";
 
 export default class ArweaveSync extends Plugin {
   settings: ArweaveSyncSettings;
@@ -132,7 +133,7 @@ export default class ArweaveSync extends Plugin {
 
   private handleRibbonIconClick() {
     if (this.walletAddress) {
-      this.showVaultExportModal();
+      this.showSyncModal();
     } else {
       this.showWalletConnectModal();
     }
@@ -177,6 +178,10 @@ export default class ArweaveSync extends Plugin {
       name: "Open Vault Export Modal",
       callback: () => this.showVaultExportModal(),
     });
+  }
+
+  private showSyncModal() {
+    new VaultSyncModal(this.app, this).open();
   }
 
   private showWalletConnectModal() {
@@ -431,7 +436,7 @@ export default class ArweaveSync extends Plugin {
       if (
         !this.settings.localUploadConfig[filePath] ||
         (fileInfo as FileUploadInfo).timestamp >
-          this.settings.localUploadConfig[filePath].timestamp
+        this.settings.localUploadConfig[filePath].timestamp
       ) {
         this.settings.localUploadConfig[filePath] = fileInfo as FileUploadInfo;
       }
