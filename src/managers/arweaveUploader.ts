@@ -62,24 +62,4 @@ export class ArweaveUploader {
       throw error;
     }
   }
-
-  async getUploadCost(contentLength: number): Promise<string> {
-    try {
-      const price = await this.arweave.transactions.getPrice(contentLength);
-      return this.arweave.ar.winstonToAr(price);
-    } catch (error) {
-      console.error("Error getting upload cost:", error);
-      throw error;
-    }
-  }
-
-  async getTransactionStatus(txId: string): Promise<string> {
-    try {
-      const status = await this.arweave.transactions.getStatus(txId);
-      return status.status === 200 ? "Confirmed" : "Pending";
-    } catch (error) {
-      console.error("Error getting transaction status:", error);
-      throw error;
-    }
-  }
 }

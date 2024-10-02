@@ -13,8 +13,6 @@ import {
   walletManager,
 } from "./managers/walletManager";
 import { VaultImportManager } from "./managers/vaultImportManager";
-import { VaultImportModal } from "./components/VaultImportModal";
-import { VaultExportModal } from "./components/VaultExportModal";
 import {
   UploadConfig,
   FileUploadInfo,
@@ -57,11 +55,11 @@ export default class ArweaveSync extends Plugin {
     this.setupUI();
     this.addCommands();
 
-    // Add this new event listener
     this.registerEvent(
-      this.app.workspace.on("active-leaf-change", async () => {
-        await this.logActiveFileInfo();
-      }),
+      this.app.workspace.on(
+        "active-leaf-change",
+        this.logActiveFileInfo.bind(this),
+      ),
     );
   }
 
@@ -69,11 +67,9 @@ export default class ArweaveSync extends Plugin {
     const activeFile = this.app.workspace.getActiveFile();
     if (activeFile) {
       const currentHash = await this.getFileHash(activeFile);
-      const remoteConfig = this.settings.remoteUploadConfig;
-
       console.log("Current active file:", activeFile.path);
       console.log("Current file hash:", currentHash);
-      console.log("Remote upload config:", remoteConfig);
+      console.log("Remote upload config:", this.settings.remoteUploadConfig);
     } else {
       console.log("No active file");
     }
@@ -132,11 +128,7 @@ export default class ArweaveSync extends Plugin {
   }
 
   private handleRibbonIconClick() {
-    if (this.walletAddress) {
-      this.showSyncModal();
-    } else {
-      this.showWalletConnectModal();
-    }
+    this.walletAddress ? this.showSyncModal() : this.showWalletConnectModal();
   }
 
   private setupSyncButton() {
@@ -161,22 +153,16 @@ export default class ArweaveSync extends Plugin {
   }
 
   private addCommands() {
-    this.addCommand({
-      id: "import-vault",
-      name: "Import to vault from Arweave",
-      callback: () => this.vaultImportManager.importFilesFromArweave(),
-    });
+    // this.addCommand({
+    //   id: "import-vault",
+    //   name: "Import to vault from Arweave",
+    //   callback: () => this.vaultImportManager.importFilesFromArweave(),
+    // });
 
     this.addCommand({
-      id: "open-import-modal",
-      name: "Open File Import Modal",
-      callback: () => this.showVaultImportModal(),
-    });
-
-    this.addCommand({
-      id: "open-export-modal",
-      name: "Open Vault Export Modal",
-      callback: () => this.showVaultExportModal(),
+      id: "open-sync-modal",
+      name: "Open Vault Sync Modal",
+      callback: () => this.showSyncModal(),
     });
   }
 
@@ -188,18 +174,6 @@ export default class ArweaveSync extends Plugin {
     new WalletConnectModal(this.app, this).open();
   }
 
-  private showVaultExportModal() {
-    new VaultExportModal(this.app, this).open();
-  }
-
-  private showVaultImportModal() {
-    new VaultImportModal(
-      this.app,
-      this,
-      this.settings.remoteUploadConfig,
-    ).open();
-  }
-
   private createStatusBarItem() {
     this.statusBarItem = this.addStatusBarItem();
     this.statusBarItem.addClass("arweave-wallet-status");
@@ -208,11 +182,9 @@ export default class ArweaveSync extends Plugin {
 
   private updateStatusBar() {
     this.statusBarItem.empty();
-    if (this.walletAddress) {
-      this.createConnectedWalletStatus();
-    } else {
-      this.statusBarItem.setText("Arweave Wallet: Not Connected");
-    }
+    this.walletAddress
+      ? this.createConnectedWalletStatus()
+      : this.statusBarItem.setText("Arweave Wallet: Not Connected");
   }
 
   private createConnectedWalletStatus() {
@@ -409,7 +381,7 @@ export default class ArweaveSync extends Plugin {
     const newFiles = this.getNewFilesFromRemote();
     if (newFiles.length > 0) {
       new Notice("Wallet connected. New files available for import.");
-      this.showVaultImportModal();
+      this.showSyncModal();
     } else {
       new Notice("Wallet connected. No new files to import.");
     }
@@ -436,7 +408,7 @@ export default class ArweaveSync extends Plugin {
       if (
         !this.settings.localUploadConfig[filePath] ||
         (fileInfo as FileUploadInfo).timestamp >
-          this.settings.localUploadConfig[filePath].timestamp
+        this.settings.localUploadConfig[filePath].timestamp
       ) {
         this.settings.localUploadConfig[filePath] = fileInfo as FileUploadInfo;
       }
@@ -720,42 +692,7 @@ export default class ArweaveSync extends Plugin {
     return decrypt(encryptedContent, this.settings.encryptionPassword);
   }
 
-  async hasChangesToExport(): Promise<boolean> {
-    const files = this.app.vault.getFiles();
-    for (const file of files) {
-      const currentHash = await this.getFileHash(file);
-      const remoteFileInfo = this.settings.remoteUploadConfig[file.path];
-
-      if (!remoteFileInfo || remoteFileInfo.fileHash !== currentHash) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   addStatusBarItem(): HTMLElement {
     return super.addStatusBarItem();
-  }
-
-  getModifiedFiles(): string[] {
-    return Array.from(this.modifiedFiles);
-  }
-
-  getUnsyncedFiles(): string[] {
-    return Array.from(this.modifiedFiles);
-  }
-
-  getLocalFiles(): UploadConfig {
-    const localFiles: UploadConfig = {};
-    this.app.vault.getFiles().forEach((file) => {
-      localFiles[file.path] = {
-        txId: "",
-        timestamp: file.stat.mtime,
-        fileHash: "",
-        encrypted: false,
-        filePath: file.path,
-      };
-    });
-    return localFiles;
   }
 }

@@ -1,13 +1,11 @@
 import { Notice, Events } from "obsidian";
 import { JWKInterface } from "arweave/node/lib/wallet";
 import Arweave from "arweave";
-import { UploadConfig } from "../types";
 
 export class WalletManager extends Events {
   private address: string | null = null;
   private jwk: JWKInterface | null = null;
   private arweave: Arweave;
-  private uploadConfig: UploadConfig | null = null;
   private walletJson: string | null = null;
 
   constructor() {
@@ -82,10 +80,6 @@ export class WalletManager extends Events {
     return this.address;
   }
 
-  getUploadConfig(): UploadConfig | null {
-    return this.uploadConfig;
-  }
-
   getJWK(): JWKInterface | null {
     return this.jwk;
   }
@@ -126,7 +120,6 @@ export class WalletManager extends Events {
   private _resetState(): void {
     this.address = null;
     this.jwk = null;
-    this.uploadConfig = null;
     this.walletJson = null;
   }
 }
