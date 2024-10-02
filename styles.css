@@ -97,10 +97,36 @@
         transform: rotate(360deg);
     }
 }
+
+.arweave-wallet-status {
+    display: flex;
+    align-items: center;
+}
+
+.arweave-wallet-address {
+    cursor: pointer;
+    margin-right: 8px;
+}
+
+.arweave-wallet-disconnect {
+    cursor: pointer;
+}
+
+.arweave-wallet-disconnect svg {
+    width: 16px;
+    height: 16px;
+    fill: var(--text-muted);
+}
+
+.arweave-wallet-disconnect:hover svg {
+    fill: var(--text-normal);
+}
+
 button:not(.clickable-icon) {
     box-shadow: none;
     background: none;
 }
+
 .vault-sync-modal {
     font-family: var(--font-interface);
     background-color: var(--background-primary);
