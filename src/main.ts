@@ -436,7 +436,7 @@ export default class ArweaveSync extends Plugin {
       if (
         !this.settings.localUploadConfig[filePath] ||
         (fileInfo as FileUploadInfo).timestamp >
-        this.settings.localUploadConfig[filePath].timestamp
+          this.settings.localUploadConfig[filePath].timestamp
       ) {
         this.settings.localUploadConfig[filePath] = fileInfo as FileUploadInfo;
       }
@@ -688,6 +688,21 @@ export default class ArweaveSync extends Plugin {
     await this.saveSettings();
     await this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
     new Notice(`Exported ${exportedFiles}/${totalFiles} files to Arweave`);
+
+    // Update the sync button for the active file
+    this.updateActiveSyncButton();
+  }
+
+  private updateActiveSyncButton() {
+    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (activeView && activeView.file) {
+      const syncButton = activeView.containerEl.querySelector(
+        ".arweave-sync-button",
+      ) as HTMLElement;
+      if (syncButton) {
+        this.updateSyncButtonState(syncButton, activeView.file);
+      }
+    }
   }
 
   async getFileHash(file: TFile): Promise<string> {

@@ -51,14 +51,33 @@ export class VaultSyncModal extends Modal {
   private async initializeFiles() {
     const modifiedOrNewFiles = await this.getModifiedOrNewFiles();
     this.localFiles = this.buildFileTree(modifiedOrNewFiles);
-    this.remoteFiles = this.buildFileTree(
-      this.plugin.settings.remoteUploadConfig,
-    );
+    this.remoteFiles = await this.getNewOrModifiedRemoteFiles();
     this.filesToImport = [];
 
     this.hasChangesToExport = this.localFiles.length > 0;
-    this.hasChangesToImport =
-      Object.keys(this.plugin.settings.remoteUploadConfig).length > 0;
+    this.hasChangesToImport = this.remoteFiles.length > 0;
+  }
+
+  private async getNewOrModifiedRemoteFiles(): Promise<FileNode[]> {
+    const remoteConfig = this.plugin.settings.remoteUploadConfig;
+    const newOrModifiedFiles: FileNode[] = [];
+
+    for (const [filePath, remoteFileInfo] of Object.entries(remoteConfig)) {
+      const file = this.app.vault.getAbstractFileByPath(filePath);
+      if (file instanceof TFile) {
+        const localHash = await this.plugin.getFileHash(file);
+        if (localHash !== remoteFileInfo.fileHash) {
+          newOrModifiedFiles.push(
+            this.createFileNode(filePath, remoteFileInfo),
+          );
+        }
+      } else {
+        // File doesn't exist locally, so it's new
+        newOrModifiedFiles.push(this.createFileNode(filePath, remoteFileInfo));
+      }
+    }
+
+    return this.buildFileTree(newOrModifiedFiles);
   }
 
   private createTabs() {
@@ -156,7 +175,9 @@ export class VaultSyncModal extends Modal {
       .onClick(() => this.importFiles());
   }
 
-  private buildFileTree(files: TFile[] | UploadConfig): FileNode[] {
+  private buildFileTree(
+    files: TFile[] | UploadConfig | FileNode[],
+  ): FileNode[] {
     const root: FileNode[] = [];
     const pathMap: Record<string, FileNode> = {};
 
@@ -196,13 +217,17 @@ export class VaultSyncModal extends Modal {
 
     if (Array.isArray(files)) {
       files.forEach((file) => {
-        processFile(file.path, {
-          txId: this.plugin.settings.localUploadConfig[file.path]?.txId || "",
-          timestamp: file.stat.mtime,
-          fileHash: "",
-          encrypted: false,
-          filePath: file.path,
-        });
+        if (file instanceof TFile) {
+          processFile(file.path, {
+            txId: this.plugin.settings.localUploadConfig[file.path]?.txId || "",
+            timestamp: file.stat.mtime,
+            fileHash: "",
+            encrypted: false,
+            filePath: file.path,
+          });
+        } else {
+          processFile(file.path, file.fileInfo);
+        }
       });
     } else {
       Object.entries(files).forEach(([path, fileInfo]) => {
@@ -490,9 +515,8 @@ export class VaultSyncModal extends Modal {
   }
 
   private createFileNode(filePath: string, fileInfo: FileUploadInfo): FileNode {
-    const parts = filePath.split("/");
     return {
-      name: parts[parts.length - 1],
+      name: filePath.split("/").pop() || "",
       path: filePath,
       fileInfo: fileInfo,
       isFolder: false,
