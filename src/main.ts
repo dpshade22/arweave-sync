@@ -28,6 +28,7 @@ import { encrypt, decrypt } from "./utils/encryption";
 import { debounce } from "./utils/helpers";
 import "./styles.css";
 import { VaultSyncModal } from "./components/VaultSyncModal";
+import { PreviousVersionModal } from "./components/PreviousVersionModal";
 
 export default class ArweaveSync extends Plugin {
   settings: ArweaveSyncSettings;
@@ -179,16 +180,26 @@ export default class ArweaveSync extends Plugin {
   }
 
   private addCommands() {
-    // this.addCommand({
-    //   id: "import-vault",
-    //   name: "Import to vault from Arweave",
-    //   callback: () => this.vaultImportManager.importFilesFromArweave(),
-    // });
-
     this.addCommand({
       id: "open-sync-modal",
       name: "Open Vault Sync Modal",
       callback: () => this.showSyncModal(),
+    });
+
+    this.addCommand({
+      id: "open-previous-version",
+      name: "Open Previous Version",
+      checkCallback: (checking: boolean) => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile && activeFile instanceof TFile) {
+          if (!checking) {
+            const modal = new PreviousVersionModal(this.app, this, activeFile);
+            modal.open();
+          }
+          return true;
+        }
+        return false;
+      },
     });
   }
 
@@ -791,5 +802,75 @@ export default class ArweaveSync extends Plugin {
 
   addStatusBarItem(): HTMLElement {
     return super.addStatusBarItem();
+  }
+
+  async openPreviousVersion(file: TFile, n: number) {
+    const loadingNotice = new Notice("Fetching previous version...", 0);
+    try {
+      const previousVersionInfo =
+        await this.arweaveUploader.fetchPreviousVersion(
+          file.path,
+          n,
+          this.settings.localUploadConfig,
+        );
+      loadingNotice.hide();
+
+      if (!previousVersionInfo) {
+        new Notice(`No previous version found (requested: ${n} versions back)`);
+        return;
+      }
+
+      // Decrypt the content
+      const decryptedContent = await this.decryptFileContent(
+        previousVersionInfo.content,
+      );
+
+      // Format the timestamp
+      const formattedDate = new Date(
+        previousVersionInfo.timestamp * 1000,
+      ).toLocaleString();
+
+      // Create a safe filename
+      const safeFilename = this.createSafeFilename(file.basename, n);
+
+      // Create a new file with the decrypted content and timestamp
+      const newFile = await this.app.vault.create(
+        `${file.parent?.path || ""}/${safeFilename}`,
+        `---
+Last synced: ${formattedDate}
+Original file: ${file.path}
+Version: ${n} versions ago
+---
+
+  ${decryptedContent}`,
+      );
+
+      // Open the new file
+      const leaf = this.app.workspace.getLeaf(false);
+      await leaf.openFile(newFile);
+
+      new Notice(
+        `Opened version from ${formattedDate} (${n} transactions ago)`,
+      );
+    } catch (error) {
+      loadingNotice.hide();
+      new Notice(`Error opening previous version: ${error.message}`);
+      console.error("Error opening previous version:", error);
+    }
+  }
+
+  private createSafeFilename(
+    originalName: string,
+    versionNumber: number,
+  ): string {
+    // Remove the file extension
+    const nameWithoutExtension = originalName.replace(/\.[^/.]+$/, "");
+
+    // Remove any characters that are not allowed in filenames
+    const safeName = nameWithoutExtension.replace(/[\\/:*?"<>|]/g, "_");
+
+    // Create the new filename with a timestamp to ensure uniqueness
+    const timestamp = Date.now();
+    return `${safeName} (${versionNumber} versions ago).md`;
   }
 }

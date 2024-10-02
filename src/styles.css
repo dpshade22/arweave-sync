@@ -412,3 +412,63 @@ button:not(.clickable-icon) {
     margin-top: 20px;
     font-size: 1.2em;
 }
+
+.previous-version-modal {
+    padding: 20px;
+}
+
+.previous-version-modal h2 {
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.version-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.version-button {
+    font-size: 18px;
+    width: 30px;
+    height: 30px;
+    border: none;
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.version-display {
+    font-size: 18px;
+    margin: 0 15px;
+    min-width: 30px;
+    text-align: center;
+}
+
+.button-container {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.button-container button {
+    margin-left: 10px;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.button-container button:first-child {
+    background-color: var(--interactive-normal);
+    color: var(--text-normal);
+}
+
+.button-container button.mod-cta {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+}

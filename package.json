@@ -8,6 +8,7 @@
     "@types/katex": "^0.16.7",
     "@types/marked": "^6.0.0",
     "@types/mermaid": "^9.2.0",
+    "ar-gql": "^2.0.2",
     "arweave": "^1.15.5",
     "assert": "^2.1.0",
     "buffer": "^6.0.3",
