@@ -271,6 +271,7 @@ button:not(.clickable-icon) {
     font-weight: 500;
     font-size: 0.875rem;
     transition: background-color 0.2s;
+    cursor: pointer;
 }
 
 .vault-sync-modal .button-container button:first-child {
