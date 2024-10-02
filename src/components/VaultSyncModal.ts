@@ -25,6 +25,7 @@ export class VaultSyncModal extends Modal {
   private contentContainer: HTMLElement;
   private hasChangesToImport: boolean = false;
   private hasChangesToExport: boolean = false;
+  private arrowPointingRight: boolean = true;
 
   constructor(app: App, plugin: ArweaveSync) {
     super(app);
@@ -125,11 +126,65 @@ export class VaultSyncModal extends Modal {
   private async renderContent() {
     this.contentContainer.empty();
 
+    const container = this.contentContainer.createDiv({
+      cls: "file-transfer-container",
+    });
+
     if (this.isExportView) {
-      await this.renderExportView();
+      this.localContainer = container.createDiv({
+        cls: "file-column local-files",
+      });
+      this.remoteContainer = container.createDiv({
+        cls: "file-column export-files",
+      });
     } else {
-      await this.renderImportView();
+      this.remoteContainer = container.createDiv({
+        cls: "file-column remote-files",
+      });
+      this.importContainer = container.createDiv({
+        cls: "file-column import-files",
+      });
     }
+
+    // Add the arrow button
+    const arrowContainer = container.createDiv({ cls: "arrow-container" });
+    const arrowButton = arrowContainer.createEl("button", {
+      cls: "arrow-button",
+    });
+    arrowButton.innerHTML = this.arrowPointingRight ? "→" : "←";
+    arrowButton.addEventListener("click", () => this.moveAllFiles());
+
+    // Update arrow button state
+    if (this.isExportView) {
+      arrowButton.disabled = this.arrowPointingRight
+        ? this.localFiles.length === 0
+        : this.filesToExport.length === 0;
+      this.renderFileTree(this.localFiles, this.localContainer, true);
+      this.renderFileTree(this.filesToExport, this.remoteContainer, false);
+    } else {
+      arrowButton.disabled = this.arrowPointingRight
+        ? this.remoteFiles.length === 0
+        : this.filesToImport.length === 0;
+      this.renderFileTree(this.remoteFiles, this.remoteContainer, true);
+      this.renderFileTree(this.filesToImport, this.importContainer, false);
+    }
+
+    const buttonContainer = this.contentContainer.createDiv({
+      cls: "button-container",
+    });
+
+    new ButtonComponent(buttonContainer)
+      .setButtonText("Cancel")
+      .onClick(() => this.close());
+
+    new ButtonComponent(buttonContainer)
+      .setButtonText(
+        this.isExportView ? "Export to Arweave" : "Import Selected Files",
+      )
+      .setCta()
+      .onClick(() =>
+        this.isExportView ? this.exportToArweave() : this.importFiles(),
+      );
   }
 
   private async renderExportView() {
@@ -388,6 +443,28 @@ export class VaultSyncModal extends Modal {
       this.renderFileTree(this.remoteFiles, this.remoteContainer, true);
       this.renderFileTree(this.filesToImport, this.importContainer, false);
     }
+  }
+
+  private moveAllFiles() {
+    if (this.arrowPointingRight) {
+      if (this.isExportView) {
+        this.filesToExport = [...this.localFiles, ...this.filesToExport];
+        this.localFiles = [];
+      } else {
+        this.filesToImport = [...this.remoteFiles, ...this.filesToImport];
+        this.remoteFiles = [];
+      }
+    } else {
+      if (this.isExportView) {
+        this.localFiles = [...this.filesToExport, ...this.localFiles];
+        this.filesToExport = [];
+      } else {
+        this.remoteFiles = [...this.filesToImport, ...this.remoteFiles];
+        this.filesToImport = [];
+      }
+    }
+    this.arrowPointingRight = !this.arrowPointingRight;
+    this.renderContent();
   }
 
   private moveFileToExport(file: FileNode) {
