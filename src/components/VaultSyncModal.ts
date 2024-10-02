@@ -144,13 +144,6 @@ export class VaultSyncModal extends Modal {
     this.renderFileTree(this.remoteFiles, this.remoteContainer, true);
     this.renderFileTree(this.filesToImport, this.importContainer, false);
 
-    if (this.filesToImport.length === 0) {
-      this.importContainer.createEl("p", {
-        text: "No files selected for import.",
-        cls: "no-files-message",
-      });
-    }
-
     const buttonContainer = this.contentContainer.createDiv({
       cls: "button-container",
     });
