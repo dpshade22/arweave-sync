@@ -472,3 +472,42 @@ button:not(.clickable-icon) {
     background-color: var(--interactive-accent);
     color: var(--text-on-accent);
 }
+
+.previous-version-modal .version-list-container {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: 20px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+}
+
+.previous-version-modal .version-list {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
+
+.previous-version-modal .version-list-item {
+    padding: 10px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.previous-version-modal .version-list-item:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.previous-version-modal .version-item-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.previous-version-modal .version-number {
+    font-weight: bold;
+}
+
+.previous-version-modal .version-date {
+    color: var(--text-muted);
+    font-size: 0.9em;
+}

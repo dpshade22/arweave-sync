@@ -103,20 +103,29 @@ export class AOManager {
       const uploadConfigArray = Object.entries(uploadConfig).map(
         ([key, value]) => ({ key, value }),
       );
+      console.log(
+        "Sending upload config to AO:",
+        JSON.stringify(uploadConfigArray, null, 2),
+      );
       const result = await this.sendMessage("UpdateUploadConfig", {
         uploadConfig: uploadConfigArray,
       });
-      console.log("Upload config sent to AO:", uploadConfigArray);
-      console.log("AO response:", result);
-      const parsedResult = JSON.parse(result);
-      if (!parsedResult.success) {
-        throw new Error(
-          parsedResult.message || "Failed to update upload config in AO",
-        );
+      console.log("Raw AO response for UpdateUploadConfig:", result);
+
+      // Check if the result is already an object
+      const parsedResult =
+        typeof result === "object" ? result : JSON.parse(result);
+      console.log("Parsed AO response for UpdateUploadConfig:", parsedResult);
+
+      // Check if the update was successful based on the response structure
+      if (parsedResult.uploadConfig) {
+        console.log("AO upload config updated successfully");
+        return;
+      } else {
+        console.warn("Unexpected AO response format:", parsedResult);
       }
     } catch (error) {
-      console.error("Failed to update upload config in AO:", error);
-      throw error;
+      console.error("Error during AO upload config update:", error);
     }
   }
 

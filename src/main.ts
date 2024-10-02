@@ -502,6 +502,8 @@ export default class ArweaveSync extends Plugin {
       const { content, fileHash } = await this.prepareFileContent(file);
       const currentFileInfo = this.settings.localUploadConfig[file.path];
       const previousVersionTxId = currentFileInfo ? currentFileInfo.txId : null;
+
+      // Only increment version number when syncing
       const versionNumber = currentFileInfo
         ? currentFileInfo.versionNumber + 1
         : 1;
@@ -631,7 +633,7 @@ export default class ArweaveSync extends Plugin {
         encrypted: true,
         filePath: file.path,
         previousVersionTxId: currentConfig?.txId || null,
-        versionNumber: (currentConfig?.versionNumber || 0) + 1,
+        versionNumber: currentConfig?.versionNumber || 0, // Don't increment here
       };
       this.modifiedFiles.add(file.path);
       await this.saveSettings();
@@ -802,6 +804,25 @@ export default class ArweaveSync extends Plugin {
 
   addStatusBarItem(): HTMLElement {
     return super.addStatusBarItem();
+  }
+
+  public async fetchPreviousVersion(
+    filePath: string,
+    n: number,
+    uploadConfig: UploadConfig,
+  ): Promise<any> {
+    const result = await this.arweaveUploader.fetchPreviousVersion(
+      filePath,
+      n,
+      uploadConfig,
+    );
+    if (result) {
+      return {
+        ...result,
+        timestamp: result.timestamp || Date.now() / 1000, // Ensure timestamp is in seconds
+      };
+    }
+    return null;
   }
 
   async openPreviousVersion(file: TFile, n: number) {
