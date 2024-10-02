@@ -24,10 +24,12 @@ import {
 import { WalletConnectModal } from "./components/WalletConnectModal";
 import Arweave from "arweave";
 import { ArweaveSyncSettingTab } from "./settings/settings";
+import { VaultRecreationModal } from "./components/VaultRecreationModal";
 import { JWKInterface } from "arweave/node/lib/wallet";
 import { encrypt, decrypt } from "./utils/encryption";
 import { debounce } from "./utils/helpers";
 import "./styles.css";
+
 export default class ArweaveSync extends Plugin {
   settings: ArweaveSyncSettings;
   private arweaveUploader: ArweaveUploader;
@@ -127,6 +129,12 @@ export default class ArweaveSync extends Plugin {
       id: "recreate-vault",
       name: "Recreate Vault from Arweave",
       callback: () => this.vaultRecreationManager.recreateVault(),
+    });
+
+    this.addCommand({
+      id: "open-recreate-modal",
+      name: "Open Vault Recreation Modal",
+      callback: () => this.showVaultRecreationModal(),
     });
 
     this.addSettingTab(new ArweaveSyncSettingTab(this.app, this));
@@ -260,26 +268,20 @@ export default class ArweaveSync extends Plugin {
         this.settings.remoteUploadConfig,
       );
 
-      new Notice("Wallet connected. Recreating vault...");
-      await this.vaultRecreationManager.recreateVault();
-      new Notice("Vault recreation completed!");
+      new Notice(
+        "Wallet connected. Preparing to show vault recreation options...",
+      );
+
+      // Show the VaultRecreationModal instead of automatically recreating the vault
+      this.showVaultRecreationModal();
     } catch (error) {
       console.error(
-        "Error during wallet connection or vault recreation:",
+        "Error during wallet connection or preparing vault recreation:",
         error,
       );
       new Notice(
         `Error: ${error.message}\nCheck the console for more details.`,
       );
-
-      if (
-        error instanceof Error &&
-        error.message.includes("Failed to recreate")
-      ) {
-        new Notice(
-          "Some files could not be recreated. Please check your encryption password and try again.",
-        );
-      }
     }
   }
 
@@ -309,6 +311,28 @@ export default class ArweaveSync extends Plugin {
       }
     }
     this.saveSettings();
+  }
+
+  private showVaultRecreationModal() {
+    new VaultRecreationModal(
+      this.app,
+      this,
+      this.settings.remoteUploadConfig,
+    ).open();
+  }
+
+  async recreateVaultWithSelectedFiles(selectedFiles: string[]) {
+    try {
+      await this.vaultRecreationManager.recreateVaultWithSelectedFiles(
+        selectedFiles,
+      );
+      new Notice("Vault recreation completed!");
+    } catch (error) {
+      console.error("Error during vault recreation:", error);
+      new Notice(
+        `Error: ${error.message}\nCheck the console for more details.`,
+      );
+    }
   }
 
   async fetchUploadConfigFromAO() {

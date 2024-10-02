@@ -26,6 +26,31 @@ export class VaultRecreationManager {
     this.remoteUploadConfig = remoteUploadConfig;
   }
 
+  async recreateVaultWithSelectedFiles(selectedFiles: string[]) {
+    console.log("Starting vault recreation with selected files");
+    const errors: { filePath: string; error: string }[] = [];
+
+    for (const filePath of selectedFiles) {
+      const fileInfo = this.remoteUploadConfig[filePath];
+      if (fileInfo) {
+        try {
+          await this.recreateFile(filePath, fileInfo);
+        } catch (error) {
+          console.error(`Error recreating file ${filePath}:`, error);
+          errors.push({ filePath, error: error.message });
+        }
+      }
+    }
+
+    console.log("Vault recreation completed");
+    if (errors.length > 0) {
+      console.error("Errors occurred during vault recreation:", errors);
+      throw new Error(
+        `Failed to recreate ${errors.length} files. Check console for details.`,
+      );
+    }
+  }
+
   async recreateVault() {
     console.log("Starting vault recreation");
     const errors: { filePath: string; error: string }[] = [];
