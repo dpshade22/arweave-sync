@@ -50,7 +50,7 @@ export class AOManager {
       this.signer = null;
       this.initialized = false;
     }
-    this.processId = "j7Z5SYFHJo8dNi47p53eDuTj1fqY-mKO0-xbzuWQ0hE"; // Replace with your actual process ID
+    this.processId = "j7Z5SYFHJo8dNi47p53eDuTj1fqY-mKO0-xbzuWQ0hE";
   }
 
   isInitialized(): boolean {
@@ -99,12 +99,51 @@ export class AOManager {
   }
 
   async updateUploadConfig(uploadConfig: UploadConfig): Promise<void> {
-    await this.sendMessage("CreateUploadConfig", uploadConfig);
+    try {
+      const uploadConfigArray = Object.entries(uploadConfig).map(
+        ([key, value]) => ({ key, value }),
+      );
+      console.log(
+        "Sending upload config to AO:",
+        JSON.stringify(uploadConfigArray, null, 2),
+      );
+      const result = await this.sendMessage("UpdateUploadConfig", {
+        uploadConfig: uploadConfigArray,
+      });
+      console.log("Raw AO response for UpdateUploadConfig:", result);
+
+      // Check if the result is already an object
+      const parsedResult =
+        typeof result === "object" ? result : JSON.parse(result);
+      console.log("Parsed AO response for UpdateUploadConfig:", parsedResult);
+
+      // Check if the update was successful based on the response structure
+      if (parsedResult.uploadConfig) {
+        console.log("AO upload config updated successfully");
+        return;
+      } else {
+        console.warn("Unexpected AO response format:", parsedResult);
+      }
+    } catch (error) {
+      console.error("Error during AO upload config update:", error);
+    }
   }
 
   async getUploadConfig(): Promise<UploadConfig | null> {
     const result = await this.dryRun("GetUploadConfig");
-    return result ? JSON.parse(result) : null;
+    console.log("Raw AO response for GetUploadConfig:", result);
+    if (result) {
+      const parsedResult = JSON.parse(result) as Array<{
+        key: string;
+        value: FileUploadInfo;
+      }>;
+      console.log("Parsed AO response for GetUploadConfig:", parsedResult);
+      return parsedResult.reduce((acc: UploadConfig, { key, value }) => {
+        acc[key] = value;
+        return acc;
+      }, {});
+    }
+    return null;
   }
 
   async deleteUploadConfig(filePath: string): Promise<void> {
