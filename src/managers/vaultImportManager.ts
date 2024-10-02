@@ -5,7 +5,7 @@ import { decrypt } from "../utils/encryption";
 import Arweave from "arweave";
 import { getFolderPath } from "../utils/helpers";
 
-export class VaultRecreationManager {
+export class VaultImportManager {
   private vault: Vault;
   private encryptionPassword: string;
   private arweave: Arweave;
@@ -26,56 +26,37 @@ export class VaultRecreationManager {
     this.remoteUploadConfig = remoteUploadConfig;
   }
 
-  async recreateVaultWithSelectedFiles(selectedFiles: string[]) {
-    console.log("Starting vault recreation with selected files");
+  async importFilesFromArweave(selectedFiles: string[] = []) {
+    console.log("Starting file import from Arweave");
     const errors: { filePath: string; error: string }[] = [];
 
-    for (const filePath of selectedFiles) {
+    const filesToImport =
+      selectedFiles.length > 0
+        ? selectedFiles
+        : Object.keys(this.remoteUploadConfig);
+
+    for (const filePath of filesToImport) {
       const fileInfo = this.remoteUploadConfig[filePath];
       if (fileInfo) {
         try {
-          await this.recreateFile(filePath, fileInfo);
+          await this.importFile(filePath, fileInfo);
         } catch (error) {
-          console.error(`Error recreating file ${filePath}:`, error);
+          console.error(`Error importing file ${filePath}:`, error);
           errors.push({ filePath, error: error.message });
         }
       }
     }
 
-    console.log("Vault recreation completed");
+    console.log("File import completed");
     if (errors.length > 0) {
-      console.error("Errors occurred during vault recreation:", errors);
+      console.error("Errors occurred during file import:", errors);
       throw new Error(
-        `Failed to recreate ${errors.length} files. Check console for details.`,
+        `Failed to import ${errors.length} files. Check console for details.`,
       );
     }
   }
 
-  async recreateVault() {
-    console.log("Starting vault recreation");
-    const errors: { filePath: string; error: string }[] = [];
-
-    for (const [filePath, fileInfo] of Object.entries(
-      this.remoteUploadConfig,
-    )) {
-      try {
-        await this.recreateFile(filePath, fileInfo);
-      } catch (error) {
-        console.error(`Error recreating file ${filePath}:`, error);
-        errors.push({ filePath, error: error.message });
-      }
-    }
-
-    console.log("Vault recreation completed");
-    if (errors.length > 0) {
-      console.error("Errors occurred during vault recreation:", errors);
-      throw new Error(
-        `Failed to recreate ${errors.length} files. Check console for details.`,
-      );
-    }
-  }
-
-  private async recreateFile(filePath: string, fileInfo: FileUploadInfo) {
+  private async importFile(filePath: string, fileInfo: FileUploadInfo) {
     try {
       console.log(`Processing file: ${filePath}`);
 
@@ -130,7 +111,7 @@ export class VaultRecreationManager {
         console.log(`Created new file: ${filePath}`);
       }
     } catch (error) {
-      console.error(`Error recreating file ${filePath}:`, error);
+      console.error(`Error importing file ${filePath}:`, error);
       throw error;
     }
   }
