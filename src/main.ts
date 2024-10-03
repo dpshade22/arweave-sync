@@ -139,42 +139,6 @@ export default class ArweaveSync extends Plugin {
     this.createStatusBarItem();
     this.setupSyncButton();
     this.addSettingTab(new ArweaveSyncSettingTab(this.app, this));
-    this.addWalletIconToHeader();
-  }
-
-  private addWalletIconToHeader() {
-    const headerEl = this.app.workspace.containerEl.querySelector(
-      ".workspace-tab-header-container",
-    );
-    if (headerEl) {
-      const walletIconEl = headerEl.createEl("div", {
-        cls: "workspace-tab-header-inner arweave-wallet-icon",
-        attr: { "aria-label": "Arweave Sync" },
-      });
-      walletIconEl.innerHTML = WALLET_ICON;
-      walletIconEl.addEventListener(
-        "click",
-        this.handleWalletIconClick.bind(this),
-      );
-    }
-  }
-
-  private handleWalletIconClick() {
-    if (this.walletAddress) {
-      this.toggleSyncSidebar();
-    } else {
-      this.showWalletConnectModal();
-    }
-  }
-  private toggleSyncSidebar() {
-    const { workspace } = this.app;
-    let leaf = workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
-
-    if (leaf) {
-      workspace.detachLeavesOfType(SYNC_SIDEBAR_VIEW);
-    } else {
-      this.activateSyncSidebar();
-    }
   }
 
   private setupSyncButton() {
@@ -425,19 +389,37 @@ export default class ArweaveSync extends Plugin {
     );
   }
 
-  private checkForNewFiles() {
-    const newFiles = this.getNewFilesFromRemote();
+  private async checkForNewFiles() {
+    const newFiles = this.getNewOrModifiedRemoteFiles();
     if (newFiles.length > 0) {
-      new Notice("Wallet connected. New files available for import.");
+      new Notice(
+        `Wallet connected. ${newFiles.length} new or modified files available for import.`,
+      );
+      await this.openSyncSidebarWithImportTab();
     } else {
       new Notice("Wallet connected. No new files to import.");
     }
   }
 
-  private getNewFilesFromRemote(): string[] {
-    return Object.keys(this.settings.remoteUploadConfig).filter(
-      (filePath) => !this.settings.localUploadConfig[filePath],
-    );
+  private getNewOrModifiedRemoteFiles(): string[] {
+    const newOrModifiedFiles: string[] = [];
+
+    for (const [filePath, remoteFileInfo] of Object.entries(
+      this.settings.remoteUploadConfig,
+    )) {
+      const localFileInfo = this.settings.localUploadConfig[filePath];
+      const file = this.app.vault.getAbstractFileByPath(filePath);
+
+      if (
+        !localFileInfo ||
+        (file instanceof TFile &&
+          remoteFileInfo.timestamp > localFileInfo.timestamp)
+      ) {
+        newOrModifiedFiles.push(filePath);
+      }
+    }
+
+    return newOrModifiedFiles;
   }
 
   async handleWalletDisconnection() {
@@ -544,6 +526,7 @@ export default class ArweaveSync extends Plugin {
         this.settings.remoteUploadConfig,
       );
 
+      this.updateSyncSidebarFile(file);
       this.updateUIAfterSync(file);
       new Notice(`File ${file.name} synced to Arweave (encrypted)`);
     } catch (error) {
@@ -899,8 +882,21 @@ export default class ArweaveSync extends Plugin {
     }
   }
 
-  updateSyncSidebarFile(file: TFile) {
-    this.updateView((view) => view.updateFileStatus(file));
+  private async openSyncSidebarWithImportTab() {
+    await this.activateSyncSidebar();
+    if (this.activeSyncSidebar) {
+      this.activeSyncSidebar.switchTab("import");
+    }
+  }
+
+  updateSyncSidebarFile(file: TFile, oldPath?: string) {
+    this.updateView((view) => {
+      if (oldPath) {
+        view.handleFileRename(file, oldPath);
+      } else {
+        view.updateFileStatus(file);
+      }
+    });
   }
 
   refreshSyncSidebar() {

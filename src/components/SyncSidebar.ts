@@ -75,18 +75,20 @@ export class SyncSidebar extends ItemView {
     const tabContainer = this.containerEl.createEl("div", {
       cls: "tab-container",
     });
-    ["export", "import"].forEach((tab) => {
+
+    const tabs = ["export", "import"] as const;
+    tabs.forEach((tab, index) => {
       const tabEl = tabContainer.createEl("div", {
         cls: `tab ${this.currentTab === tab ? "active" : ""}`,
         text: `${tab.charAt(0).toUpperCase() + tab.slice(1)} Files`,
       });
-      tabEl.addEventListener("click", () =>
-        this.switchTab(tab as "export" | "import"),
-      );
+      tabEl.addEventListener("click", () => this.switchTab(tab));
+
+      tabEl.style.order = this.currentTab === tab ? "0" : "1";
     });
   }
 
-  private async switchTab(tab: "export" | "import") {
+  public async switchTab(tab: "export" | "import") {
     if (this.currentTab !== tab) {
       if (this.currentTab === "export") {
         this.totalExportSize = 0;
@@ -100,11 +102,14 @@ export class SyncSidebar extends ItemView {
   }
 
   private updateTabStyles() {
-    this.containerEl.querySelectorAll(".tab").forEach((tab) => {
-      tab.classList.toggle(
-        "active",
-        tab.textContent?.toLowerCase().startsWith(this.currentTab),
-      );
+    this.containerEl.querySelectorAll(".tab").forEach((tabEl) => {
+      if (tabEl instanceof HTMLElement) {
+        const isActive = tabEl.textContent
+          ?.toLowerCase()
+          .startsWith(this.currentTab);
+        tabEl.classList.toggle("active", isActive);
+        tabEl.style.order = isActive ? "0" : "1";
+      }
     });
   }
 
@@ -133,6 +138,36 @@ export class SyncSidebar extends ItemView {
       this.files[this.currentTab].length === 0 &&
       this.filesToSync[this.currentTab].length === 0
     );
+  }
+
+  handleFileRename(file: TFile, oldPath: string) {
+    // Remove the old file from the tree
+    this.files[this.currentTab] = this.removeFileFromTree(
+      this.files[this.currentTab],
+      oldPath,
+    );
+    this.filesToSync[this.currentTab] = this.removeFileFromTree(
+      this.filesToSync[this.currentTab],
+      oldPath,
+    );
+
+    // Add the new file to the tree
+    const newFileNode = this.createFileNode(file.path, {
+      txId: "",
+      timestamp: file.stat.mtime,
+      fileHash: "",
+      encrypted: false,
+      filePath: file.path,
+      previousVersionTxId: null,
+      versionNumber: 1,
+    });
+    this.files[this.currentTab] = this.addFileToTree(
+      this.files[this.currentTab],
+      newFileNode,
+    );
+
+    // Re-render the content
+    this.renderContent();
   }
 
   private renderFileColumns() {
