@@ -10,6 +10,7 @@ interface FileNode {
   children: FileNode[];
   expanded: boolean;
   syncState?: "new-file" | "updated-file" | "synced";
+  localNewerVersion?: boolean;
 }
 
 export const SYNC_SIDEBAR_VIEW = "arweave-sync-view";
@@ -244,7 +245,7 @@ export class SyncSidebar extends ItemView {
     contentEl: HTMLElement,
     isSource: boolean,
   ) {
-    contentEl.createEl("div", {
+    const fileTitleEl = contentEl.createEl("div", {
       cls: "tree-item-inner nav-file-title-content",
       text: this.displayFileName(node.name),
     });
@@ -256,6 +257,17 @@ export class SyncSidebar extends ItemView {
     contentEl.addEventListener("click", () =>
       this.toggleFileSelection(node, isSource),
     );
+
+    if (node.localNewerVersion) {
+      contentEl.addClass("has-local-newer-version");
+      const indicatorContainer = contentEl.createEl("div", {
+        cls: "tree-item nav-file local-newer-version-container",
+      });
+      indicatorContainer.createEl("div", {
+        cls: "tree-item-self local-newer-version",
+        text: "Newer local version",
+      });
+    }
   }
 
   private async setFileNodeAttributes(contentEl: HTMLElement, node: FileNode) {
@@ -412,18 +424,24 @@ export class SyncSidebar extends ItemView {
 
   private async getNewOrModifiedRemoteFiles(): Promise<FileNode[]> {
     const remoteConfig = this.plugin.settings.remoteUploadConfig;
+    const localConfig = this.plugin.settings.localUploadConfig;
     const newOrModifiedFiles: FileNode[] = [];
 
     for (const [filePath, remoteFileInfo] of Object.entries(remoteConfig)) {
       const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
+      const localFileInfo = localConfig[filePath];
+
       if (file instanceof TFile) {
         const localHash = await this.plugin.getFileHash(file);
         if (localHash !== remoteFileInfo.fileHash) {
-          newOrModifiedFiles.push(
-            this.createFileNode(filePath, remoteFileInfo),
-          );
+          const fileNode = this.createFileNode(filePath, remoteFileInfo);
+          fileNode.localNewerVersion =
+            localFileInfo && localFileInfo.timestamp > remoteFileInfo.timestamp;
+          if (!fileNode.localNewerVersion) {
+            newOrModifiedFiles.push(fileNode);
+          }
         }
-      } else {
+      } else if (!localFileInfo) {
         newOrModifiedFiles.push(this.createFileNode(filePath, remoteFileInfo));
       }
     }

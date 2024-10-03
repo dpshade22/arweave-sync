@@ -300,11 +300,9 @@
 .arweave-sync-sidebar .tree-item-self.synced .tree-item-inner {
     color: var(--text-success);
 }
-
 .arweave-sync-sidebar .tab-container {
     display: flex;
     border-bottom: 1px solid var(--background-modifier-border);
-    margin-top: 1rem;
 }
 
 .arweave-sync-sidebar .tab {
@@ -329,4 +327,10 @@
 .nav-folder .tree-item-self.is-clickable.nav-file-title {
     margin-inline-start: -13px !important;
     padding-inline-start: 41px !important;
+}
+
+@media (max-width: 768px) {
+    .arweave-sync-sidebar .tab-container {
+        margin-top: 1rem;
+    }
 }
