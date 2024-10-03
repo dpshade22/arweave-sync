@@ -215,6 +215,9 @@ export class SyncSidebar extends ItemView {
     const submitButton = this.contentContainer.createEl("button", {
       text: `Submit ${this.currentTab === "export" ? "Export" : "Import"}`,
       cls: "mod-cta submit-changes",
+      attr: {
+        "data-state": "ready",
+      },
     });
     submitButton.addEventListener("click", () => this.submitChanges());
   }
@@ -509,14 +512,51 @@ export class SyncSidebar extends ItemView {
       return;
     }
 
-    const filesToSync = this.flattenFileTree(this.filesToSync[this.currentTab]);
-    if (this.currentTab === "export") {
-      await this.plugin.vaultSyncManager.exportFilesToArweave(filesToSync);
-    } else {
-      await this.importFiles(filesToSync);
+    const submitButton = this.contentContainer.querySelector(
+      ".submit-changes",
+    ) as HTMLButtonElement;
+    if (
+      !submitButton ||
+      submitButton.getAttribute("data-state") === "submitting"
+    ) {
+      return;
     }
-    await this.initializeFiles();
-    await this.renderContent();
+
+    try {
+      submitButton.setAttribute("data-state", "submitting");
+      submitButton.disabled = true;
+      submitButton.setText(
+        `Submitting ${this.currentTab === "export" ? "Export" : "Import"}`,
+      );
+      submitButton.createSpan({ cls: "loading-dots" });
+
+      const filesToSync = this.flattenFileTree(
+        this.filesToSync[this.currentTab],
+      );
+
+      if (this.currentTab === "export") {
+        await this.plugin.vaultSyncManager.exportFilesToArweave(filesToSync);
+      } else {
+        await this.importFiles(filesToSync);
+      }
+
+      new Notice(
+        `${this.currentTab === "export" ? "Export" : "Import"} completed successfully.`,
+      );
+    } catch (error) {
+      console.error("Error during submission:", error);
+      new Notice(`Error during ${this.currentTab}: ${error.message}`);
+    } finally {
+      await this.initializeFiles();
+      await this.renderContent();
+
+      submitButton.setAttribute("data-state", "ready");
+      submitButton.disabled = false;
+      submitButton.setText(
+        `Submit ${this.currentTab === "export" ? "Export" : "Import"}`,
+      );
+      submitButton.querySelector(".loading-dots")?.remove();
+    }
   }
 
   private async importFiles(filePaths: string[]) {
@@ -767,7 +807,6 @@ export class SyncSidebar extends ItemView {
       });
     }
 
-    // Control visibility
     if (messageContainer instanceof HTMLElement) {
       messageContainer.style.display = show ? "flex" : "none";
     }
