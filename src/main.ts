@@ -53,7 +53,7 @@ export default class ArweaveSync extends Plugin {
   private initializeManagers() {
     initializeWalletManager();
 
-    this.aoManager = new AOManager();
+    this.aoManager = new AOManager(this);
     this.arweave = Arweave.init({
       host: "arweave.net",
       port: 443,
