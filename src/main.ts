@@ -588,7 +588,7 @@ export default class ArweaveSync extends Plugin {
     this.modifiedFiles.add(file.path);
   }
 
-  async handleFileModify(file: TFile) {
+  private async handleFileModify(file: TFile) {
     console.log("File updated:", file.path);
 
     const newHash = await this.getFileHash(file);
@@ -609,7 +609,7 @@ export default class ArweaveSync extends Plugin {
     }
 
     this.updateSyncButtonForActiveFile(file);
-    this.refreshSyncSidebar();
+    this.updateSyncSidebarFile(file);
   }
 
   private updateSyncButtonForActiveFile(file: TFile) {
@@ -639,7 +639,7 @@ export default class ArweaveSync extends Plugin {
       await this.aoManager.renameUploadConfig(oldPath, file.path);
 
       this.updateSyncButtonForActiveFile(file);
-      this.refreshSyncSidebar();
+      this.updateSyncSidebarFile(file);
     }
   }
 
@@ -684,7 +684,8 @@ export default class ArweaveSync extends Plugin {
         );
       }
 
-      this.refreshSyncSidebar();
+      this.updateSyncButtonForActiveFile(file);
+      this.updateSyncSidebarFile(file);
     }
   }
 
@@ -859,49 +860,63 @@ export default class ArweaveSync extends Plugin {
     return !currentConfig || currentConfig.fileHash !== newHash;
   }
 
-  async activateSyncSidebar() {
-    const { workspace } = this.app;
-
-    let leaf: WorkspaceLeaf | null =
-      workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
-
-    if (leaf) {
-      workspace.revealLeaf(leaf);
-    } else {
-      const newLeaf = workspace.getRightLeaf(false);
-      if (newLeaf) {
-        await newLeaf.setViewState({ type: SYNC_SIDEBAR_VIEW, active: true });
-        workspace.revealLeaf(newLeaf);
-      } else {
-        new Notice("Unable to create Arweave Sync sidebar");
-        return;
-      }
-    }
-
-    const view = leaf?.view as SyncSidebar;
-    if (view instanceof SyncSidebar) {
-      this.activeSyncSidebar = view;
-    }
-  }
-
   async getFileSyncState(
     file: TFile,
   ): Promise<"new-file" | "updated-file" | "synced"> {
+    console.log(`Getting sync state for ${file.path}`);
     const currentFileHash = await this.getFileHash(file);
     const remoteConfig = this.settings.remoteUploadConfig[file.path];
 
     if (!remoteConfig) {
+      console.log(`${file.path} is a new file`);
       return "new-file";
     } else if (remoteConfig.fileHash !== currentFileHash) {
+      console.log(`${file.path} is an updated file`);
       return "updated-file";
     } else {
+      console.log(`${file.path} is synced`);
       return "synced";
     }
   }
 
-  private refreshSyncSidebar() {
-    if (this.activeSyncSidebar) {
-      this.activeSyncSidebar.refresh();
+  async activateSyncSidebar() {
+    const { workspace } = this.app;
+
+    let leaf: any = workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
+
+    if (!leaf) {
+      leaf = workspace.getRightLeaf(false);
+      await leaf.setViewState({ type: SYNC_SIDEBAR_VIEW, active: true });
+    }
+
+    workspace.revealLeaf(leaf);
+
+    if (leaf.view instanceof SyncSidebar) {
+      this.activeSyncSidebar = leaf.view;
+    }
+  }
+
+  updateSyncSidebarFile(file: TFile) {
+    const leaf = this.app.workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
+    if (leaf) {
+      const view = leaf.view as SyncSidebar;
+      view.updateFileStatus(file);
+    }
+  }
+
+  updateSyncSidebar(file: TFile) {
+    this.updateView((view) => view.updateFileStatus(file));
+  }
+
+  refreshSyncSidebar() {
+    this.updateView((view) => view.refresh());
+  }
+
+  private updateView(updater: (view: SyncSidebar) => void) {
+    const leaf = this.app.workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
+    if (leaf) {
+      const view = leaf.view as SyncSidebar;
+      updater(view);
     }
   }
 }
