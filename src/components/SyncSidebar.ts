@@ -1,12 +1,6 @@
-import {
-  ItemView,
-  WorkspaceLeaf,
-  TFile,
-  TFolder,
-  TAbstractFile,
-} from "obsidian";
+import { ItemView, WorkspaceLeaf, TFile, TAbstractFile } from "obsidian";
 import ArweaveSync from "../main";
-import { FileUploadInfo, UploadConfig } from "../types";
+import { FileUploadInfo } from "../types";
 
 interface FileNode {
   name: string;
@@ -21,11 +15,15 @@ export const SYNC_SIDEBAR_VIEW = "arweave-sync-view";
 
 export class SyncSidebar extends ItemView {
   private plugin: ArweaveSync;
-  private currentTab: "local" | "remote" = "local";
-  private localFiles: FileNode[] = [];
-  private remoteFiles: FileNode[] = [];
-  private filesToExport: FileNode[] = [];
-  private filesToImport: FileNode[] = [];
+  private currentTab: "export" | "import" = "export";
+  private files: Record<"export" | "import", FileNode[]> = {
+    export: [],
+    import: [],
+  };
+  private filesToSync: Record<"export" | "import", FileNode[]> = {
+    export: [],
+    import: [],
+  };
   private contentContainer: HTMLElement;
 
   constructor(leaf: WorkspaceLeaf, plugin: ArweaveSync) {
@@ -61,70 +59,60 @@ export class SyncSidebar extends ItemView {
     const tabContainer = this.containerEl.createEl("div", {
       cls: "tab-container",
     });
-
-    const localTab = tabContainer.createEl("div", {
-      cls: `tab ${this.currentTab === "local" ? "active" : ""}`,
-      text: "Local Files",
+    ["export", "import"].forEach((tab) => {
+      const tabEl = tabContainer.createEl("div", {
+        cls: `tab ${this.currentTab === tab ? "active" : ""}`,
+        text: `${tab.charAt(0).toUpperCase() + tab.slice(1)} Files`,
+      });
+      tabEl.addEventListener("click", () =>
+        this.switchTab(tab as "export" | "import"),
+      );
     });
-    localTab.addEventListener("click", () => this.switchTab("local"));
-
-    const remoteTab = tabContainer.createEl("div", {
-      cls: `tab ${this.currentTab === "remote" ? "active" : ""}`,
-      text: "Remote Files",
-    });
-    remoteTab.addEventListener("click", () => this.switchTab("remote"));
   }
 
-  private async switchTab(tab: "local" | "remote") {
+  private async switchTab(tab: "export" | "import") {
     this.currentTab = tab;
+    this.updateTabStyles();
     await this.renderContent();
   }
 
+  private updateTabStyles() {
+    const tabs = this.containerEl.querySelectorAll(".tab");
+    tabs.forEach((tab) => {
+      if (tab.textContent?.toLowerCase().startsWith(this.currentTab)) {
+        tab.addClass("active");
+      } else {
+        tab.removeClass("active");
+      }
+    });
+  }
+
   private async initializeFiles() {
-    const modifiedOrNewFiles = await this.getModifiedOrNewFiles();
-    this.localFiles = this.buildFileTree(modifiedOrNewFiles);
-    this.remoteFiles = await this.getNewOrModifiedRemoteFiles();
-    this.filesToImport = [];
-    this.filesToExport = [];
+    this.files.export = this.buildFileTree(await this.getModifiedOrNewFiles());
+    this.files.import = await this.getNewOrModifiedRemoteFiles();
+    this.filesToSync = { export: [], import: [] };
   }
 
   private async renderContent() {
     this.contentContainer.empty();
-
     const fileColumns = this.contentContainer.createEl("div", {
       cls: "file-columns",
     });
-
-    if (this.currentTab === "local") {
-      this.renderFileColumn(
-        fileColumns,
-        this.localFiles,
-        "Unsynced Local Files",
-        true,
-      );
-      this.renderFileColumn(
-        fileColumns,
-        this.filesToExport,
-        "Files to Export",
-        false,
-      );
-    } else {
-      this.renderFileColumn(
-        fileColumns,
-        this.remoteFiles,
-        "Remote Files",
-        true,
-      );
-      this.renderFileColumn(
-        fileColumns,
-        this.filesToImport,
-        "Files to Import",
-        false,
-      );
-    }
+    this.renderFileColumn(
+      fileColumns,
+      this.files[this.currentTab],
+      `Unsynced Files`,
+      true,
+    );
+    this.renderFileColumn(
+      fileColumns,
+      this.filesToSync[this.currentTab],
+      `Files to ${this.currentTab === "export" ? "Export" : "Import"}`,
+      false,
+    );
 
     const submitButton = this.contentContainer.createEl("button", {
-      text: `Submit ${this.currentTab === "local" ? "Export" : "Import"}`,
+      text: `Submit ${this.currentTab === "export" ? "Export" : "Import"}`,
       cls: "mod-cta submit-changes",
     });
     submitButton.addEventListener("click", () => this.submitChanges());
@@ -151,11 +139,13 @@ export class SyncSidebar extends ItemView {
     isSource: boolean,
     depth: number,
   ) {
-    nodes.sort((a, b) => {
-      if (a.isFolder && !b.isFolder) return -1;
-      if (!a.isFolder && b.isFolder) return 1;
-      return a.name.localeCompare(b.name);
-    });
+    nodes.sort((a, b) =>
+      a.isFolder === b.isFolder
+        ? a.name.localeCompare(b.name)
+        : a.isFolder
+          ? -1
+          : 1,
+    );
 
     const spacerEl = parentEl.createEl("div");
     spacerEl.style.width = `${200 - depth * 17}px`;
@@ -166,15 +156,10 @@ export class SyncSidebar extends ItemView {
       const itemEl = parentEl.createEl("div", {
         cls: `tree-item ${node.isFolder ? "nav-folder" : "nav-file"}`,
       });
-
       const contentEl = itemEl.createEl("div", {
-        cls: `tree-item-self is-clickable ${
-          node.isFolder ? "nav-folder-title" : "nav-file-title"
-        } ${node.isFolder ? "mod-collapsible" : ""}`,
-        attr: { "data-path": node.path },
+        cls: `tree-item-self is-clickable ${node.isFolder ? "nav-folder-title mod-collapsible" : "nav-file-title"}`,
+        attr: { "data-path": node.path, draggable: "true" },
       });
-
-      contentEl.setAttribute("draggable", "true");
 
       contentEl.style.setProperty(
         "margin-inline-start",
@@ -185,11 +170,9 @@ export class SyncSidebar extends ItemView {
         `${24 + depth * 17}px !important`,
       );
 
-      if (node.isFolder) {
-        this.renderFolderNode(node, contentEl, itemEl, isSource, depth);
-      } else {
-        this.renderFileNode(node, contentEl, isSource);
-      }
+      node.isFolder
+        ? this.renderFolderNode(node, contentEl, itemEl, isSource, depth)
+        : this.renderFileNode(node, contentEl, isSource);
     });
   }
 
@@ -206,7 +189,10 @@ export class SyncSidebar extends ItemView {
     const chevronSvg = this.createChevronSvg();
     toggleEl.appendChild(chevronSvg);
 
-    const nameEl = contentEl.createEl("div", {
+    // Set initial rotation based on expanded state
+    this.updateChevronRotation(chevronSvg, node.expanded);
+
+    contentEl.createEl("div", {
       cls: "tree-item-inner nav-folder-title-content",
       text: node.name,
     });
@@ -214,6 +200,10 @@ export class SyncSidebar extends ItemView {
     const childrenEl = itemEl.createEl("div", {
       cls: "tree-item-children nav-folder-children",
     });
+
+    if (!node.expanded) {
+      childrenEl.style.display = "none";
+    }
 
     const toggleFolder = (e: MouseEvent) => {
       e.stopPropagation();
@@ -228,10 +218,7 @@ export class SyncSidebar extends ItemView {
     contentEl.addEventListener("click", toggleFolder);
 
     if (node.expanded) {
-      this.updateChevronRotation(chevronSvg, true);
       this.renderFileNodes(node.children, childrenEl, isSource, depth + 1);
-    } else {
-      childrenEl.style.display = "none";
     }
   }
 
@@ -240,7 +227,7 @@ export class SyncSidebar extends ItemView {
     contentEl: HTMLElement,
     isSource: boolean,
   ) {
-    const nameEl = contentEl.createEl("div", {
+    contentEl.createEl("div", {
       cls: "tree-item-inner nav-file-title-content",
       text: this.displayFileName(node.name),
     });
@@ -248,10 +235,8 @@ export class SyncSidebar extends ItemView {
     if (node.fileInfo) {
       contentEl.setAttribute(
         "title",
-        `Last modified: ${new Date(node.fileInfo.timestamp).toLocaleString()}
-  Version: ${node.fileInfo.versionNumber}`,
+        `Last modified: ${new Date(node.fileInfo.timestamp).toLocaleString()}\nVersion: ${node.fileInfo.versionNumber}`,
       );
-
       const syncState = await this.plugin.getFileSyncState(
         this.plugin.app.vault.getAbstractFileByPath(node.path) as TFile,
       );
@@ -287,70 +272,22 @@ export class SyncSidebar extends ItemView {
     chevronSvg.style.transform = expanded ? "" : "rotate(-90deg)";
   }
 
-  private toggleFolderContents(
-    itemEl: HTMLElement,
-    node: FileNode,
-    isSource: boolean,
-    depth: number,
-  ) {
-    const existingContents = itemEl.querySelector(".nav-folder-children");
-    if (existingContents) {
-      existingContents.remove();
-    }
-    if (node.expanded) {
-      this.renderFolderContents(itemEl, node, isSource, depth);
-    }
-  }
-
-  private renderFolderContents(
-    itemEl: HTMLElement,
-    node: FileNode,
-    isSource: boolean,
-    depth: number,
-  ) {
-    const childrenEl = itemEl.createEl("div", { cls: "nav-folder-children" });
-    this.renderFileNodes(node.children, childrenEl, isSource, depth + 1);
-  }
-
   private displayFileName(fileName: string): string {
     return fileName.endsWith(".md") ? fileName.slice(0, -3) : fileName;
   }
 
   private toggleFileSelection(file: FileNode, isSource: boolean) {
-    if (this.currentTab === "local") {
-      if (isSource) {
-        this.moveFileToExport(file);
-      } else {
-        this.removeFileFromExport(file);
-      }
+    const sourceArray = this.files[this.currentTab];
+    const targetArray = this.filesToSync[this.currentTab];
+
+    if (isSource) {
+      this.removeFileFromTree(sourceArray, file.path);
+      this.addFileToTree(targetArray, file);
     } else {
-      if (isSource) {
-        this.moveFileToImport(file);
-      } else {
-        this.removeFileFromImport(file);
-      }
+      this.removeFileFromTree(targetArray, file.path);
+      this.addFileToTree(sourceArray, file);
     }
     this.renderContent();
-  }
-
-  private moveFileToExport(file: FileNode) {
-    this.removeFileFromTree(this.localFiles, file.path);
-    this.addFileToTree(this.filesToExport, file);
-  }
-
-  private removeFileFromExport(file: FileNode) {
-    this.removeFileFromTree(this.filesToExport, file.path);
-    this.addFileToTree(this.localFiles, file);
-  }
-
-  private moveFileToImport(file: FileNode) {
-    this.removeFileFromTree(this.remoteFiles, file.path);
-    this.addFileToTree(this.filesToImport, file);
-  }
-
-  private removeFileFromImport(file: FileNode) {
-    this.removeFileFromTree(this.filesToImport, file.path);
-    this.addFileToTree(this.remoteFiles, file);
   }
 
   private removeFileFromTree(tree: FileNode[], path: string): boolean {
@@ -396,51 +333,36 @@ export class SyncSidebar extends ItemView {
   }
 
   private async submitChanges() {
-    if (this.currentTab === "local") {
-      await this.submitExport();
+    const filesToSync = this.flattenFileTree(this.filesToSync[this.currentTab]);
+    if (this.currentTab === "export") {
+      await this.plugin.exportFilesToArweave(filesToSync);
     } else {
-      await this.submitImport();
+      await this.plugin.importFilesFromArweave(filesToSync);
     }
-  }
-
-  private async submitExport() {
-    const filesToExport = this.flattenFileTree(this.filesToExport);
-    await this.plugin.exportFilesToArweave(filesToExport);
-    await this.initializeFiles();
-    await this.renderContent();
-  }
-
-  private async submitImport() {
-    const filesToImport = this.flattenFileTree(this.filesToImport);
-    await this.plugin.importFilesFromArweave(filesToImport);
     await this.initializeFiles();
     await this.renderContent();
   }
 
   private flattenFileTree(nodes: FileNode[]): string[] {
-    let files: string[] = [];
-    for (const node of nodes) {
-      if (node.isFolder) {
-        files = files.concat(this.flattenFileTree(node.children));
-      } else {
-        files.push(node.path);
-      }
-    }
-    return files;
+    return nodes.reduce((files, node) => {
+      return node.isFolder
+        ? files.concat(this.flattenFileTree(node.children))
+        : files.concat(node.path);
+    }, [] as string[]);
   }
 
   private async getModifiedOrNewFiles(): Promise<TFile[]> {
-    const modifiedOrNewFiles: TFile[] = [];
     const files = this.plugin.app.vault.getFiles();
-
-    for (const file of files) {
-      const syncState = await this.plugin.getFileSyncState(file);
-      if (syncState === "new-file" || syncState === "updated-file") {
-        modifiedOrNewFiles.push(file);
-      }
-    }
-
-    return modifiedOrNewFiles;
+    return (
+      await Promise.all(
+        files.map(async (file) => {
+          const syncState = await this.plugin.getFileSyncState(file);
+          return syncState === "new-file" || syncState === "updated-file"
+            ? file
+            : null;
+        }),
+      )
+    ).filter((file): file is TFile => file !== null);
   }
 
   private async getNewOrModifiedRemoteFiles(): Promise<FileNode[]> {
@@ -457,7 +379,6 @@ export class SyncSidebar extends ItemView {
           );
         }
       } else {
-        // File doesn't exist locally, so it's new
         newOrModifiedFiles.push(this.createFileNode(filePath, remoteFileInfo));
       }
     }
@@ -495,7 +416,6 @@ export class SyncSidebar extends ItemView {
         }
       });
 
-      // Add file info to the leaf node
       if (file instanceof TFile) {
         const localConfig = this.plugin.settings.localUploadConfig[file.path];
         pathMap[path].fileInfo = {
@@ -525,17 +445,6 @@ export class SyncSidebar extends ItemView {
       children: [],
       expanded: false,
     };
-  }
-
-  private getSyncStatus(node: FileNode): string {
-    if (this.currentTab === "local") {
-      if (!node.fileInfo) return "not-synced";
-      return node.fileInfo.timestamp > Date.now() - 3600000
-        ? "modified"
-        : "synced";
-    } else {
-      return "remote";
-    }
   }
 
   async refresh() {

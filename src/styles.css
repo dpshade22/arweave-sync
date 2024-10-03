@@ -543,12 +543,14 @@
     flex-direction: column;
     overflow: hidden;
     padding: 10px;
+    margin-bottom: 2rem;
 }
 
 .arweave-sync-sidebar .file-columns {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    flex-grow: 1;
 }
 
 .arweave-sync-sidebar .file-column {
@@ -556,8 +558,9 @@
     flex-direction: column;
     border-radius: 4px;
     margin-bottom: 10px;
-    height: 150px;
+    height: calc(50% - 20px);
     min-height: 0;
+    overflow: hidden;
 }
 
 .arweave-sync-sidebar .file-column h3 {
@@ -688,4 +691,31 @@
 
 .arweave-sync-sidebar .tree-item-self.synced .tree-item-inner {
     color: var(--text-success);
+}
+
+.arweave-sync-sidebar .tab-container {
+    display: flex;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.arweave-sync-sidebar .tab {
+    padding: 10px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.arweave-sync-sidebar .tab:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.arweave-sync-sidebar .tab.active {
+    font-weight: bold;
+    border-bottom-color: var(--interactive-accent);
+    background-color: var(--background-modifier-hover);
+}
+
+.tree-item-self.is-clickable.nav-file-title.new-file {
+    margin-inline-start: -13px !important;
+    padding-inline-start: 41px !important;
 }
