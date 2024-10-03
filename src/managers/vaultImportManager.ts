@@ -1,5 +1,5 @@
 import { Vault, TFile, Notice } from "obsidian";
-import * as crypto from "crypto";
+import CryptoJS from "crypto-js";
 import { FileUploadInfo, UploadConfig } from "../types";
 import { decrypt } from "../utils/encryption";
 import Arweave from "arweave";
@@ -147,6 +147,6 @@ export class VaultImportManager {
   }
 
   private async getFileHash(content: string): Promise<string> {
-    return crypto.createHash("sha256").update(content).digest("hex");
+    return CryptoJS.SHA256(content).toString();
   }
 }

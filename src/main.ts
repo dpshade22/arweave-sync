@@ -27,6 +27,9 @@ import { ArweaveSyncSettingTab } from "./settings/settings";
 import { encrypt, decrypt } from "./utils/encryption";
 import { debounce } from "./utils/helpers";
 import { SyncSidebar, SYNC_SIDEBAR_VIEW } from "./components/SyncSidebar";
+import * as CryptoJS from "crypto-js";
+import "buffer";
+import "process";
 import "./styles.css";
 
 const WALLET_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"></path><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"></path><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4h-4z"></path></svg>`;
@@ -142,14 +145,19 @@ export default class ArweaveSync extends Plugin {
   }
 
   private addWalletIconToHeader() {
-    const headerEl = this.app.workspace.containerEl.querySelector('.workspace-tab-header-container');
+    const headerEl = this.app.workspace.containerEl.querySelector(
+      ".workspace-tab-header-container",
+    );
     if (headerEl) {
-      const walletIconEl = headerEl.createEl('div', {
-        cls: 'workspace-tab-header-inner arweave-wallet-icon',
-        attr: { 'aria-label': 'Arweave Sync' },
+      const walletIconEl = headerEl.createEl("div", {
+        cls: "workspace-tab-header-inner arweave-wallet-icon",
+        attr: { "aria-label": "Arweave Sync" },
       });
       walletIconEl.innerHTML = WALLET_ICON;
-      walletIconEl.addEventListener('click', this.handleWalletIconClick.bind(this));
+      walletIconEl.addEventListener(
+        "click",
+        this.handleWalletIconClick.bind(this),
+      );
     }
   }
 
@@ -192,7 +200,7 @@ export default class ArweaveSync extends Plugin {
     );
   }
 
-  private addCommands() { }
+  private addCommands() {}
 
   private showWalletConnectModal() {
     new WalletConnectModal(this.app, this).open();
@@ -416,7 +424,7 @@ export default class ArweaveSync extends Plugin {
       if (
         !this.settings.localUploadConfig[filePath] ||
         (fileInfo as FileUploadInfo).timestamp >
-        this.settings.localUploadConfig[filePath].timestamp
+          this.settings.localUploadConfig[filePath].timestamp
       ) {
         this.settings.localUploadConfig[filePath] = fileInfo as FileUploadInfo;
       }

@@ -1,6 +1,6 @@
 import { App, TFolder, TFile, Notice } from "obsidian";
 import ArweaveSync from "../main";
-import * as path from "path";
+import { join, dirname, basename } from "../utils/path";
 
 interface FileTree {
   [key: string]: FileTree | null;
@@ -42,7 +42,7 @@ export class ArPublishManager {
 
   private async createOutputDirectory(folderName: string): Promise<string> {
     const basePath = this.app.vault.configDir;
-    const outputDir = path.join(basePath, "arweave-publish", folderName);
+    const outputDir = join(basePath, "arweave-publish", folderName);
 
     await this.app.vault.adapter.mkdir(outputDir);
 
@@ -55,9 +55,9 @@ export class ArPublishManager {
     htmlContent: string,
   ) {
     const htmlFileName = fileName.replace(/\.md$/, ".html");
-    const filePath = path.join(outputDir, htmlFileName);
+    const filePath = join(outputDir, htmlFileName);
 
-    await this.app.vault.adapter.mkdir(path.dirname(filePath));
+    await this.app.vault.adapter.mkdir(dirname(filePath));
     await this.app.vault.adapter.write(filePath, htmlContent);
     console.log(`Saved HTML file: ${filePath}`);
   }
@@ -386,7 +386,7 @@ export class ArPublishManager {
   }
 
   private getNavTitle(currentFile: TFile): string {
-    const parts = currentFile.path.split("/");
+    const parts = currentFile.split("/");
     return parts.length > 1
       ? `${parts[parts.length - 2]} / ${currentFile.basename}`
       : currentFile.basename;
@@ -410,7 +410,7 @@ export class ArPublishManager {
   private buildFileTree(files: TFile[]): FileTree {
     const tree: FileTree = {};
     files.forEach((file) => {
-      const parts = file.path.split("/");
+      const parts = file.split("/");
       let current: FileTree = tree;
       parts.forEach((part, index) => {
         if (!current[part]) {
@@ -436,7 +436,7 @@ export class ArPublishManager {
       const itemClass = isCurrentFile ? "current" : "";
 
       if (subtree === null) {
-        html += `<li class="${itemClass}"><a href="${fullPath.replace(/\.md$/, ".html")}">${name}</a></li>`;
+        html += `<li class="${itemClass}"><a href="${fullreplace(/\.md$/, ".html")}">${name}</a></li>`;
       } else {
         html += `<li class="folder ${itemClass}">
                    <span class="folder-name">${name}</span>
