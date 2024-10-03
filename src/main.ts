@@ -622,11 +622,19 @@ export default class ArweaveSync extends Plugin {
         );
       }
 
-      this.updateSyncButtonForActiveFile(file);
-      this.updateSyncSidebarFile(file);
+      // Remove this line:
+      // this.updateSyncButtonForActiveFile(file);
+
+      // Instead of updating the sync sidebar file status, we should remove the file from the sidebar
+      this.removeSyncSidebarFile(file.path);
     }
   }
 
+  private removeSyncSidebarFile(filePath: string) {
+    this.updateView((view) => {
+      view.removeFile(filePath);
+    });
+  }
   async exportFilesToArweave(filesToExport: string[]) {
     const totalFiles = filesToExport.length;
     let exportedFiles = 0;

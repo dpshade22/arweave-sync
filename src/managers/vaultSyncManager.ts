@@ -1,5 +1,5 @@
 import Arweave from "arweave";
-import { Vault, TFile } from "obsidian";
+import { Vault, TFile, Notice } from "obsidian";
 import { JWKInterface } from "arweave/node/lib/wallet";
 import { UploadConfig, FileUploadInfo } from "../types";
 import { encrypt, decrypt } from "../utils/encryption";
@@ -48,6 +48,75 @@ export class VaultSyncManager {
       await this.exportFileToArweave(file, fileHash);
     } else {
       await this.importFileFromArweave(file);
+    }
+  }
+
+  isWalletConnected(): boolean {
+    return walletManager.isConnected();
+  }
+
+  async importFilesFromArweave(filePaths: string[]): Promise<string[]> {
+    const importedFiles: string[] = [];
+
+    for (const filePath of filePaths) {
+      try {
+        await this.importFileFromArweave(filePath);
+        importedFiles.push(filePath);
+        console.log(`Successfully imported: ${filePath}`);
+      } catch (error) {
+        console.error(`Failed to import file: ${filePath}`, error);
+        new Notice(`Failed to import ${filePath}. Error: ${error.message}`);
+      }
+    }
+
+    return importedFiles;
+  }
+
+  private async importFileFromArweave(filePath: string): Promise<void> {
+    const remoteFileInfo = this.remoteUploadConfig[filePath];
+    if (!remoteFileInfo) {
+      throw new Error(`No remote file info found for ${filePath}`);
+    }
+
+    const encryptedContent = await this.fetchEncryptedContent(
+      remoteFileInfo.txId,
+    );
+    const decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
+
+    // Ensure the entire directory structure exists
+    const dirPath = filePath.substring(0, filePath.lastIndexOf("/"));
+    if (dirPath) {
+      await this.createNestedFolders(dirPath);
+    }
+
+    // Create the file if it doesn't exist, or modify it if it does
+    let file = this.vault.getAbstractFileByPath(filePath);
+    if (!file) {
+      file = await this.vault.create(filePath, decryptedContent);
+    } else if (file instanceof TFile) {
+      await this.vault.modify(file, decryptedContent);
+    } else {
+      throw new Error(`${filePath} is not a file`);
+    }
+
+    // Update localUploadConfig with the remote file info
+    this.localUploadConfig[filePath] = { ...remoteFileInfo };
+
+    // Update the plugin's local config
+    this.plugin.updateLocalConfig(filePath, remoteFileInfo);
+
+    console.log(`File ${filePath} imported from Arweave.`);
+  }
+
+  private async createNestedFolders(path: string): Promise<void> {
+    const folders = path.split("/").filter(Boolean);
+    let currentPath = "";
+
+    for (const folder of folders) {
+      currentPath += folder + "/";
+      if (!(await this.vault.adapter.exists(currentPath))) {
+        await this.vault.createFolder(currentPath);
+      }
     }
   }
 
@@ -116,32 +185,6 @@ export class VaultSyncManager {
     );
   }
 
-  isWalletConnected(): boolean {
-    return walletManager.isConnected();
-  }
-
-  private async importFileFromArweave(file: TFile): Promise<void> {
-    const remoteFileInfo = this.remoteUploadConfig[file.path];
-    if (!remoteFileInfo) {
-      throw new Error(`No remote file info found for ${file.path}`);
-    }
-
-    const encryptedContent = await this.fetchEncryptedContent(
-      remoteFileInfo.txId,
-    );
-    const decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
-
-    await this.vault.modify(file, decryptedContent);
-
-    // Update localUploadConfig with the remote file info
-    this.localUploadConfig[file.path] = { ...remoteFileInfo };
-
-    // Update the plugin's local config
-    this.plugin.updateLocalConfig(file.path, remoteFileInfo);
-
-    console.log(`File ${file.path} imported from Arweave.`);
-  }
-
   async exportFilesToArweave(filePaths: string[]): Promise<void> {
     for (const filePath of filePaths) {
       const file = this.vault.getAbstractFileByPath(filePath);
@@ -149,18 +192,6 @@ export class VaultSyncManager {
         const { syncState, fileHash } = await this.checkFileSync(file);
         if (syncState !== "synced") {
           await this.exportFileToArweave(file, fileHash);
-        }
-      }
-    }
-  }
-
-  async importFilesFromArweave(filePaths: string[]): Promise<void> {
-    for (const filePath of filePaths) {
-      const file = this.vault.getAbstractFileByPath(filePath);
-      if (file instanceof TFile) {
-        const { syncState, localNewerVersion } = await this.checkFileSync(file);
-        if (syncState !== "synced" && !localNewerVersion) {
-          await this.importFileFromArweave(file);
         }
       }
     }

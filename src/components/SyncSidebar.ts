@@ -499,10 +499,35 @@ export class SyncSidebar extends ItemView {
     if (this.currentTab === "export") {
       await this.plugin.vaultSyncManager.exportFilesToArweave(filesToSync);
     } else {
-      await this.plugin.vaultSyncManager.importFilesFromArweave(filesToSync);
+      await this.importFiles(filesToSync);
     }
     await this.initializeFiles();
     await this.renderContent();
+  }
+
+  private async importFiles(filePaths: string[]) {
+    const importedFiles =
+      await this.plugin.vaultSyncManager.importFilesFromArweave(filePaths);
+    this.updateAfterImport(importedFiles);
+  }
+
+  private updateAfterImport(importedFiles: string[]) {
+    importedFiles.forEach((filePath) => {
+      const fileNode = this.removeFileFromTree(
+        this.filesToSync.import,
+        filePath,
+      );
+      if (fileNode) {
+        this.files.import = this.removeFileFromTree(
+          this.files.import,
+          filePath,
+        );
+        this.files.import = this.addFileToTree(this.files.import, fileNode);
+      }
+    });
+
+    this.files.import = this.removeEmptyFolders(this.files.import);
+    this.filesToSync.import = this.removeEmptyFolders(this.filesToSync.import);
   }
 
   private flattenFileTree(nodes: FileNode[]): string[] {
@@ -543,7 +568,7 @@ export class SyncSidebar extends ItemView {
     return this.buildFileTree(newOrModifiedFiles);
   }
 
-  private async getRemoteFilesForImport(): Promise<FileNode[]> {
+  async getRemoteFilesForImport(): Promise<FileNode[]> {
     const remoteConfig = this.plugin.settings.remoteUploadConfig;
     const localConfig = this.plugin.settings.localUploadConfig;
     const newOrModifiedFiles: FileNode[] = [];
@@ -552,19 +577,18 @@ export class SyncSidebar extends ItemView {
       const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
       const localFileInfo = localConfig[filePath];
 
-      if (file instanceof TFile) {
-        const { fileHash } =
-          await this.plugin.vaultSyncManager.checkFileSync(file);
-        if (fileHash !== remoteFileInfo.fileHash) {
-          const fileNode = this.createFileNode(filePath, remoteFileInfo);
-          fileNode.localOlderVersion =
-            remoteFileInfo.timestamp > file.stat.mtime;
-          if (fileNode.localOlderVersion) {
-            newOrModifiedFiles.push(fileNode);
-          }
-        }
-      } else if (!localFileInfo) {
+      if (!file || !localFileInfo) {
+        // This is a new file that doesn't exist locally
         newOrModifiedFiles.push(this.createFileNode(filePath, remoteFileInfo));
+      } else if (file instanceof TFile) {
+        const { syncState, localNewerVersion } =
+          await this.plugin.vaultSyncManager.checkFileSync(file);
+
+        if (syncState !== "synced" && !localNewerVersion) {
+          const fileNode = this.createFileNode(filePath, remoteFileInfo);
+          fileNode.localOlderVersion = true;
+          newOrModifiedFiles.push(fileNode);
+        }
       }
     }
 
@@ -874,5 +898,20 @@ export class SyncSidebar extends ItemView {
         newBalanceEl.setAttribute("data-value", `${this.newBalance} AR`);
       }
     }
+  }
+
+  public removeFile(filePath: string) {
+    this.files.export = this.removeFileFromTree(this.files.export, filePath);
+    this.files.import = this.removeFileFromTree(this.files.import, filePath);
+    this.filesToSync.export = this.removeFileFromTree(
+      this.filesToSync.export,
+      filePath,
+    );
+    this.filesToSync.import = this.removeFileFromTree(
+      this.filesToSync.import,
+      filePath,
+    );
+
+    this.renderContent();
   }
 }
