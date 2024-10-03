@@ -213,6 +213,14 @@ export default class ArweaveSync extends Plugin {
     });
   }
 
+  public getArweave() {
+    return this.arweave;
+  }
+
+  public getWalletAddress() {
+    return this.walletAddress;
+  }
+
   private showWalletConnectModal() {
     new WalletConnectModal(this.app, this).open();
   }

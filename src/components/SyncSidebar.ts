@@ -1,4 +1,10 @@
-import { ItemView, WorkspaceLeaf, TFile, TAbstractFile } from "obsidian";
+import {
+  ItemView,
+  WorkspaceLeaf,
+  TFile,
+  TAbstractFile,
+  request,
+} from "obsidian";
 import ArweaveSync from "../main";
 import { FileUploadInfo } from "../types";
 
@@ -27,10 +33,18 @@ export class SyncSidebar extends ItemView {
     import: [],
   };
   private contentContainer: HTMLElement;
+  private totalExportSize: number = 0;
+  private totalPrice: string = "0";
+  private exportFiles: Set<string> = new Set();
+  private currentBalance: string = "0";
+  private newBalance: string = "0";
 
   constructor(leaf: WorkspaceLeaf, plugin: ArweaveSync) {
     super(leaf);
     this.plugin = plugin;
+    this.totalExportSize = 0;
+    this.totalPrice = "0";
+    this.exportFiles = new Set();
   }
 
   getViewType(): string {
@@ -74,6 +88,11 @@ export class SyncSidebar extends ItemView {
 
   private async switchTab(tab: "export" | "import") {
     if (this.currentTab !== tab) {
+      if (this.currentTab === "export") {
+        this.totalExportSize = 0;
+        this.totalPrice = "0";
+        this.exportFiles.clear();
+      }
       this.currentTab = tab;
       this.updateTabStyles();
       await this.renderContent();
@@ -135,6 +154,32 @@ export class SyncSidebar extends ItemView {
   }
 
   private renderSubmitButton() {
+    const priceInfoBox = this.contentContainer.createEl("div", {
+      cls: "price-info-box",
+    });
+
+    priceInfoBox.createEl("div", {
+      cls: "balance-display",
+      attr: {
+        "data-label": "Current Balance:",
+        "data-value": `${this.currentBalance} AR`,
+      },
+    });
+    priceInfoBox.createEl("div", {
+      cls: "total-price-display",
+      attr: {
+        "data-label": "Total Price:",
+        "data-value": `${this.totalPrice} AR`,
+      },
+    });
+    priceInfoBox.createEl("div", {
+      cls: "new-balance-display",
+      attr: {
+        "data-label": "New Balance:",
+        "data-value": `${this.newBalance} AR`,
+      },
+    });
+
     const submitButton = this.contentContainer.createEl("button", {
       text: `Submit ${this.currentTab === "export" ? "Export" : "Import"}`,
       cls: "mod-cta submit-changes",
@@ -336,7 +381,21 @@ export class SyncSidebar extends ItemView {
     this.filesToSync[this.currentTab] = this.removeEmptyFolders(
       this.filesToSync[this.currentTab],
     );
+
+    // Immediately re-render the content to show the file movement
     this.renderContent();
+
+    // Asynchronously update the file size and price
+    if (this.currentTab === "export") {
+      const isAddingToExport = isSource;
+      console.log(
+        `Toggling file selection: ${file.path}, isAddingToExport: ${isAddingToExport}`,
+      );
+      this.updateFileSizeAndPrice(file, isAddingToExport).then(() => {
+        // Update the price display after the calculation is complete
+        this.updatePriceDisplay();
+      });
+    }
   }
 
   private removeFileFromTree(tree: FileNode[], path: string): FileNode[] {
@@ -659,5 +718,97 @@ export class SyncSidebar extends ItemView {
 
   async onClose() {
     // Clean up event listeners if any
+  }
+
+  private async updateFileSizeAndPrice(
+    file: FileNode,
+    isAddingToExport: boolean,
+  ): Promise<void> {
+    if (!file.isFolder) {
+      const filePath = file.path;
+      const abstractFile =
+        this.plugin.app.vault.getAbstractFileByPath(filePath);
+
+      if (!(abstractFile instanceof TFile)) {
+        console.error(`File not found: ${filePath}`);
+        return;
+      }
+
+      const fileSize = abstractFile.stat.size;
+
+      if (isAddingToExport) {
+        if (!this.exportFiles.has(filePath)) {
+          this.totalExportSize += fileSize;
+          this.exportFiles.add(filePath);
+        }
+      } else {
+        if (this.exportFiles.has(filePath)) {
+          this.totalExportSize = Math.max(0, this.totalExportSize - fileSize);
+          this.exportFiles.delete(filePath);
+        }
+      }
+
+      await this.updateTotalPrice();
+    } else {
+      console.log(`Skipping folder: ${file.path}`);
+    }
+  }
+
+  private async updateTotalPrice(): Promise<void> {
+    if (this.totalExportSize > 0) {
+      try {
+        const url = `https://arweave.net/price/${this.totalExportSize}`;
+        const response = await request({
+          url: url,
+          method: "GET",
+        });
+        const winston = parseInt(response);
+        const ar = winston / 1000000000000;
+        const precision = 2;
+        this.totalPrice = ar.toPrecision(precision);
+
+        // Fetch current balance
+        const address = this.plugin.getWalletAddress();
+        if (address) {
+          const balanceWinston = await this.plugin
+            .getArweave()
+            .wallets.getBalance(address);
+          const balanceAR = parseInt(balanceWinston) / 1000000000000;
+          const decimalPlaces = this.totalPrice.split(".")[1]?.length || 0;
+          this.currentBalance = balanceAR.toFixed(decimalPlaces);
+          this.newBalance = (balanceAR - ar).toFixed(decimalPlaces);
+        }
+      } catch (error) {
+        console.error("Error fetching Arweave price or balance:", error);
+        this.totalPrice = "Error";
+        this.currentBalance = "Error";
+        this.newBalance = "Error";
+      }
+    } else {
+      this.totalPrice = "0";
+      this.newBalance = this.currentBalance;
+    }
+  }
+
+  private updatePriceDisplay(): void {
+    const priceInfoBox = this.contentContainer.querySelector(".price-info-box");
+    if (priceInfoBox) {
+      const currentBalanceEl = priceInfoBox.querySelector(".balance-display");
+      const totalPriceEl = priceInfoBox.querySelector(".total-price-display");
+      const newBalanceEl = priceInfoBox.querySelector(".new-balance-display");
+
+      if (currentBalanceEl instanceof HTMLElement) {
+        currentBalanceEl.setAttribute(
+          "data-value",
+          `${this.currentBalance} AR`,
+        );
+      }
+      if (totalPriceEl instanceof HTMLElement) {
+        totalPriceEl.setAttribute("data-value", `${this.totalPrice} AR`);
+      }
+      if (newBalanceEl instanceof HTMLElement) {
+        newBalanceEl.setAttribute("data-value", `${this.newBalance} AR`);
+      }
+    }
   }
 }

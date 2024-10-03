@@ -324,6 +324,41 @@
     background-color: var(--background-modifier-hover);
 }
 
+.price-info-box {
+    background-color: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.balance-display,
+.total-price-display,
+.new-balance-display {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 5px;
+    font-size: 14px;
+}
+
+.new-balance-display {
+    border-top: 1px solid var(--background-modifier-border);
+    padding-top: 5px;
+    margin-top: 5px;
+    font-weight: bold;
+    color: var(--text-accent);
+}
+
+.price-info-box div::before {
+    content: attr(data-label);
+}
+
+.price-info-box div::after {
+    content: attr(data-value);
+    font-weight: 500;
+}
+
 .nav-folder .tree-item-self.is-clickable.nav-file-title {
     margin-inline-start: -13px !important;
     padding-inline-start: 41px !important;
