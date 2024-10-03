@@ -44,7 +44,6 @@
 .arweave-sync-button {
     background: transparent;
     border: none;
-    cursor: pointer;
     padding: 4px;
     width: 24px;
     height: 24px;
@@ -300,6 +299,7 @@
 .arweave-sync-sidebar .tree-item-self.synced .tree-item-inner {
     color: var(--text-success);
 }
+
 .arweave-sync-sidebar .tab-container {
     display: flex;
     border-bottom: 1px solid var(--background-modifier-border);
