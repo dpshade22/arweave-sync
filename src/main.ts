@@ -135,24 +135,31 @@ export default class ArweaveSync extends Plugin {
   }
 
   private setupUI() {
-    this.addRibbonIcon(
-      "wallet",
-      "Arweave Sync",
-      this.handleRibbonIconClick.bind(this),
-    );
     this.createStatusBarItem();
     this.setupSyncButton();
     this.addSettingTab(new ArweaveSyncSettingTab(this.app, this));
+    this.addWalletIconToHeader();
   }
 
-  private handleRibbonIconClick() {
+  private addWalletIconToHeader() {
+    const headerEl = this.app.workspace.containerEl.querySelector('.workspace-tab-header-container');
+    if (headerEl) {
+      const walletIconEl = headerEl.createEl('div', {
+        cls: 'workspace-tab-header-inner arweave-wallet-icon',
+        attr: { 'aria-label': 'Arweave Sync' },
+      });
+      walletIconEl.innerHTML = WALLET_ICON;
+      walletIconEl.addEventListener('click', this.handleWalletIconClick.bind(this));
+    }
+  }
+
+  private handleWalletIconClick() {
     if (this.walletAddress) {
       this.toggleSyncSidebar();
     } else {
       this.showWalletConnectModal();
     }
   }
-
   private toggleSyncSidebar() {
     const { workspace } = this.app;
     let leaf = workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
@@ -185,7 +192,7 @@ export default class ArweaveSync extends Plugin {
     );
   }
 
-  private addCommands() {}
+  private addCommands() { }
 
   private showWalletConnectModal() {
     new WalletConnectModal(this.app, this).open();
@@ -409,7 +416,7 @@ export default class ArweaveSync extends Plugin {
       if (
         !this.settings.localUploadConfig[filePath] ||
         (fileInfo as FileUploadInfo).timestamp >
-          this.settings.localUploadConfig[filePath].timestamp
+        this.settings.localUploadConfig[filePath].timestamp
       ) {
         this.settings.localUploadConfig[filePath] = fileInfo as FileUploadInfo;
       }
