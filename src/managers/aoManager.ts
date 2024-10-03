@@ -55,11 +55,17 @@ export class AOManager {
   }
 
   private async ensureProcessExists() {
-    const existingProcess = await this.getExistingProcess();
-    if (existingProcess) {
-      this.processId = existingProcess;
+    const customProcessId = this.plugin.settings.customProcessId;
+    if (customProcessId) {
+      this.processId = customProcessId;
+      console.log(`Using custom process ID: ${this.processId}`);
     } else {
-      this.processId = await this.spawnNewProcess();
+      const existingProcess = await this.getExistingProcess();
+      if (existingProcess) {
+        this.processId = existingProcess;
+      } else {
+        this.processId = await this.spawnNewProcess();
+      }
     }
     console.log(`Using process ID: ${this.processId}`);
   }
@@ -238,7 +244,7 @@ export class AOManager {
         signer: this.signer,
       });
 
-      const { Messages, Output, Error } = await result({
+      const { Error } = await result({
         process: this.processId,
         message: evalMessageId,
       });
@@ -450,5 +456,3 @@ Handlers.add(
     end
 )
 `;
-
-export const aoManager = new AOManager();

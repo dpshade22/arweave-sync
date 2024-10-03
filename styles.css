@@ -305,6 +305,11 @@
     border-bottom: 1px solid var(--background-modifier-border);
 }
 
+.submit-changes:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .arweave-sync-sidebar .tab {
     padding: 10px;
     cursor: pointer;
@@ -357,6 +362,44 @@
 .price-info-box div::after {
     content: attr(data-value);
     font-weight: 500;
+}
+
+.no-files-message-container {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    color: var(--text-muted);
+    padding: 2rem;
+}
+
+.no-files-icon {
+    margin-bottom: 1rem;
+}
+
+.no-files-icon svg {
+    width: 48px;
+    height: 48px;
+    stroke: var(--text-muted);
+}
+
+.no-files-text {
+    font-size: 1.2rem;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+}
+
+.no-files-subtext {
+    font-size: 0.9rem;
+    max-width: 200px;
+}
+
+.arweave-sync-sidebar .content-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 }
 
 .nav-folder .tree-item-self.is-clickable.nav-file-title.new-file,

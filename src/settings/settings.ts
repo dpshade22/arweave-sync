@@ -29,5 +29,20 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           }),
       );
+
+    new Setting(containerEl)
+      .setName("Custom Process ID")
+      .setDesc("Optionally provide a custom AO process ID")
+      .addText((text) =>
+        text
+          .setPlaceholder("Enter custom process ID")
+          .setValue(this.plugin.settings.customProcessId)
+          .onChange(async (value) => {
+            this.plugin.settings.customProcessId = value;
+            await this.plugin.saveSettings();
+            // Reinitialize AOManager with new process ID
+            await this.plugin.reinitializeAOManager();
+          }),
+      );
   }
 }

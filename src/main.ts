@@ -244,7 +244,10 @@ export default class ArweaveSync extends Plugin {
     const syncState = await this.getFileSyncState(file);
     console.log(`Sync state for ${file.path}: ${syncState}`);
 
-    const stateConfig = {
+    const stateConfig: Record<
+      string,
+      { color: string; title: string; disabled?: boolean }
+    > = {
       "new-file": {
         color: "var(--text-error)",
         title: "New file, click to sync",
@@ -367,31 +370,58 @@ export default class ArweaveSync extends Plugin {
   }
 
   private async checkForNewFiles() {
-    const newFiles = this.getNewOrModifiedRemoteFiles();
-    if (newFiles.length > 0) {
+    const newOrModifiedFiles: string[] = [];
+
+    // Iterate through remote upload config
+    for (const [filePath, remoteFileInfo] of Object.entries(
+      this.settings.remoteUploadConfig,
+    )) {
+      const localFile = this.app.vault.getAbstractFileByPath(filePath);
+
+      if (!localFile) {
+        // File doesn't exist locally
+        newOrModifiedFiles.push(filePath);
+      } else if (localFile instanceof TFile) {
+        const localFileHash =
+          await this.vaultSyncManager.getFileHash(localFile);
+        const localFileTimestamp = localFile.stat.mtime;
+
+        if (
+          remoteFileInfo.fileHash !== localFileHash &&
+          remoteFileInfo.timestamp > localFileTimestamp
+        ) {
+          // Remote file has different hash and is newer
+          newOrModifiedFiles.push(filePath);
+        }
+      }
+    }
+
+    if (newOrModifiedFiles.length > 0) {
       new Notice(
-        `Wallet connected. ${newFiles.length} new or modified files available for import.`,
+        `Wallet connected. ${newOrModifiedFiles.length} new or modified files available for import.`,
       );
       await this.openSyncSidebarWithImportTab();
     } else {
       new Notice("Wallet connected. No new files to import.");
     }
+
+    return newOrModifiedFiles;
   }
 
-  private getNewOrModifiedRemoteFiles(): string[] {
+  private async getNewOrModifiedRemoteFiles(): Promise<string[]> {
     const newOrModifiedFiles: string[] = [];
 
     for (const [filePath, remoteFileInfo] of Object.entries(
       this.settings.remoteUploadConfig,
     )) {
-      const localFileInfo = this.settings.localUploadConfig[filePath];
       const file = this.app.vault.getAbstractFileByPath(filePath);
-
-      if (
-        !localFileInfo ||
-        (file instanceof TFile &&
-          remoteFileInfo.timestamp > localFileInfo.timestamp)
-      ) {
+      if (file instanceof TFile) {
+        const { syncState } = await this.vaultSyncManager.checkFileSync(file);
+        if (syncState !== "synced") {
+          newOrModifiedFiles.push(filePath);
+        }
+      } else {
+        // File doesn't exist locally, so it's new
         newOrModifiedFiles.push(filePath);
       }
     }
@@ -401,7 +431,7 @@ export default class ArweaveSync extends Plugin {
 
   async handleWalletDisconnection() {
     this.walletAddress = null;
-    this.vaultSyncManager.setWallet(null);
+    // Remove the setWallet call as it doesn't exist in VaultSyncManager
     await this.aoManager.initialize(null);
     this.updateStatusBar();
     new Notice("Wallet disconnected successfully");
@@ -678,24 +708,11 @@ export default class ArweaveSync extends Plugin {
 
   async getFileHash(file: TFile): Promise<string> {
     const content = await this.app.vault.read(file);
-    const buffer = this.arweave.utils.stringToBuffer(content);
-    return this.arweave.utils.bufferTob64Url(
-      await this.arweave.crypto.hash(buffer),
-    );
+    const buffer = Arweave.utils.stringToBuffer(content);
+    return Arweave.utils.bufferTob64Url(await Arweave.crypto.hash(buffer));
   }
 
-  async decryptFileContent(encryptedContent: string): Promise<string> {
-    if (!this.settings.encryptionPassword) {
-      throw new Error("Encryption password not set");
-    }
-    return decrypt(encryptedContent, this.settings.encryptionPassword);
-  }
-
-  async fetchPreviousVersion(
-    filePath: string,
-    n: number,
-    uploadConfig: UploadConfig,
-  ): Promise<any> {
+  async fetchPreviousVersion(filePath: string, n: number): Promise<any> {
     const result = await this.vaultSyncManager.fetchPreviousVersion(
       filePath,
       n,
@@ -707,60 +724,6 @@ export default class ArweaveSync extends Plugin {
       };
     }
     return null;
-  }
-
-  async openPreviousVersion(file: TFile, n: number) {
-    const loadingNotice = new Notice("Fetching previous version...", 0);
-    try {
-      const previousVersionInfo = await this.fetchPreviousVersion(
-        file.path,
-        n,
-        this.settings.localUploadConfig,
-      );
-      loadingNotice.hide();
-
-      if (!previousVersionInfo) {
-        new Notice(`No previous version found (requested: ${n} versions back)`);
-        return;
-      }
-
-      const decryptedContent = previousVersionInfo.content;
-      const formattedDate = new Date(
-        previousVersionInfo.timestamp * 1000,
-      ).toLocaleString();
-      const safeFilename = this.createSafeFilename(file.basename, n);
-
-      const newFile = await this.app.vault.create(
-        `${file.parent?.path || ""}/${safeFilename}`,
-        `---
-        Last synced: ${formattedDate}
-        Original file: ${file.path}
-        Version: ${n} versions ago
-        ---
-
-        ${decryptedContent}`,
-      );
-
-      const leaf = this.app.workspace.getLeaf(false);
-      await leaf.openFile(newFile);
-
-      new Notice(
-        `Opened version from ${formattedDate} (${n} transactions ago)`,
-      );
-    } catch (error) {
-      loadingNotice.hide();
-      new Notice(`Error opening previous version: ${error.message}`);
-      console.error("Error opening previous version:", error);
-    }
-  }
-
-  private createSafeFilename(
-    originalName: string,
-    versionNumber: number,
-  ): string {
-    const nameWithoutExtension = originalName.replace(/\.[^/.]+$/, "");
-    const safeName = nameWithoutExtension.replace(/[\\/:*?"<>|]/g, "_");
-    return `${safeName} (${versionNumber} versions ago).md`;
   }
 
   async isFileNeedingSync(file: TFile): Promise<boolean> {
@@ -816,6 +779,12 @@ export default class ArweaveSync extends Plugin {
     const leaf = this.app.workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
     if (leaf && leaf.view instanceof SyncSidebar) {
       updater(leaf.view);
+    }
+  }
+
+  async reinitializeAOManager() {
+    if (this.aoManager) {
+      await this.aoManager.initialize(walletManager.getJWK());
     }
   }
 

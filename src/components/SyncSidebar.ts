@@ -90,8 +90,10 @@ export class SyncSidebar extends ItemView {
         this.totalPrice = "0";
         this.exportFiles.clear();
       }
+
       this.currentTab = tab;
       this.updateTabStyles();
+      this.updateNoFilesMessageVisibility();
       await this.renderContent();
     }
   }
@@ -118,13 +120,13 @@ export class SyncSidebar extends ItemView {
     const folderState = this.saveFolderState();
     this.contentContainer.empty();
 
-    if (this.isEmptyContent()) {
-      this.showNoFilesMessage();
-      return;
+    this.updateNoFilesMessageVisibility();
+
+    if (!this.isEmptyContent()) {
+      this.renderFileColumns();
+      this.renderSubmitButton();
     }
 
-    this.renderFileColumns();
-    this.renderSubmitButton();
     this.applyFolderState(folderState);
   }
 
@@ -409,6 +411,11 @@ export class SyncSidebar extends ItemView {
     return fileName.endsWith(".md") ? fileName.slice(0, -3) : fileName;
   }
 
+  private updateNoFilesMessageVisibility() {
+    const isEmpty = this.isEmptyContent();
+    this.showNoFilesMessage(isEmpty);
+  }
+
   private toggleFileSelection(file: FileNode, isSource: boolean) {
     const sourceTree = isSource ? this.files : this.filesToSync;
     const targetTree = isSource ? this.filesToSync : this.files;
@@ -430,6 +437,7 @@ export class SyncSidebar extends ItemView {
     );
 
     // Immediately re-render the content to show the file movement
+    this.updateNoFilesMessageVisibility();
     this.renderContent();
 
     // Asynchronously update the file size and price
@@ -713,13 +721,10 @@ export class SyncSidebar extends ItemView {
     this.filesToSync.export = this.removeEmptyFolders(this.filesToSync.export);
     this.filesToSync.import = this.removeEmptyFolders(this.filesToSync.import);
 
+    this.updateNoFilesMessageVisibility();
     this.renderContent();
 
     this.applyFolderState(folderState);
-
-    if (this.isEmptyContent()) {
-      this.showNoFilesMessage();
-    }
   }
 
   private removeEmptyFolders(tree: FileNode[]): FileNode[] {
@@ -732,11 +737,40 @@ export class SyncSidebar extends ItemView {
     });
   }
 
-  private showNoFilesMessage() {
-    this.contentContainer.createEl("div", {
-      cls: "no-files-message",
-      text: "No files to sync",
-    });
+  private showNoFilesMessage(show: boolean) {
+    let messageContainer = this.contentContainer.querySelector(
+      ".no-files-message-container",
+    ) as HTMLElement | null;
+
+    if (!messageContainer) {
+      messageContainer = this.contentContainer.createEl("div", {
+        cls: "no-files-message-container",
+      });
+
+      // Create an icon
+      messageContainer.createEl("div", {
+        cls: "no-files-icon",
+        attr: { "aria-hidden": "true" },
+      }).innerHTML =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>`;
+
+      // Create the message text
+      messageContainer.createEl("div", {
+        cls: "no-files-text",
+        text: "No files to sync",
+      });
+
+      // Create a subtext
+      messageContainer.createEl("div", {
+        cls: "no-files-subtext",
+        text: "Your files will appear here when they're ready to sync.",
+      });
+    }
+
+    // Control visibility
+    if (messageContainer instanceof HTMLElement) {
+      messageContainer.style.display = show ? "flex" : "none";
+    }
   }
 
   private findFileNode(nodes: FileNode[], path: string): FileNode | null {

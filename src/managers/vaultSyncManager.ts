@@ -221,7 +221,7 @@ export class VaultSyncManager {
     return { syncState, localNewerVersion, fileHash: currentFileHash };
   }
 
-  private async getFileHash(file: TFile): Promise<string> {
+  public async getFileHash(file: TFile): Promise<string> {
     const content = await this.plugin.app.vault.read(file);
     return CryptoJS.SHA256(content).toString();
   }

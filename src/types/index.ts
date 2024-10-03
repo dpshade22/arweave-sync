@@ -17,11 +17,13 @@ export interface ArweaveSyncSettings {
   lastConfigUploadTxId: string;
   localUploadConfig: UploadConfig;
   remoteUploadConfig: UploadConfig;
+  customProcessId: string;
 }
 
 export const DEFAULT_SETTINGS: ArweaveSyncSettings = {
   encryptionPassword: "",
   lastConfigUploadTxId: "",
+  customProcessId: "",
   localUploadConfig: {},
   remoteUploadConfig: {},
 };

@@ -52,17 +52,44 @@ const buildOptions = {
         });
       },
     },
-    copyStylesPlugin, // Add the new plugin here
+    copyStylesPlugin,
   ],
 };
 
+function logBuildResult(result) {
+  if (result.errors.length > 0) {
+    console.error("Build failed:", result.errors);
+  } else {
+    console.log(`Build completed in ${result.duration}ms`);
+  }
+  if (result.warnings.length > 0) {
+    console.warn("Build warnings:", result.warnings);
+  }
+}
+
 if (prod) {
-  esbuild.build(buildOptions).catch(() => process.exit(1));
+  esbuild
+    .build(buildOptions)
+    .then(logBuildResult)
+    .catch((err) => {
+      console.error("Build failed:", err);
+      process.exit(1);
+    });
 } else {
+  console.log("Starting watch mode...");
   esbuild
     .context(buildOptions)
     .then((context) => {
       context.watch();
+      console.log("Watch mode started. Waiting for changes...");
     })
-    .catch(() => process.exit(1));
+    .catch((err) => {
+      console.error("Watch mode failed to start:", err);
+      process.exit(1);
+    });
 }
+
+// Keep the Node.js process running
+process.stdin.on("close", () => {
+  process.exit(0);
+});
