@@ -1,4 +1,6 @@
 const esbuild = require("esbuild");
+const cssModulesPlugin = require("esbuild-css-modules-plugin");
+const fs = require("fs");
 const path = require("path");
 
 const prod = process.argv[2] === "production";
@@ -19,7 +21,15 @@ const buildOptions = {
     ),
     global: "window",
   },
+  loader: {
+    ".css": "empty",
+  },
   plugins: [
+    cssModulesPlugin({
+      inject: false,
+      output: "styles.css",
+      emitCssFile: true,
+    }),
     {
       name: "externalize-deps",
       setup(build) {
