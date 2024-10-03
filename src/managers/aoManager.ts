@@ -131,7 +131,6 @@ export class AOManager {
 
   async getUploadConfig(): Promise<UploadConfig | null> {
     const result = await this.dryRun("GetUploadConfig");
-    console.log("Raw AO response for GetUploadConfig:", result);
     if (result) {
       const parsedResult = JSON.parse(result) as Array<{
         key: string;

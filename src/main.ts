@@ -300,20 +300,25 @@ export default class ArweaveSync extends Plugin {
   private createSyncButton() {
     const syncButton = document.createElement("button");
     syncButton.addClass("clickable-icon", "view-action", "arweave-sync-button");
-    syncButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>Sync current file to Arweave</title><path d="M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z" /></svg>`;
+    syncButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class ="svg-icon lucide-more-vertical sync-button" width="24"height="24" viewBox="0 0 24 24"><title>Sync current file to Arweave</title><path d="M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z" /></svg>`;
     return syncButton;
   }
 
   private async updateSyncButtonState(syncButton: HTMLElement, file: TFile) {
     const syncState = await this.getFileSyncState(file);
-    syncButton.removeClass("new-file", "updated-file", "synced");
-    syncButton.removeAttribute("disabled");
+    console.log(`Sync state for ${file.path}: ${syncState}`);
 
     const stateConfig = {
-      "new-file": { color: "red", title: "New file, click to sync" },
-      "updated-file": { color: "orange", title: "File updated, click to sync" },
+      "new-file": {
+        color: "var(--text-error)",
+        title: "New file, click to sync",
+      },
+      "updated-file": {
+        color: "var(--text-warning)",
+        title: "File updated, click to sync",
+      },
       synced: {
-        color: "green",
+        color: "var(--text-success)",
         title: "File is up to date with Arweave",
         disabled: true,
       },
@@ -325,7 +330,7 @@ export default class ArweaveSync extends Plugin {
       syncState,
       config.color,
       config.title,
-      "disabled" in config ? config.disabled : false,
+      config.disabled,
     );
   }
 
@@ -336,14 +341,21 @@ export default class ArweaveSync extends Plugin {
     title: string,
     disabled: boolean = false,
   ) {
+    button.removeClass("new-file", "updated-file", "synced");
     button.addClass(className);
-    const svgPath = button.querySelector("svg path");
+
+    const svgPath = button.querySelector("path");
     if (svgPath) {
       svgPath.setAttribute("fill", color);
     }
+
+    button.setAttribute("aria-label", title);
     button.setAttribute("title", title);
+
     if (disabled) {
       button.setAttribute("disabled", "true");
+    } else {
+      button.removeAttribute("disabled");
     }
   }
 
@@ -612,6 +624,8 @@ export default class ArweaveSync extends Plugin {
       ) as HTMLElement;
       if (syncButton) {
         this.updateSyncButtonState(syncButton, file);
+      } else {
+        console.log("No sync button found");
       }
     }
   }
@@ -846,7 +860,6 @@ export default class ArweaveSync extends Plugin {
   async getFileSyncState(
     file: TFile,
   ): Promise<"new-file" | "updated-file" | "synced"> {
-    console.log(`Getting sync state for ${file.path}`);
     const currentFileHash = await this.getFileHash(file);
     const remoteConfig = this.settings.remoteUploadConfig[file.path];
 

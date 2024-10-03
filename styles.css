@@ -53,12 +53,12 @@
     justify-content: center;
 }
 
-.arweave-sync-button svg {
+/* .arweave-sync-button svg {
     width: 100%;
     height: 100%;
     fill: var(--text-muted);
     transition: fill 0.2s ease;
-}
+} */
 
 .arweave-sync-button:hover svg {
     fill: var(--text-normal);
@@ -76,14 +76,10 @@
     fill: green;
 }
 
-.arweave-sync-button:not(.synced):not([disabled]) svg path {
-    fill: orange;
-}
-
 .arweave-sync-button[disabled] {
-    /* opacity: 0.5; */
+    opacity: 0.5;
     cursor: default;
-    /* pointer-events: none; */
+    pointer-events: none;
 }
 
 @keyframes rotate {

@@ -495,22 +495,28 @@ export class SyncSidebar extends ItemView {
   async updateFileStatus(file: TFile) {
     console.log("Updating file status:", file.path);
     const folderState = this.saveFolderState();
-    const syncState = await this.plugin.getFileSyncState(file);
 
-    if (syncState === "synced") {
-      this.removeFileFromSidebar(file.path);
-    } else {
-      const fileNode = this.findFileNode(
-        this.files[this.currentTab],
-        file.path,
-      );
-      if (fileNode) {
-        fileNode.syncState = syncState;
-        this.updateFileNodeInDOM(fileNode);
+    try {
+      const syncState = await this.plugin.getFileSyncState(file);
+
+      if (syncState === "synced") {
+        this.removeFileFromSidebar(file.path);
       } else {
-        await this.initializeFiles();
-        await this.renderContent();
+        const fileNode = this.findFileNode(
+          this.files[this.currentTab],
+          file.path,
+        );
+        if (fileNode) {
+          fileNode.syncState = syncState;
+          this.updateFileNodeInDOM(fileNode);
+        } else {
+          await this.initializeFiles();
+          await this.renderContent();
+        }
       }
+    } catch (error) {
+      console.error("Error getting file sync state:", error);
+      this.removeFileFromSidebar(file.path);
     }
 
     this.applyFolderState(folderState);
