@@ -12060,7 +12060,7 @@ __export(main_exports, {
   default: () => ArweaveSync
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian7 = require("obsidian");
+var import_obsidian6 = require("obsidian");
 
 // src/managers/arweaveUploader.ts
 var import_arweave = __toESM(require_web());
@@ -26779,401 +26779,10 @@ var AOManager = class {
 };
 var aoManager = new AOManager();
 
-// src/managers/arPublishManager.ts
-var import_obsidian = require("obsidian");
-
-// src/utils/path.ts
-function join2(...parts) {
-  return parts.join("/").replace(/\/+/g, "/");
-}
-function dirname(path2) {
-  return path2.replace(/\/+$/, "").replace(/\/[^\/]*$/, "");
-}
-
-// src/managers/arPublishManager.ts
-var ArPublishManager = class {
-  constructor(app, plugin) {
-    this.plugin = plugin;
-    this.app = app;
-  }
-  async publishFolder(folder) {
-    const markdownFiles = this.getMarkdownFiles(folder);
-    const outputDir = await this.createOutputDirectory(folder.name);
-    for (const file of markdownFiles) {
-      const content = await this.app.vault.read(file);
-      const htmlContent = this.convertMarkdownToHtml(
-        content,
-        markdownFiles,
-        file
-      );
-      await this.saveHtmlFile(outputDir, file.name, htmlContent);
-    }
-    new import_obsidian.Notice(`Folder "${folder.name}" published to ${outputDir}`);
-  }
-  getMarkdownFiles(folder) {
-    return folder.children.filter(
-      (file) => file instanceof import_obsidian.TFile && file.extension === "md"
-    );
-  }
-  async createOutputDirectory(folderName) {
-    const basePath = this.app.vault.configDir;
-    const outputDir = join2(basePath, "arweave-publish", folderName);
-    await this.app.vault.adapter.mkdir(outputDir);
-    return outputDir;
-  }
-  async saveHtmlFile(outputDir, fileName, htmlContent) {
-    const htmlFileName = fileName.replace(/\.md$/, ".html");
-    const filePath = join2(outputDir, htmlFileName);
-    await this.app.vault.adapter.mkdir(dirname(filePath));
-    await this.app.vault.adapter.write(filePath, htmlContent);
-    console.log(`Saved HTML file: ${filePath}`);
-  }
-  convertMarkdownToHtml(markdown, allFiles, currentFile) {
-    const lines = markdown.split("\n");
-    let html = "";
-    let blockStack = [];
-    let inCodeBlock = false;
-    const processLine = (line) => {
-      if (line.trim().startsWith("```")) {
-        inCodeBlock = !inCodeBlock;
-        return inCodeBlock ? "<pre><code>" : "</code></pre>";
-      }
-      if (inCodeBlock) return this.escapeHtml(line);
-      if (line.startsWith("#")) {
-        const level = line.split(" ")[0].length;
-        const content = line.substring(level + 1).trim();
-        return `<h${level}>${this.processInlineMarkdown(content)}</h${level}>`;
-      }
-      const listMatch = line.match(/^(\s*)([•\-*+]|\d+\.)\s(.+)/);
-      if (listMatch) {
-        const [, indent, bullet, content] = listMatch;
-        const indentLevel = indent.length / 2;
-        while (blockStack.length > indentLevel) {
-          html += `</div>`.repeat(
-            blockStack.pop() - (blockStack[blockStack.length - 1] || 0)
-          );
-        }
-        if (blockStack.length < indentLevel) {
-          html += `<div class="block-children">`.repeat(
-            indentLevel - blockStack.length
-          );
-          blockStack.push(indentLevel);
-        }
-        return `
-        <div class="block">
-          <div class="block-header">
-            <span class="block-bullet">${bullet}</span>
-            <span class="block-content">${this.processInlineMarkdown(content)}</span>
-          </div>
-        </div>
-      `;
-      }
-      if (blockStack.length > 0 && line.trim() === "") {
-        const closeTags = `</div>`.repeat(blockStack.length);
-        blockStack = [];
-        return closeTags;
-      }
-      return line.trim() ? `<p>${this.processInlineMarkdown(line)}</p>` : "";
-    };
-    html = lines.map(processLine).join("\n");
-    html += `</div>`.repeat(blockStack.length);
-    const sidebarHtml = this.createSidebar(allFiles, currentFile);
-    const fullHtml = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${currentFile.basename}</title>
-    <style>
-        ${this.getStyles()}
-    </style>
-</head>
-<body>
-    <div class="app-container">
-        <nav class="app-nav">
-            <div class="nav-buttons">
-                <button class="nav-button">\u2190</button>
-                <button class="nav-button">\u2192</button>
-            </div>
-            <div class="nav-title">${this.getNavTitle(currentFile)}</div>
-            <div class="nav-actions">
-                <button class="nav-button">\u22EE</button>
-            </div>
-        </nav>
-        <div class="main-container">
-            <aside class="sidebar">
-                ${sidebarHtml}
-            </aside>
-            <main class="content">
-                <article class="markdown-content">
-                    <h1 class="doc-title">${currentFile.basename}</h1>
-                    <div class="metadata">
-                        Created: ${this.formatDate(currentFile.stat.ctime)} &nbsp;&nbsp; Modified: ${this.formatDate(currentFile.stat.mtime)}
-                    </div>
-                    ${html}
-                </article>
-            </main>
-        </div>
-    </div>
-    <script>
-        ${this.getJavaScript()}
-    <\/script>
-</body>
-</html>
-  `;
-    return fullHtml;
-  }
-  processInlineMarkdown(text) {
-    text = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-    text = text.replace(/\*(.*?)\*/g, "<em>$1</em>");
-    text = text.replace(/==(.*?)==/g, "<mark>$1</mark>");
-    text = text.replace(/\[\[(.*?)\]\]/g, (match, p1) => {
-      const parts = p1.split("|");
-      const link = parts[0].trim();
-      const label = parts[1] ? parts[1].trim() : link;
-      return `<a href="${link}.html" class="internal-link">${label}</a>`;
-    });
-    text = text.replace(
-      /\[([^\]]+)\]\(([^)]+)\)/g,
-      '<a href="$2" class="external-link">$1</a>'
-    );
-    return text;
-  }
-  getStyles() {
-    return `
-    :root {
-      --background-primary: #ffffff;
-      --background-secondary: #f5f6f8;
-      --text-normal: #2e3338;
-      --text-muted: #888888;
-      --text-faint: #999999;
-      --interactive-accent: #7b6cd9;
-      --background-modifier-border: #ddd;
-      --background-modifier-form-field: #fff;
-    }
-
-    body, html {
-      margin: 0;
-      padding: 0;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-      font-size: 16px;
-      line-height: 1.5;
-      color: var(--text-normal);
-      background-color: var(--background-primary);
-    }
-
-    .app-container {
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-    }
-
-    .app-nav {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 10px 20px;
-      background-color: var(--background-secondary);
-      border-bottom: 1px solid var(--background-modifier-border);
-    }
-
-    .nav-buttons, .nav-actions {
-      display: flex;
-    }
-
-    .nav-button {
-      background: none;
-      border: none;
-      font-size: 18px;
-      cursor: pointer;
-      color: var(--text-muted);
-      padding: 5px 10px;
-    }
-
-    .nav-title {
-      font-weight: 600;
-      color: var(--text-normal);
-    }
-
-    .main-container {
-      display: flex;
-      flex: 1;
-      overflow: hidden;
-    }
-
-    .sidebar {
-      width: 250px;
-      background-color: var(--background-secondary);
-      overflow-y: auto;
-      padding: 20px;
-      border-right: 1px solid var(--background-modifier-border);
-    }
-
-    .content {
-      flex: 1;
-      padding: 40px;
-      overflow-y: auto;
-    }
-
-    .markdown-content {
-      max-width: 750px;
-      margin: 0 auto;
-    }
-
-    h1, h2, h3, h4, h5, h6 {
-      margin-top: 1.5em;
-      margin-bottom: 0.5em;
-      font-weight: 600;
-      color: var(--text-normal);
-    }
-
-    h1 { font-size: 2em; }
-    h2 { font-size: 1.5em; }
-    h3 { font-size: 1.3em; }
-
-    a {
-      color: var(--interactive-accent);
-      text-decoration: none;
-    }
-
-    a:hover {
-      text-decoration: underline;
-    }
-
-    mark {
-      background-color: rgba(123, 108, 217, 0.15);
-      padding: 0.1em 0.2em;
-      border-radius: 3px;
-    }
-
-    .metadata {
-      font-size: 0.9em;
-      color: var(--text-muted);
-      margin-bottom: 2em;
-    }
-
-    .block {
-      margin-bottom: 5px;
-    }
-
-    .block-children {
-      margin-left: 20px;
-      padding-left: 10px;
-      border-left: 2px solid var(--background-modifier-border);
-    }
-
-    .block-header {
-      display: flex;
-      align-items: flex-start;
-    }
-
-    .block-bullet {
-      color: var(--text-muted);
-      margin-right: 5px;
-      flex-shrink: 0;
-    }
-
-    .block-content {
-      flex-grow: 1;
-    }
-
-    pre {
-      background-color: var(--background-secondary);
-      padding: 10px;
-      border-radius: 5px;
-      overflow-x: auto;
-    }
-
-    code {
-      font-family: 'Fira Code', monospace;
-      font-size: 0.9em;
-    }
-
-    .doc-title {
-      border-bottom: 1px solid var(--background-modifier-border);
-      padding-bottom: 10px;
-      margin-bottom: 20px;
-    }
-  `;
-  }
-  getJavaScript() {
-    return `
-    document.addEventListener('DOMContentLoaded', (event) => {
-      document.querySelectorAll('.block-header').forEach(header => {
-        header.addEventListener('click', () => {
-          const block = header.closest('.block');
-          const children = block.querySelector('.block-children');
-          if (children) {
-            children.classList.toggle('collapsed');
-            const bullet = header.querySelector('.block-bullet');
-            bullet.textContent = children.classList.contains('collapsed') ? '\u25B8' : bullet.textContent.replace('\u25B8', '\u2022');
-          }
-        });
-      });
-    });
-  `;
-  }
-  getNavTitle(currentFile) {
-    const parts = currentFile.split("/");
-    return parts.length > 1 ? `${parts[parts.length - 2]} / ${currentFile.basename}` : currentFile.basename;
-  }
-  formatDate(timestamp) {
-    return new Date(timestamp).toLocaleString([], {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit"
-    });
-  }
-  createSidebar(files, currentFile) {
-    const tree = this.buildFileTree(files);
-    return this.renderFileTree(tree, "", currentFile);
-  }
-  buildFileTree(files) {
-    const tree = {};
-    files.forEach((file) => {
-      const parts = file.split("/");
-      let current = tree;
-      parts.forEach((part, index) => {
-        if (!current[part]) {
-          current[part] = index === parts.length - 1 ? null : {};
-        }
-        if (current[part] !== null) {
-          current = current[part];
-        }
-      });
-    });
-    return tree;
-  }
-  renderFileTree(tree, path2 = "", currentFile) {
-    let html = "<ul>";
-    for (const [name, subtree] of Object.entries(tree)) {
-      const fullPath = path2 ? `${path2}/${name}` : name;
-      const isCurrentFile = fullPath === currentFile.path;
-      const itemClass = isCurrentFile ? "current" : "";
-      if (subtree === null) {
-        html += `<li class="${itemClass}"><a href="${fullreplace(/\.md$/, ".html")}">${name}</a></li>`;
-      } else {
-        html += `<li class="folder ${itemClass}">
-                   <span class="folder-name">${name}</span>
-                   ${this.renderFileTree(subtree, fullPath, currentFile)}
-                 </li>`;
-      }
-    }
-    html += "</ul>";
-    return html;
-  }
-  escapeHtml(text) {
-    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-  }
-};
-
 // src/managers/walletManager.ts
-var import_obsidian2 = require("obsidian");
+var import_obsidian = require("obsidian");
 var import_arweave3 = __toESM(require_web());
-var WalletManager = class extends import_obsidian2.Events {
+var WalletManager = class extends import_obsidian.Events {
   constructor() {
     super();
     this.address = null;
@@ -27286,7 +26895,7 @@ function initializeWalletManager() {
 }
 
 // src/managers/vaultImportManager.ts
-var import_obsidian3 = require("obsidian");
+var import_obsidian2 = require("obsidian");
 var import_crypto_js2 = __toESM(require_crypto_js());
 
 // src/utils/encryption.ts
@@ -27369,7 +26978,7 @@ var VaultImportManager = class {
         return;
       }
       const existingFile = this.vault.getAbstractFileByPath(filePath);
-      if (existingFile instanceof import_obsidian3.TFile) {
+      if (existingFile instanceof import_obsidian2.TFile) {
         const currentFileContent = await this.vault.read(existingFile);
         const currentFileHash = await this.getFileHash(currentFileContent);
         if (currentFileHash === fileInfo.fileHash) {
@@ -27399,7 +27008,7 @@ var VaultImportManager = class {
       if (folderPath) {
         await this.vault.adapter.mkdir(folderPath);
       }
-      if (existingFile instanceof import_obsidian3.TFile) {
+      if (existingFile instanceof import_obsidian2.TFile) {
         await this.vault.modify(existingFile, decryptedContent);
         console.log(`Updated existing file: ${filePath}`);
       } else {
@@ -27451,8 +27060,8 @@ var DEFAULT_SETTINGS = {
 };
 
 // src/components/WalletConnectModal.ts
-var import_obsidian4 = require("obsidian");
-var WalletConnectModal = class extends import_obsidian4.Modal {
+var import_obsidian3 = require("obsidian");
+var WalletConnectModal = class extends import_obsidian3.Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
@@ -27507,7 +27116,7 @@ var WalletConnectModal = class extends import_obsidian4.Modal {
       this.close();
     } catch (error) {
       console.error("Failed to connect wallet:", error);
-      new import_obsidian4.Notice("Failed to connect wallet. Please try again.");
+      new import_obsidian3.Notice("Failed to connect wallet. Please try again.");
     }
   }
   onClose() {
@@ -27520,8 +27129,8 @@ var WalletConnectModal = class extends import_obsidian4.Modal {
 var import_arweave5 = __toESM(require_web());
 
 // src/settings/settings.ts
-var import_obsidian5 = require("obsidian");
-var ArweaveSyncSettingTab = class extends import_obsidian5.PluginSettingTab {
+var import_obsidian4 = require("obsidian");
+var ArweaveSyncSettingTab = class extends import_obsidian4.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -27530,7 +27139,7 @@ var ArweaveSyncSettingTab = class extends import_obsidian5.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "ArweaveSync Settings" });
-    new import_obsidian5.Setting(containerEl).setName("Encryption Password").setDesc("Set the encryption password for your synced files").addText(
+    new import_obsidian4.Setting(containerEl).setName("Encryption Password").setDesc("Set the encryption password for your synced files").addText(
       (text) => text.setPlaceholder("Enter your password").setValue(this.plugin.settings.encryptionPassword).onChange(async (value) => {
         this.plugin.settings.encryptionPassword = value;
         await this.plugin.saveSettings();
@@ -27540,9 +27149,9 @@ var ArweaveSyncSettingTab = class extends import_obsidian5.PluginSettingTab {
 };
 
 // src/components/SyncSidebar.ts
-var import_obsidian6 = require("obsidian");
+var import_obsidian5 = require("obsidian");
 var SYNC_SIDEBAR_VIEW = "arweave-sync-view";
-var SyncSidebar = class extends import_obsidian6.ItemView {
+var SyncSidebar = class extends import_obsidian5.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.currentTab = "export";
@@ -27739,7 +27348,7 @@ Version: ${node.fileInfo.versionNumber}`
       const file = this.plugin.app.vault.getAbstractFileByPath(
         node.path
       );
-      if (file instanceof import_obsidian6.TFile) {
+      if (file instanceof import_obsidian5.TFile) {
         const syncState = await this.plugin.getFileSyncState(file);
         contentEl.addClass(syncState);
       }
@@ -27859,7 +27468,7 @@ Version: ${node.fileInfo.versionNumber}`
     const newOrModifiedFiles = [];
     for (const [filePath, remoteFileInfo] of Object.entries(remoteConfig)) {
       const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
-      if (file instanceof import_obsidian6.TFile) {
+      if (file instanceof import_obsidian5.TFile) {
         const localHash = await this.plugin.getFileHash(file);
         if (localHash !== remoteFileInfo.fileHash) {
           newOrModifiedFiles.push(
@@ -27876,7 +27485,7 @@ Version: ${node.fileInfo.versionNumber}`
     const root = [];
     const pathMap = {};
     const processFile = (file) => {
-      const path2 = file instanceof import_obsidian6.TFile ? file.path : file.path;
+      const path2 = file instanceof import_obsidian5.TFile ? file.path : file.path;
       const parts = path2.split("/");
       let currentPath = "";
       parts.forEach((part, index) => {
@@ -27898,7 +27507,7 @@ Version: ${node.fileInfo.versionNumber}`
           }
         }
       });
-      if (file instanceof import_obsidian6.TFile) {
+      if (file instanceof import_obsidian5.TFile) {
         const localConfig = this.plugin.settings.localUploadConfig[file.path];
         pathMap[path2].fileInfo = {
           txId: (localConfig == null ? void 0 : localConfig.txId) || "",
@@ -28058,7 +27667,7 @@ Version: ${node.fileInfo.versionNumber}`
 var import_buffer2 = __toESM(require_buffer2());
 var import_process = __toESM(require_browser2());
 var WALLET_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"></path><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"></path><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4h-4z"></path></svg>`;
-var ArweaveSync = class extends import_obsidian7.Plugin {
+var ArweaveSync = class extends import_obsidian6.Plugin {
   constructor() {
     super(...arguments);
     this.walletAddress = null;
@@ -28072,34 +27681,13 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
     this.setupUI();
     this.addCommands();
     this.registerView(SYNC_SIDEBAR_VIEW, (leaf) => new SyncSidebar(leaf, this));
-    this.addRibbonIcon(
-      "wallet",
-      "Arweave Sync",
-      () => this.activateSyncSidebar()
-    );
-    this.addCommand({
-      id: "open-arweave-sync-sidebar",
-      name: "Open Arweave Sync Sidebar",
-      callback: () => this.activateSyncSidebar()
+    this.addRibbonIcon("wallet", "Arweave Sync", (evt) => {
+      if (this.walletAddress) {
+        this.activateSyncSidebar();
+      } else {
+        this.showWalletConnectModal();
+      }
     });
-    this.arPublishManager = new ArPublishManager(this.app, this);
-    this.registerEvent(
-      this.app.workspace.on("file-menu", (menu, file) => {
-        if (file instanceof import_obsidian7.TFolder) {
-          menu.addItem((item) => {
-            item.setTitle("Publish to ArPublish").setIcon("upload-cloud").onClick(async () => {
-              try {
-                await this.arPublishManager.publishFolder(file);
-                new import_obsidian7.Notice(`Folder "${file.name}" published successfully!`);
-              } catch (error) {
-                console.error("Error publishing folder:", error);
-                new import_obsidian7.Notice(`Error publishing folder: ${error.message}`);
-              }
-            });
-          });
-        }
-      })
-    );
   }
   initializeManagers() {
     this.arweaveUploader = new ArweaveUploader();
@@ -28199,6 +27787,16 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
     );
   }
   addCommands() {
+    this.addCommand({
+      id: "open-arweave-sync-sidebar",
+      name: "Open Arweave Sync Sidebar",
+      callback: () => this.activateSyncSidebar()
+    });
+    this.addCommand({
+      id: "open-wallet-connect-modal",
+      name: "Connect Arweave Wallet",
+      callback: () => this.showWalletConnectModal()
+    });
   }
   showWalletConnectModal() {
     new WalletConnectModal(this.app, this).open();
@@ -28239,17 +27837,17 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
   async copyWalletAddress() {
     if (this.walletAddress) {
       await navigator.clipboard.writeText(this.walletAddress);
-      new import_obsidian7.Notice("Wallet address copied to clipboard");
+      new import_obsidian6.Notice("Wallet address copied to clipboard");
     }
   }
   async disconnectWallet() {
     await walletManager.disconnect();
     this.updateStatusBar();
-    new import_obsidian7.Notice("Wallet disconnected");
+    new import_obsidian6.Notice("Wallet disconnected");
   }
   async addSyncButtonToLeaf(leaf) {
     const view = leaf.view;
-    if (view instanceof import_obsidian7.MarkdownView) {
+    if (view instanceof import_obsidian6.MarkdownView) {
       await this.addSyncButton(view);
     }
   }
@@ -28338,7 +27936,7 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
       this.checkForNewFiles();
     } catch (error) {
       console.error("Error during wallet connection:", error);
-      new import_obsidian7.Notice(
+      new import_obsidian6.Notice(
         `Error: ${error.message}
 Check the console for more details.`
       );
@@ -28359,9 +27957,9 @@ Check the console for more details.`
   checkForNewFiles() {
     const newFiles = this.getNewFilesFromRemote();
     if (newFiles.length > 0) {
-      new import_obsidian7.Notice("Wallet connected. New files available for import.");
+      new import_obsidian6.Notice("Wallet connected. New files available for import.");
     } else {
-      new import_obsidian7.Notice("Wallet connected. No new files to import.");
+      new import_obsidian6.Notice("Wallet connected. No new files to import.");
     }
   }
   getNewFilesFromRemote() {
@@ -28374,7 +27972,7 @@ Check the console for more details.`
     this.arweaveUploader.setWallet(null);
     await this.aoManager.initialize(null);
     this.updateStatusBar();
-    new import_obsidian7.Notice("Wallet disconnected successfully");
+    new import_obsidian6.Notice("Wallet disconnected successfully");
   }
   mergeUploadConfigs() {
     for (const [filePath, fileInfo] of Object.entries(
@@ -28389,10 +27987,10 @@ Check the console for more details.`
   async importFilesFromArweave(selectedFiles) {
     try {
       await this.vaultImportManager.importFilesFromArweave(selectedFiles);
-      new import_obsidian7.Notice("File import completed!");
+      new import_obsidian6.Notice("File import completed!");
     } catch (error) {
       console.error("Error during file import:", error);
-      new import_obsidian7.Notice(
+      new import_obsidian6.Notice(
         `Error: ${error.message}
 Check the console for more details.`
       );
@@ -28409,7 +28007,7 @@ Check the console for more details.`
       }
     } catch (error) {
       console.error("Failed to fetch upload config from AO:", error);
-      new import_obsidian7.Notice("Failed to fetch upload config from AO");
+      new import_obsidian6.Notice("Failed to fetch upload config from AO");
     }
   }
   async loadSettings() {
@@ -28456,7 +28054,7 @@ Check the console for more details.`
         this.settings.remoteUploadConfig
       );
       this.updateUIAfterSync(file);
-      new import_obsidian7.Notice(`File ${file.name} synced to Arweave (encrypted)`);
+      new import_obsidian6.Notice(`File ${file.name} synced to Arweave (encrypted)`);
     } catch (error) {
       this.handleSyncError(file, error);
     } finally {
@@ -28466,7 +28064,7 @@ Check the console for more details.`
     }
   }
   getSyncButtonForFile(file) {
-    const view = this.app.workspace.getActiveViewOfType(import_obsidian7.MarkdownView);
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
     return view == null ? void 0 : view.containerEl.querySelector(
       ".arweave-sync-button"
     );
@@ -28494,14 +28092,14 @@ Check the console for more details.`
   }
   updateUIAfterSync(file) {
     this.modifiedFiles.delete(file.path);
-    new import_obsidian7.Notice(`File ${file.name} synced to Arweave (encrypted)`);
+    new import_obsidian6.Notice(`File ${file.name} synced to Arweave (encrypted)`);
     const syncButton = this.getSyncButtonForFile(file);
     if (syncButton) {
       this.updateSyncButtonState(syncButton, file);
     }
   }
   handleSyncError(file, error) {
-    new import_obsidian7.Notice(`Failed to sync file: ${error.message}`);
+    new import_obsidian6.Notice(`Failed to sync file: ${error.message}`);
     this.modifiedFiles.add(file.path);
   }
   async handleFileModify(file) {
@@ -28525,7 +28123,7 @@ Check the console for more details.`
     this.updateSyncSidebarFile(file);
   }
   updateSyncButtonForActiveFile(file) {
-    const activeView = this.app.workspace.getActiveViewOfType(import_obsidian7.MarkdownView);
+    const activeView = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
     if (activeView && activeView.file === file) {
       const syncButton = activeView.containerEl.querySelector(
         ".arweave-sync-button"
@@ -28569,7 +28167,7 @@ Check the console for more details.`
         console.log("File deleted from remote config:", file.path);
       } catch (error) {
         console.error("Error deleting file from remote config:", error);
-        new import_obsidian7.Notice(
+        new import_obsidian6.Notice(
           `Failed to delete ${file.path} from remote config. Please try again later.`
         );
       }
@@ -28582,7 +28180,7 @@ Check the console for more details.`
     let exportedFiles = 0;
     for (const filePath of filesToExport) {
       const file = this.app.vault.getAbstractFileByPath(filePath);
-      if (file instanceof import_obsidian7.TFile) {
+      if (file instanceof import_obsidian6.TFile) {
         try {
           const content = await this.app.vault.read(file);
           const encryptedContent = encrypt(
@@ -28612,21 +28210,21 @@ Check the console for more details.`
           this.settings.localUploadConfig[filePath] = fileInfo;
           this.settings.remoteUploadConfig[filePath] = fileInfo;
           exportedFiles++;
-          new import_obsidian7.Notice(`Exported ${exportedFiles}/${totalFiles} files`);
+          new import_obsidian6.Notice(`Exported ${exportedFiles}/${totalFiles} files`);
         } catch (error) {
           console.error(`Error exporting file ${filePath}:`, error);
-          new import_obsidian7.Notice(`Failed to export ${filePath}. Error: ${error.message}`);
+          new import_obsidian6.Notice(`Failed to export ${filePath}. Error: ${error.message}`);
         }
       }
     }
     await this.saveSettings();
     await this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
-    new import_obsidian7.Notice(`Exported ${exportedFiles}/${totalFiles} files to Arweave`);
+    new import_obsidian6.Notice(`Exported ${exportedFiles}/${totalFiles} files to Arweave`);
     this.updateActiveSyncButton();
     this.refreshSyncSidebar();
   }
   updateActiveSyncButton() {
-    const activeView = this.app.workspace.getActiveViewOfType(import_obsidian7.MarkdownView);
+    const activeView = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
     if (activeView && activeView.file) {
       const syncButton = activeView.containerEl.querySelector(
         ".arweave-sync-button"
@@ -28665,7 +28263,7 @@ Check the console for more details.`
   }
   async openPreviousVersion(file, n) {
     var _a7;
-    const loadingNotice = new import_obsidian7.Notice("Fetching previous version...", 0);
+    const loadingNotice = new import_obsidian6.Notice("Fetching previous version...", 0);
     try {
       const previousVersionInfo = await this.fetchPreviousVersion(
         file.path,
@@ -28674,7 +28272,7 @@ Check the console for more details.`
       );
       loadingNotice.hide();
       if (!previousVersionInfo) {
-        new import_obsidian7.Notice(`No previous version found (requested: ${n} versions back)`);
+        new import_obsidian6.Notice(`No previous version found (requested: ${n} versions back)`);
         return;
       }
       const decryptedContent = await this.decryptFileContent(
@@ -28696,12 +28294,12 @@ Check the console for more details.`
       );
       const leaf = this.app.workspace.getLeaf(false);
       await leaf.openFile(newFile);
-      new import_obsidian7.Notice(
+      new import_obsidian6.Notice(
         `Opened version from ${formattedDate} (${n} transactions ago)`
       );
     } catch (error) {
       loadingNotice.hide();
-      new import_obsidian7.Notice(`Error opening previous version: ${error.message}`);
+      new import_obsidian6.Notice(`Error opening previous version: ${error.message}`);
       console.error("Error opening previous version:", error);
     }
   }

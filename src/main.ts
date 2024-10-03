@@ -55,38 +55,36 @@ export default class ArweaveSync extends Plugin {
 
     this.registerView(SYNC_SIDEBAR_VIEW, (leaf) => new SyncSidebar(leaf, this));
 
-    this.addRibbonIcon("wallet", "Arweave Sync", () =>
-      this.activateSyncSidebar(),
-    );
-
-    this.addCommand({
-      id: "open-arweave-sync-sidebar",
-      name: "Open Arweave Sync Sidebar",
-      callback: () => this.activateSyncSidebar(),
+    this.addRibbonIcon("wallet", "Arweave Sync", (evt: MouseEvent) => {
+      if (this.walletAddress) {
+        this.activateSyncSidebar();
+      } else {
+        this.showWalletConnectModal();
+      }
     });
 
-    this.arPublishManager = new ArPublishManager(this.app, this);
+    // this.arPublishManager = new ArPublishManager(this.app, this);
 
-    this.registerEvent(
-      this.app.workspace.on("file-menu", (menu, file) => {
-        if (file instanceof TFolder) {
-          menu.addItem((item) => {
-            item
-              .setTitle("Publish to ArPublish")
-              .setIcon("upload-cloud")
-              .onClick(async () => {
-                try {
-                  await this.arPublishManager.publishFolder(file);
-                  new Notice(`Folder "${file.name}" published successfully!`);
-                } catch (error) {
-                  console.error("Error publishing folder:", error);
-                  new Notice(`Error publishing folder: ${error.message}`);
-                }
-              });
-          });
-        }
-      }),
-    );
+    // this.registerEvent(
+    //   this.app.workspace.on("file-menu", (menu, file) => {
+    //     if (file instanceof TFolder) {
+    //       menu.addItem((item) => {
+    //         item
+    //           .setTitle("Publish to ArPublish")
+    //           .setIcon("upload-cloud")
+    //           .onClick(async () => {
+    //             try {
+    //               await this.arPublishManager.publishFolder(file);
+    //               new Notice(`Folder "${file.name}" published successfully!`);
+    //             } catch (error) {
+    //               console.error("Error publishing folder:", error);
+    //               new Notice(`Error publishing folder: ${error.message}`);
+    //             }
+    //           });
+    //       });
+    //     }
+    //   }),
+    // );
   }
 
   private initializeManagers() {
@@ -200,7 +198,20 @@ export default class ArweaveSync extends Plugin {
     );
   }
 
-  private addCommands() {}
+  private addCommands() {
+    this.addCommand({
+      id: "open-arweave-sync-sidebar",
+      name: "Open Arweave Sync Sidebar",
+      callback: () => this.activateSyncSidebar(),
+    });
+
+    // Add new command for opening wallet connect modal
+    this.addCommand({
+      id: "open-wallet-connect-modal",
+      name: "Connect Arweave Wallet",
+      callback: () => this.showWalletConnectModal(),
+    });
+  }
 
   private showWalletConnectModal() {
     new WalletConnectModal(this.app, this).open();

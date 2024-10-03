@@ -308,6 +308,7 @@
 .arweave-sync-sidebar .tab-container {
     display: flex;
     border-bottom: 1px solid var(--background-modifier-border);
+    margin-top: 1rem;
 }
 
 .arweave-sync-sidebar .tab {

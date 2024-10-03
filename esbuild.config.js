@@ -5,6 +5,20 @@ const path = require("path");
 
 const prod = process.argv[2] === "production";
 
+const copyStylesPlugin = {
+  name: "copy-styles",
+  setup(build) {
+    build.onEnd(() => {
+      const src = path.join(__dirname, "src", "styles.css");
+      const dest = path.join(__dirname, "styles.css");
+      fs.copyFile(src, dest, (err) => {
+        if (err) throw err;
+        console.log("styles.css has been copied to the root directory");
+      });
+    });
+  },
+};
+
 const buildOptions = {
   entryPoints: ["src/main.ts"],
   bundle: true,
@@ -38,6 +52,7 @@ const buildOptions = {
         });
       },
     },
+    copyStylesPlugin, // Add the new plugin here
   ],
 };
 
