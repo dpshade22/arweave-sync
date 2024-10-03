@@ -239,7 +239,13 @@ export class SyncSidebar extends ItemView {
     depth: number,
   ) {
     nodes
-      .filter((node) => !node.isFolder || node.children.length > 0)
+      .filter((node) => {
+        // Filter out synced files in the export tab
+        if (this.currentTab === "export" && node.syncState === "synced") {
+          return false;
+        }
+        return !node.isFolder || node.children.length > 0;
+      })
       .sort((a, b) => {
         if (a.isFolder === b.isFolder) return a.name.localeCompare(b.name);
         return a.isFolder ? -1 : 1;
@@ -253,7 +259,7 @@ export class SyncSidebar extends ItemView {
           attr: { "data-path": node.path, draggable: "true" },
         });
 
-        this.setNodeStyles(contentEl, depth);
+        // this.setNodeStyles(contentEl, depth);
 
         node.isFolder
           ? this.renderFolderNode(node, contentEl, itemEl, isSource, depth)
@@ -264,11 +270,11 @@ export class SyncSidebar extends ItemView {
   private setNodeStyles(contentEl: HTMLElement, depth: number) {
     contentEl.style.setProperty(
       "margin-inline-start",
-      `${depth * 17 - 17}px !important`,
+      `${depth * 13 - 13}px !important`,
     );
     contentEl.style.setProperty(
       "padding-inline-start",
-      `${24 + depth * 17}px !important`,
+      `${24 + depth * 13}px !important`,
     );
   }
 

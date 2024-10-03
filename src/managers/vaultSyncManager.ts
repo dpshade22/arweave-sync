@@ -84,10 +84,10 @@ export class VaultSyncManager {
     const decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
 
     // Ensure the entire directory structure exists
-    const dirPath = filePath.substring(0, filePath.lastIndexOf("/"));
-    if (dirPath) {
-      await this.createNestedFolders(dirPath);
-    }
+    // const dirPath = filePath.substring(0, filePath.lastIndexOf("/"));
+    // if (dirPath) {
+    //   await this.createNestedFolders(dirPath);
+    // }
 
     // Create the file if it doesn't exist, or modify it if it does
     let file = this.vault.getAbstractFileByPath(filePath);
@@ -108,17 +108,17 @@ export class VaultSyncManager {
     console.log(`File ${filePath} imported from Arweave.`);
   }
 
-  private async createNestedFolders(path: string): Promise<void> {
-    const folders = path.split("/").filter(Boolean);
-    let currentPath = "";
+  // private async createNestedFolders(path: string): Promise<void> {
+  //   const folders = path.split("/").filter(Boolean);
+  //   let currentPath = "";
 
-    for (const folder of folders) {
-      currentPath += folder + "/";
-      if (!(await this.vault.adapter.exists(currentPath))) {
-        await this.vault.createFolder(currentPath);
-      }
-    }
-  }
+  //   for (const folder of folders) {
+  //     currentPath += folder + "/";
+  //     if (!(await this.vault.adapter.exists(currentPath))) {
+  //       await this.vault.createFolder(currentPath);
+  //     }
+  //   }
+  // }
 
   private async exportFileToArweave(
     file: TFile,

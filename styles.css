@@ -359,7 +359,8 @@
     font-weight: 500;
 }
 
-.nav-folder .tree-item-self.is-clickable.nav-file-title {
+.nav-folder .tree-item-self.is-clickable.nav-file-title.new-file,
+.nav-folder .tree-item-self.is-clickable.nav-file-title.updated-file {
     margin-inline-start: -13px !important;
     padding-inline-start: 41px !important;
 }
