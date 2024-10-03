@@ -1,20 +1,10 @@
-import {
-  Plugin,
-  TFile,
-  MarkdownView,
-  Notice,
-  App,
-  WorkspaceLeaf,
-  TFolder,
-} from "obsidian";
-import { ArweaveUploader } from "./managers/arweaveUploader";
+import { Plugin, TFile, MarkdownView, Notice, WorkspaceLeaf } from "obsidian";
 import { AOManager } from "./managers/aoManager";
-import { ArPublishManager } from "./managers/arPublishManager";
 import {
   initializeWalletManager,
   walletManager,
 } from "./managers/walletManager";
-import { VaultImportManager } from "./managers/vaultImportManager";
+import { VaultSyncManager } from "./managers/vaultSyncManager";
 import {
   UploadConfig,
   FileUploadInfo,
@@ -27,24 +17,20 @@ import { ArweaveSyncSettingTab } from "./settings/settings";
 import { encrypt, decrypt } from "./utils/encryption";
 import { debounce } from "./utils/helpers";
 import { SyncSidebar, SYNC_SIDEBAR_VIEW } from "./components/SyncSidebar";
-import * as CryptoJS from "crypto-js";
 import "buffer";
 import "process";
 import "./styles.css";
 
-const WALLET_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"></path><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"></path><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4h-4z"></path></svg>`;
-
 export default class ArweaveSync extends Plugin {
   settings: ArweaveSyncSettings;
-  private arweaveUploader: ArweaveUploader;
+  public vaultSyncManager: VaultSyncManager;
   private aoManager: AOManager;
-  private vaultImportManager: VaultImportManager;
-  private arPublishManager: ArPublishManager;
   private arweave: Arweave;
   private walletAddress: string | null = null;
   private statusBarItem: HTMLElement;
   private modifiedFiles: Set<string> = new Set();
   private activeSyncSidebar: SyncSidebar | null = null;
+  private isConnecting: boolean = false;
 
   async onload() {
     await this.loadSettings();
@@ -55,52 +41,31 @@ export default class ArweaveSync extends Plugin {
 
     this.registerView(SYNC_SIDEBAR_VIEW, (leaf) => new SyncSidebar(leaf, this));
 
-    this.addRibbonIcon("wallet", "Arweave Sync", (evt: MouseEvent) => {
+    this.addRibbonIcon("wallet", "Arweave Sync", () => {
       if (this.walletAddress) {
         this.activateSyncSidebar();
       } else {
         this.showWalletConnectModal();
       }
     });
-
-    // this.arPublishManager = new ArPublishManager(this.app, this);
-
-    // this.registerEvent(
-    //   this.app.workspace.on("file-menu", (menu, file) => {
-    //     if (file instanceof TFolder) {
-    //       menu.addItem((item) => {
-    //         item
-    //           .setTitle("Publish to ArPublish")
-    //           .setIcon("upload-cloud")
-    //           .onClick(async () => {
-    //             try {
-    //               await this.arPublishManager.publishFolder(file);
-    //               new Notice(`Folder "${file.name}" published successfully!`);
-    //             } catch (error) {
-    //               console.error("Error publishing folder:", error);
-    //               new Notice(`Error publishing folder: ${error.message}`);
-    //             }
-    //           });
-    //       });
-    //     }
-    //   }),
-    // );
   }
 
   private initializeManagers() {
-    this.arweaveUploader = new ArweaveUploader();
+    initializeWalletManager();
+
     this.aoManager = new AOManager();
     this.arweave = Arweave.init({
       host: "arweave.net",
       port: 443,
       protocol: "https",
     });
-    this.vaultImportManager = new VaultImportManager(
-      this.app.vault,
+
+    this.vaultSyncManager = new VaultSyncManager(
+      this,
       this.settings.encryptionPassword,
       this.settings.remoteUploadConfig,
+      this.settings.localUploadConfig,
     );
-    initializeWalletManager();
   }
 
   private setupEventListeners() {
@@ -169,7 +134,6 @@ export default class ArweaveSync extends Plugin {
       callback: () => this.activateSyncSidebar(),
     });
 
-    // Add new command for opening wallet connect modal
     this.addCommand({
       id: "open-wallet-connect-modal",
       name: "Connect Arweave Wallet",
@@ -357,21 +321,30 @@ export default class ArweaveSync extends Plugin {
   }
 
   async handleWalletConnection(walletJson: string) {
-    const wallet = JSON.parse(walletJson);
-    await this.aoManager.initialize(wallet);
-    this.walletAddress = await this.arweave.wallets.jwkToAddress(wallet);
-    this.arweaveUploader.setWallet(wallet);
-
-    this.updateStatusBar();
+    // Add a flag to prevent multiple simultaneous connections
+    if (this.isConnecting) {
+      console.log("Wallet connection already in progress");
+      return;
+    }
+    this.isConnecting = true;
 
     try {
+      await walletManager.connect(new File([walletJson], "wallet.json"));
+      this.walletAddress = walletManager.getAddress();
+
+      await this.aoManager.initialize(walletManager.getJWK());
+
+      this.updateStatusBar();
+
       await this.updateConfigsFromAO();
-      this.checkForNewFiles();
+      await this.checkForNewFiles();
     } catch (error) {
       console.error("Error during wallet connection:", error);
       new Notice(
         `Error: ${error.message}\nCheck the console for more details.`,
       );
+    } finally {
+      this.isConnecting = false;
     }
   }
 
@@ -382,10 +355,11 @@ export default class ArweaveSync extends Plugin {
       this.mergeUploadConfigs();
     }
 
-    this.vaultImportManager = new VaultImportManager(
-      this.app.vault,
+    this.vaultSyncManager = new VaultSyncManager(
+      this,
       this.settings.encryptionPassword,
       this.settings.remoteUploadConfig,
+      this.settings.localUploadConfig,
     );
   }
 
@@ -424,10 +398,27 @@ export default class ArweaveSync extends Plugin {
 
   async handleWalletDisconnection() {
     this.walletAddress = null;
-    this.arweaveUploader.setWallet(null);
+    this.vaultSyncManager.setWallet(null);
     await this.aoManager.initialize(null);
     this.updateStatusBar();
     new Notice("Wallet disconnected successfully");
+  }
+
+  updateLocalConfig(filePath: string, fileInfo: FileUploadInfo) {
+    this.settings.localUploadConfig[filePath] = fileInfo;
+    this.saveSettings();
+  }
+
+  updateRemoteConfig(filePath: string, fileInfo: FileUploadInfo) {
+    this.settings.remoteUploadConfig[filePath] = fileInfo;
+    this.saveSettings();
+    this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
+  }
+
+  syncConfigs() {
+    this.mergeUploadConfigs();
+    this.saveSettings();
+    this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
   }
 
   private mergeUploadConfigs() {
@@ -447,7 +438,7 @@ export default class ArweaveSync extends Plugin {
 
   async importFilesFromArweave(selectedFiles: string[]) {
     try {
-      await this.vaultImportManager.importFilesFromArweave(selectedFiles);
+      await this.vaultSyncManager.importFilesFromArweave(selectedFiles);
       new Notice("File import completed!");
     } catch (error) {
       console.error("Error during file import:", error);
@@ -490,45 +481,9 @@ export default class ArweaveSync extends Plugin {
     }
 
     try {
-      const { content, fileHash } = await this.prepareFileContent(file);
-      const currentFileInfo = this.settings.localUploadConfig[file.path];
-      const previousVersionTxId = currentFileInfo ? currentFileInfo.txId : null;
-      const versionNumber = currentFileInfo
-        ? currentFileInfo.versionNumber + 1
-        : 1;
-
-      const txId = await this.arweaveUploader.uploadFile(
-        file.path,
-        content,
-        fileHash,
-        previousVersionTxId,
-        versionNumber,
-      );
-
-      const newFileInfo: FileUploadInfo = {
-        txId,
-        timestamp: Date.now(),
-        fileHash,
-        encrypted: true,
-        filePath: file.path,
-        previousVersionTxId,
-        versionNumber,
-      };
-
-      this.settings.localUploadConfig[file.path] = newFileInfo;
-      this.settings.remoteUploadConfig[file.path] = newFileInfo;
-
-      await this.saveSettings();
-      await this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
-
-      console.log(
-        "Updated remoteUploadConfig:",
-        this.settings.remoteUploadConfig,
-      );
-
-      this.updateSyncSidebarFile(file);
+      await this.vaultSyncManager.syncFile(file);
       this.updateUIAfterSync(file);
-      new Notice(`File ${file.name} synced to Arweave (encrypted)`);
+      new Notice(`File ${file.name} synced with Arweave`);
     } catch (error) {
       this.handleSyncError(file, error);
     } finally {
@@ -543,13 +498,6 @@ export default class ArweaveSync extends Plugin {
     return view?.containerEl.querySelector(
       ".arweave-sync-button",
     ) as HTMLElement | null;
-  }
-
-  private async prepareFileContent(file: TFile) {
-    const content = await this.app.vault.read(file);
-    const fileHash = await this.getFileHash(file);
-    const encryptedContent = encrypt(content, this.settings.encryptionPassword);
-    return { content: encryptedContent, fileHash };
   }
 
   async refreshRemoteConfig() {
@@ -584,20 +532,19 @@ export default class ArweaveSync extends Plugin {
   }
 
   private async handleFileModify(file: TFile) {
-    console.log("File updated:", file.path);
+    const { syncState, fileHash } =
+      await this.vaultSyncManager.checkFileSync(file);
 
-    const newHash = await this.getFileHash(file);
-    const currentConfig = this.settings.localUploadConfig[file.path];
-
-    if (!currentConfig || currentConfig.fileHash !== newHash) {
+    if (syncState !== "synced") {
+      const currentConfig = this.settings.localUploadConfig[file.path];
       this.settings.localUploadConfig[file.path] = {
         txId: currentConfig?.txId || "",
         timestamp: Date.now(),
-        fileHash: newHash,
+        fileHash: fileHash,
         encrypted: true,
         filePath: file.path,
         previousVersionTxId: currentConfig?.txId || null,
-        versionNumber: currentConfig?.versionNumber || 0,
+        versionNumber: (currentConfig?.versionNumber || 0) + 1,
       };
       this.modifiedFiles.add(file.path);
       await this.saveSettings();
@@ -688,41 +635,7 @@ export default class ArweaveSync extends Plugin {
       const file = this.app.vault.getAbstractFileByPath(filePath);
       if (file instanceof TFile) {
         try {
-          const content = await this.app.vault.read(file);
-          const encryptedContent = encrypt(
-            content,
-            this.settings.encryptionPassword,
-          );
-          const fileHash = await this.getFileHash(file);
-
-          const currentFileInfo = this.settings.localUploadConfig[filePath];
-          const previousVersionTxId = currentFileInfo
-            ? currentFileInfo.txId
-            : null;
-          const versionNumber = currentFileInfo
-            ? currentFileInfo.versionNumber + 1
-            : 1;
-
-          const txId = await this.arweaveUploader.uploadFile(
-            filePath,
-            encryptedContent,
-            fileHash,
-            previousVersionTxId,
-            versionNumber,
-          );
-
-          const fileInfo: FileUploadInfo = {
-            txId,
-            timestamp: Date.now(),
-            fileHash,
-            encrypted: true,
-            filePath: file.path,
-            previousVersionTxId,
-            versionNumber,
-          };
-          this.settings.localUploadConfig[filePath] = fileInfo;
-          this.settings.remoteUploadConfig[filePath] = fileInfo;
-
+          await this.vaultSyncManager.syncFile(file);
           exportedFiles++;
           new Notice(`Exported ${exportedFiles}/${totalFiles} files`);
         } catch (error) {
@@ -754,8 +667,8 @@ export default class ArweaveSync extends Plugin {
 
   async getFileHash(file: TFile): Promise<string> {
     const content = await this.app.vault.read(file);
-    const buffer = await this.arweave.utils.stringToBuffer(content);
-    return await this.arweave.utils.bufferTob64Url(
+    const buffer = this.arweave.utils.stringToBuffer(content);
+    return this.arweave.utils.bufferTob64Url(
       await this.arweave.crypto.hash(buffer),
     );
   }
@@ -772,10 +685,9 @@ export default class ArweaveSync extends Plugin {
     n: number,
     uploadConfig: UploadConfig,
   ): Promise<any> {
-    const result = await this.arweaveUploader.fetchPreviousVersion(
+    const result = await this.vaultSyncManager.fetchPreviousVersion(
       filePath,
       n,
-      uploadConfig,
     );
     if (result) {
       return {
@@ -801,9 +713,7 @@ export default class ArweaveSync extends Plugin {
         return;
       }
 
-      const decryptedContent = await this.decryptFileContent(
-        previousVersionInfo.content,
-      );
+      const decryptedContent = previousVersionInfo.content;
       const formattedDate = new Date(
         previousVersionInfo.timestamp * 1000,
       ).toLocaleString();
@@ -843,27 +753,15 @@ export default class ArweaveSync extends Plugin {
   }
 
   async isFileNeedingSync(file: TFile): Promise<boolean> {
-    const newHash = await this.getFileHash(file);
-    const currentConfig = this.settings.localUploadConfig[file.path];
-    return !currentConfig || currentConfig.fileHash !== newHash;
+    const { syncState } = await this.vaultSyncManager.checkFileSync(file);
+    return syncState !== "synced";
   }
 
   async getFileSyncState(
     file: TFile,
   ): Promise<"new-file" | "updated-file" | "synced"> {
-    const currentFileHash = await this.getFileHash(file);
-    const remoteConfig = this.settings.remoteUploadConfig[file.path];
-
-    if (!remoteConfig) {
-      console.log(`${file.path} is a new file`);
-      return "new-file";
-    } else if (remoteConfig.fileHash !== currentFileHash) {
-      console.log(`${file.path} is an updated file`);
-      return "updated-file";
-    } else {
-      console.log(`${file.path} is synced`);
-      return "synced";
-    }
+    const { syncState } = await this.vaultSyncManager.checkFileSync(file);
+    return syncState;
   }
 
   async activateSyncSidebar() {

@@ -4,14 +4,6 @@ local json = require("json")
 State = State or {}
 State.uploadConfig = State.uploadConfig or {}
 
--- Helper functions
-local function updateState()
-    ao.send({
-        Target = Sender,
-        Action = "State-Update",
-        Data = json.encode(State)
-    })
-end
 
 -- CRUD Handlers for upload config
 Handlers.add(
@@ -26,7 +18,6 @@ Handlers.add(
                     print("Added/Updated upload config for: " .. key)
                 end
             end
-            updateState()
             ao.send({
                 Target = msg.From,
                 Action = "CreateUploadConfigResponse",
@@ -54,7 +45,7 @@ Handlers.add(
                 State.uploadConfig[data.newPath].filePath = data.newPath
                 State.uploadConfig[data.oldPath] = nil
                 print("Renamed upload config from " .. data.oldPath .. " to " .. data.newPath)
-                updateState()
+
                 ao.send({
                     Target = msg.From,
                     Action = "RenameUploadConfigResponse",
@@ -133,7 +124,6 @@ Handlers.add(
                     print("Removed upload config for: " .. key)
                 end
             end
-            updateState()
             ao.send({
                 Target = msg.From,
                 Action = "UpdateUploadConfigResponse",
@@ -159,7 +149,6 @@ Handlers.add(
         if key then
             if State.uploadConfig[key] then
                 State.uploadConfig[key] = nil
-                updateState()
                 print("Deleted upload config for: " .. key)
                 ao.send({
                     Target = msg.From,

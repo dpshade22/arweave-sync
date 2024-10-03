@@ -1,4 +1,4 @@
-import { Notice, Events } from "obsidian";
+import { Events } from "obsidian";
 import { JWKInterface } from "arweave/node/lib/wallet";
 import Arweave from "arweave";
 
@@ -50,7 +50,9 @@ export class WalletManager extends Events {
       await this.initializeWallet(jwkJson);
       if (this.address) {
         console.log("Wallet connected successfully:", this.address);
-        this.trigger("wallet-connected", this.getWalletJson());
+        if (!this.isConnected()) {
+          this.trigger("wallet-connected", this.getWalletJson());
+        }
         return this.address;
       }
       throw new Error("Failed to obtain wallet address");

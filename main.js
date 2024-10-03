@@ -3392,8 +3392,8 @@ var require_common = __commonJS({
     __publicField(_Arweave, "init");
     __publicField(_Arweave, "crypto", new node_driver_1.default());
     __publicField(_Arweave, "utils", ArweaveUtils);
-    var Arweave6 = _Arweave;
-    exports.default = Arweave6;
+    var Arweave5 = _Arweave;
+    exports.default = Arweave5;
   }
 });
 
@@ -3499,164 +3499,6 @@ var require_web = __commonJS({
     }
     __exportStar(require_common(), exports);
     exports.default = common_1.default;
-  }
-});
-
-// node_modules/ar-gql/dist/queries/tx.js
-var require_tx = __commonJS({
-  "node_modules/ar-gql/dist/queries/tx.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.default = `
-query($id: ID!) {
-  transaction(id: $id) {
-    id
-    anchor
-    signature
-    recipient
-    owner {
-      address
-      key
-    }
-    fee {
-      winston
-      ar
-    }
-    quantity {
-      winston
-      ar
-    }
-    data {
-      size
-      type
-    }
-    tags {
-      name
-      value
-    }
-    block {
-      id
-      timestamp
-      height
-      previous
-    }
-    parent {
-      id
-    }
-  }
-}
-`;
-  }
-});
-
-// node_modules/ar-gql/dist/utils/fetchRetry.js
-var require_fetchRetry = __commonJS({
-  "node_modules/ar-gql/dist/utils/fetchRetry.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.fetchRetry = void 0;
-    var fetchRetry = async (input, init, opts) => {
-      const { retry, retryMs } = opts;
-      let tries = 0;
-      while (true) {
-        try {
-          return await fetch(input, init);
-        } catch (e) {
-          if (tries++ < retry) {
-            console.warn(`[ar-gql] waiting ${retryMs}ms before retrying ${tries} of ${retry}`);
-            await new Promise((resolve) => setTimeout(resolve, retryMs));
-            continue;
-          }
-          throw new TypeError(`Failed to fetch from ${input} after ${retry} retries`, { cause: e });
-        }
-      }
-    };
-    exports.fetchRetry = fetchRetry;
-  }
-});
-
-// node_modules/ar-gql/dist/index.js
-var require_dist = __commonJS({
-  "node_modules/ar-gql/dist/index.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.GQLUrls = exports.arGql = void 0;
-    var tx_1 = require_tx();
-    var fetchRetry_1 = require_fetchRetry();
-    function arGql2(options) {
-      const defaultOpts = {
-        endpointUrl: "https://arweave.net/graphql",
-        retries: 0,
-        retryMs: 1e4
-      };
-      const opts = { ...defaultOpts, ...options };
-      if (!opts.endpointUrl.match(/^https?:\/\/.*\/graphql*/)) {
-        throw new Error(`string doesn't appear to be a URL of the form <http(s)://some-domain/graphql>'. You entered "${opts.endpointUrl}"`);
-      }
-      const run = async (query, variables) => {
-        const graphql = JSON.stringify({
-          query,
-          variables
-        });
-        const res = await (0, fetchRetry_1.fetchRetry)(opts.endpointUrl, {
-          method: "POST",
-          headers: {
-            "Accept": "application/json",
-            "Content-Type": "application/json"
-          },
-          body: graphql
-        }, {
-          retry: opts.retries,
-          retryMs: opts.retryMs
-        });
-        if (!res.ok) {
-          throw new Error(res.statusText, { cause: res.status });
-        }
-        return await res.json();
-      };
-      const all = async (query, variables, pageCallback) => {
-        let hasNextPage = true;
-        let edges = [];
-        let cursor = "";
-        let pageCallbacks = [];
-        while (hasNextPage) {
-          const res = (await run(query, { ...variables, cursor })).data.transactions;
-          if (res.edges && res.edges.length) {
-            if (typeof pageCallback === "function") {
-              pageCallbacks.push(pageCallback(res.edges));
-            } else {
-              edges = edges.concat(res.edges);
-            }
-            cursor = res.edges[res.edges.length - 1].cursor;
-          }
-          hasNextPage = res.pageInfo.hasNextPage;
-        }
-        await Promise.all(pageCallbacks);
-        return edges;
-      };
-      const tx = async (id) => {
-        const res = await run(tx_1.default, { id });
-        return res.data.transaction;
-      };
-      const fetchTxTag = async (id, name) => {
-        const res = await tx(id);
-        const tag = res.tags.find((tag2) => tag2.name === name);
-        if (tag)
-          return tag.value;
-      };
-      return {
-        run,
-        all,
-        tx,
-        fetchTxTag,
-        endpointUrl: opts.endpointUrl
-      };
-    }
-    exports.arGql = arGql2;
-    exports.GQLUrls = {
-      goldsky: "https://arweave-search.goldsky.com/graphql",
-      arweave: "https://arweave.net/graphql"
-    };
   }
 });
 
@@ -10217,6 +10059,164 @@ var require_crypto_js = __commonJS({
   }
 });
 
+// node_modules/ar-gql/dist/queries/tx.js
+var require_tx = __commonJS({
+  "node_modules/ar-gql/dist/queries/tx.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.default = `
+query($id: ID!) {
+  transaction(id: $id) {
+    id
+    anchor
+    signature
+    recipient
+    owner {
+      address
+      key
+    }
+    fee {
+      winston
+      ar
+    }
+    quantity {
+      winston
+      ar
+    }
+    data {
+      size
+      type
+    }
+    tags {
+      name
+      value
+    }
+    block {
+      id
+      timestamp
+      height
+      previous
+    }
+    parent {
+      id
+    }
+  }
+}
+`;
+  }
+});
+
+// node_modules/ar-gql/dist/utils/fetchRetry.js
+var require_fetchRetry = __commonJS({
+  "node_modules/ar-gql/dist/utils/fetchRetry.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.fetchRetry = void 0;
+    var fetchRetry = async (input, init, opts) => {
+      const { retry, retryMs } = opts;
+      let tries = 0;
+      while (true) {
+        try {
+          return await fetch(input, init);
+        } catch (e) {
+          if (tries++ < retry) {
+            console.warn(`[ar-gql] waiting ${retryMs}ms before retrying ${tries} of ${retry}`);
+            await new Promise((resolve) => setTimeout(resolve, retryMs));
+            continue;
+          }
+          throw new TypeError(`Failed to fetch from ${input} after ${retry} retries`, { cause: e });
+        }
+      }
+    };
+    exports.fetchRetry = fetchRetry;
+  }
+});
+
+// node_modules/ar-gql/dist/index.js
+var require_dist = __commonJS({
+  "node_modules/ar-gql/dist/index.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.GQLUrls = exports.arGql = void 0;
+    var tx_1 = require_tx();
+    var fetchRetry_1 = require_fetchRetry();
+    function arGql2(options) {
+      const defaultOpts = {
+        endpointUrl: "https://arweave.net/graphql",
+        retries: 0,
+        retryMs: 1e4
+      };
+      const opts = { ...defaultOpts, ...options };
+      if (!opts.endpointUrl.match(/^https?:\/\/.*\/graphql*/)) {
+        throw new Error(`string doesn't appear to be a URL of the form <http(s)://some-domain/graphql>'. You entered "${opts.endpointUrl}"`);
+      }
+      const run = async (query, variables) => {
+        const graphql = JSON.stringify({
+          query,
+          variables
+        });
+        const res = await (0, fetchRetry_1.fetchRetry)(opts.endpointUrl, {
+          method: "POST",
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+          },
+          body: graphql
+        }, {
+          retry: opts.retries,
+          retryMs: opts.retryMs
+        });
+        if (!res.ok) {
+          throw new Error(res.statusText, { cause: res.status });
+        }
+        return await res.json();
+      };
+      const all = async (query, variables, pageCallback) => {
+        let hasNextPage = true;
+        let edges = [];
+        let cursor = "";
+        let pageCallbacks = [];
+        while (hasNextPage) {
+          const res = (await run(query, { ...variables, cursor })).data.transactions;
+          if (res.edges && res.edges.length) {
+            if (typeof pageCallback === "function") {
+              pageCallbacks.push(pageCallback(res.edges));
+            } else {
+              edges = edges.concat(res.edges);
+            }
+            cursor = res.edges[res.edges.length - 1].cursor;
+          }
+          hasNextPage = res.pageInfo.hasNextPage;
+        }
+        await Promise.all(pageCallbacks);
+        return edges;
+      };
+      const tx = async (id) => {
+        const res = await run(tx_1.default, { id });
+        return res.data.transaction;
+      };
+      const fetchTxTag = async (id, name) => {
+        const res = await tx(id);
+        const tag = res.tags.find((tag2) => tag2.name === name);
+        if (tag)
+          return tag.value;
+      };
+      return {
+        run,
+        all,
+        tx,
+        fetchTxTag,
+        endpointUrl: opts.endpointUrl
+      };
+    }
+    exports.arGql = arGql2;
+    exports.GQLUrls = {
+      goldsky: "https://arweave-search.goldsky.com/graphql",
+      arweave: "https://arweave.net/graphql"
+    };
+  }
+});
+
 // node_modules/ieee754/index.js
 var require_ieee7542 = __commonJS({
   "node_modules/ieee754/index.js"(exports) {
@@ -12062,130 +12062,8 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian6 = require("obsidian");
 
-// src/managers/arweaveUploader.ts
-var import_arweave = __toESM(require_web());
-var import_ar_gql = __toESM(require_dist());
-var ArweaveUploader = class {
-  constructor() {
-    this.wallet = null;
-    this.arweave = import_arweave.default.init({
-      host: "arweave.net",
-      port: 443,
-      protocol: "https"
-    });
-    this.argql = (0, import_ar_gql.arGql)();
-  }
-  async setWallet(jwk) {
-    this.wallet = jwk;
-  }
-  async uploadFile(filePath, content, fileHash, previousVersionTxId, versionNumber) {
-    if (!this.wallet) {
-      throw new Error("Wallet not set. Please set a wallet before uploading.");
-    }
-    try {
-      const transaction = await this.arweave.createTransaction(
-        {
-          data: content
-        },
-        this.wallet
-      );
-      transaction.addTag("Content-Type", "text/markdown");
-      transaction.addTag("App-Name", "ArweaveSync");
-      transaction.addTag("File-Hash", fileHash);
-      transaction.addTag("Previous-Version", previousVersionTxId || "");
-      transaction.addTag("Version-Number", versionNumber.toString());
-      await this.arweave.transactions.sign(transaction, this.wallet);
-      const response = await this.arweave.transactions.post(transaction);
-      if (response.status === 200) {
-        console.log(
-          `File uploaded successfully. Transaction ID: ${transaction.id}`
-        );
-        return transaction.id;
-      } else {
-        throw new Error(
-          `Upload failed with status ${response.status}: ${response.statusText}`
-        );
-      }
-    } catch (error) {
-      console.error("Error uploading file to Arweave:", error);
-      throw error;
-    }
-  }
-  async fetchPreviousVersion(filePath, n, localUploadConfig) {
-    const query = `
-       query($id: ID!) {
-         transaction(id: $id) {
-           id
-           tags {
-             name
-             value
-           }
-           block {
-             height
-             timestamp
-           }
-           owner {
-             address
-           }
-           recipient
-           fee {
-             ar
-           }
-           quantity {
-             ar
-           }
-         }
-       }
-     `;
-    try {
-      let currentTxId = this.getCurrentTransactionId(
-        filePath,
-        localUploadConfig
-      );
-      if (!currentTxId) {
-        console.error(`No transaction ID found for file: ${filePath}`);
-        return null;
-      }
-      for (let i = 0; i < n; i++) {
-        if (!currentTxId) {
-          return null;
-        }
-        const variables = { id: currentTxId };
-        const results2 = await this.argql.run(query, variables);
-        const transaction = results2.data.transaction;
-        if (!transaction) {
-          return null;
-        }
-        const previousVersionTag = transaction.tags.find(
-          (tag) => tag.name === "Previous-Version"
-        );
-        currentTxId = previousVersionTag ? previousVersionTag.value : null;
-        if (i === n - 1) {
-          const data = await this.arweave.transactions.getData(transaction.id, {
-            decode: true,
-            string: true
-          });
-          const content = typeof data === "string" ? data : new TextDecoder().decode(data);
-          return {
-            content,
-            timestamp: transaction.block.timestamp
-          };
-        }
-      }
-      return null;
-    } catch (error) {
-      console.error("Error fetching previous version:", error);
-      return null;
-    }
-  }
-  getCurrentTransactionId(filePath, localUploadConfig) {
-    const fileInfo = localUploadConfig[filePath];
-    return fileInfo ? fileInfo.txId : null;
-  }
-};
-
 // src/managers/aoManager.ts
-var import_arweave2 = __toESM(require_web());
+var import_arweave = __toESM(require_web());
 
 // node_modules/@permaweb/aoconnect/dist/browser.js
 var __create2 = Object.create;
@@ -26677,7 +26555,7 @@ var AOManager = class {
   constructor() {
     this.processId = null;
     this.initialized = false;
-    this.arweave = import_arweave2.default.init({
+    this.arweave = import_arweave.default.init({
       host: "arweave.net",
       port: 443,
       protocol: "https"
@@ -26780,14 +26658,14 @@ var aoManager = new AOManager();
 
 // src/managers/walletManager.ts
 var import_obsidian = require("obsidian");
-var import_arweave3 = __toESM(require_web());
+var import_arweave2 = __toESM(require_web());
 var WalletManager = class extends import_obsidian.Events {
   constructor() {
     super();
     this.address = null;
     this.jwk = null;
     this.walletJson = null;
-    this.arweave = import_arweave3.default.init({});
+    this.arweave = import_arweave2.default.init({});
     this.loadCachedWallet();
   }
   async loadCachedWallet() {
@@ -26823,7 +26701,9 @@ var WalletManager = class extends import_obsidian.Events {
       await this.initializeWallet(jwkJson);
       if (this.address) {
         console.log("Wallet connected successfully:", this.address);
-        this.trigger("wallet-connected", this.getWalletJson());
+        if (!this.isConnected()) {
+          this.trigger("wallet-connected", this.getWalletJson());
+        }
         return this.address;
       }
       throw new Error("Failed to obtain wallet address");
@@ -26893,9 +26773,9 @@ function initializeWalletManager() {
   return walletManager;
 }
 
-// src/managers/vaultImportManager.ts
+// src/managers/vaultSyncManager.ts
+var import_arweave3 = __toESM(require_web());
 var import_obsidian2 = require("obsidian");
-var import_crypto_js2 = __toESM(require_crypto_js());
 
 // src/utils/encryption.ts
 var import_crypto_js = __toESM(require_crypto_js());
@@ -26915,109 +26795,147 @@ function decrypt(encryptedData, password) {
   }
 }
 
-// src/managers/vaultImportManager.ts
-var import_arweave4 = __toESM(require_web());
-
-// src/utils/helpers.ts
-function getFolderPath(filePath) {
-  return filePath.substring(0, filePath.lastIndexOf("/"));
-}
-function debounce(func, wait) {
-  let timeout = null;
-  return function(...args) {
-    const later = () => {
-      timeout = null;
-      func(...args);
-    };
-    if (timeout) clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-}
-
-// src/managers/vaultImportManager.ts
-var VaultImportManager = class {
-  constructor(vault, encryptionPassword, remoteUploadConfig) {
-    this.vault = vault;
+// src/managers/vaultSyncManager.ts
+var import_crypto_js2 = __toESM(require_crypto_js());
+var import_ar_gql = __toESM(require_dist());
+var VaultSyncManager = class {
+  constructor(plugin, encryptionPassword, remoteUploadConfig, localUploadConfig) {
+    this.plugin = plugin;
     this.encryptionPassword = encryptionPassword;
-    this.arweave = import_arweave4.default.init({
+    this.remoteUploadConfig = remoteUploadConfig;
+    this.localUploadConfig = localUploadConfig;
+    this.vault = plugin.app.vault;
+    this.encryptionPassword = encryptionPassword;
+    this.remoteUploadConfig = remoteUploadConfig;
+    this.localUploadConfig = localUploadConfig;
+    this.arweave = import_arweave3.default.init({
       host: "arweave.net",
       port: 443,
       protocol: "https"
     });
-    this.remoteUploadConfig = remoteUploadConfig;
+    this.argql = (0, import_ar_gql.arGql)();
   }
-  async importFilesFromArweave(selectedFiles = []) {
-    console.log("Starting file import from Arweave");
-    const errors = [];
-    const filesToImport = selectedFiles.length > 0 ? selectedFiles : Object.keys(this.remoteUploadConfig);
-    for (const filePath of filesToImport) {
-      const fileInfo = this.remoteUploadConfig[filePath];
-      if (fileInfo) {
-        try {
-          await this.importFile(filePath, fileInfo);
-        } catch (error) {
-          console.error(`Error importing file ${filePath}:`, error);
-          errors.push({ filePath, error: error.message });
-        }
-      }
+  isWalletSet() {
+    return this.wallet !== null;
+  }
+  async syncFile(file) {
+    const { syncState, localNewerVersion, fileHash } = await this.checkFileSync(file);
+    if (syncState === "synced") {
+      console.log(`File ${file.path} is already synced.`);
+      return;
     }
-    console.log("File import completed");
-    if (errors.length > 0) {
-      console.error("Errors occurred during file import:", errors);
+    if (localNewerVersion) {
+      await this.exportFileToArweave(file, fileHash);
+    } else {
+      await this.importFileFromArweave(file);
+    }
+  }
+  async exportFileToArweave(file, fileHash) {
+    if (!walletManager.isConnected()) {
       throw new Error(
-        `Failed to import ${errors.length} files. Check console for details.`
+        "Wallet not connected. Please connect a wallet before uploading."
       );
     }
+    const wallet = walletManager.getJWK();
+    if (!wallet) {
+      throw new Error("Unable to retrieve wallet. Please try reconnecting.");
+    }
+    const content = await this.vault.read(file);
+    const encryptedContent = encrypt(content, this.encryptionPassword);
+    const currentFileInfo = this.localUploadConfig[file.path];
+    const previousVersionTxId = currentFileInfo ? currentFileInfo.txId : null;
+    const versionNumber = currentFileInfo ? currentFileInfo.versionNumber + 1 : 1;
+    const transaction = await this.arweave.createTransaction(
+      { data: encryptedContent },
+      wallet
+    );
+    transaction.addTag("Content-Type", "text/markdown");
+    transaction.addTag("App-Name", "ArweaveSync");
+    transaction.addTag("File-Hash", fileHash);
+    transaction.addTag("Previous-Version", previousVersionTxId || "");
+    transaction.addTag("Version-Number", versionNumber.toString());
+    await this.arweave.transactions.sign(transaction, wallet);
+    const response = await this.arweave.transactions.post(transaction);
+    if (response.status !== 200) {
+      throw new Error(
+        `Upload failed with status ${response.status}: ${response.statusText}`
+      );
+    }
+    const newFileInfo = {
+      txId: transaction.id,
+      timestamp: Date.now(),
+      fileHash,
+      encrypted: true,
+      filePath: file.path,
+      previousVersionTxId,
+      versionNumber
+    };
+    this.localUploadConfig[file.path] = newFileInfo;
+    this.remoteUploadConfig[file.path] = newFileInfo;
+    this.plugin.updateLocalConfig(file.path, newFileInfo);
+    this.plugin.updateRemoteConfig(file.path, newFileInfo);
+    console.log(
+      `File ${file.path} exported to Arweave. Transaction ID: ${transaction.id}`
+    );
   }
-  async importFile(filePath, fileInfo) {
-    try {
-      console.log(`Processing file: ${filePath}`);
-      if (!fileInfo.txId) {
-        console.log(`Skipping file ${filePath} due to missing txId`);
-        return;
-      }
-      const existingFile = this.vault.getAbstractFileByPath(filePath);
-      if (existingFile instanceof import_obsidian2.TFile) {
-        const currentFileContent = await this.vault.read(existingFile);
-        const currentFileHash = await this.getFileHash(currentFileContent);
-        if (currentFileHash === fileInfo.fileHash) {
-          console.log(`File ${filePath} is up to date, skipping`);
-          return;
+  isWalletConnected() {
+    return walletManager.isConnected();
+  }
+  async importFileFromArweave(file) {
+    const remoteFileInfo = this.remoteUploadConfig[file.path];
+    if (!remoteFileInfo) {
+      throw new Error(`No remote file info found for ${file.path}`);
+    }
+    const encryptedContent = await this.fetchEncryptedContent(
+      remoteFileInfo.txId
+    );
+    const decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
+    await this.vault.modify(file, decryptedContent);
+    this.localUploadConfig[file.path] = { ...remoteFileInfo };
+    this.plugin.updateLocalConfig(file.path, remoteFileInfo);
+    console.log(`File ${file.path} imported from Arweave.`);
+  }
+  async exportFilesToArweave(filePaths) {
+    for (const filePath of filePaths) {
+      const file = this.vault.getAbstractFileByPath(filePath);
+      if (file instanceof import_obsidian2.TFile) {
+        const { syncState, fileHash } = await this.checkFileSync(file);
+        if (syncState !== "synced") {
+          await this.exportFileToArweave(file, fileHash);
         }
       }
-      console.log(
-        `Fetching content for file: ${filePath} with txId: ${fileInfo.txId}`
-      );
-      const encryptedContent = await this.fetchEncryptedContent(fileInfo.txId);
-      if (!encryptedContent) {
-        console.error(`Failed to fetch content for file: ${filePath}`);
-        return;
-      }
-      console.log(`Decrypting content for file: ${filePath}`);
-      let decryptedContent;
-      try {
-        decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
-      } catch (decryptError) {
-        console.error(`Decryption error for file ${filePath}:`, decryptError);
-        throw new Error(
-          `Failed to decrypt file ${filePath}. The file might be corrupted or the encryption password might be incorrect.`
-        );
-      }
-      const folderPath = getFolderPath(filePath);
-      if (folderPath) {
-        await this.vault.adapter.mkdir(folderPath);
-      }
-      if (existingFile instanceof import_obsidian2.TFile) {
-        await this.vault.modify(existingFile, decryptedContent);
-        console.log(`Updated existing file: ${filePath}`);
-      } else {
-        await this.vault.create(filePath, decryptedContent);
-        console.log(`Created new file: ${filePath}`);
-      }
-    } catch (error) {
-      console.error(`Error importing file ${filePath}:`, error);
-      throw error;
     }
+  }
+  async importFilesFromArweave(filePaths) {
+    for (const filePath of filePaths) {
+      const file = this.vault.getAbstractFileByPath(filePath);
+      if (file instanceof import_obsidian2.TFile) {
+        const { syncState, localNewerVersion } = await this.checkFileSync(file);
+        if (syncState !== "synced" && !localNewerVersion) {
+          await this.importFileFromArweave(file);
+        }
+      }
+    }
+  }
+  async checkFileSync(file) {
+    const currentFileHash = await this.getFileHash(file);
+    const remoteFileInfo = this.remoteUploadConfig[file.path];
+    let syncState;
+    let localNewerVersion = false;
+    if (!remoteFileInfo) {
+      syncState = "new-file";
+      localNewerVersion = true;
+    } else if (currentFileHash !== remoteFileInfo.fileHash) {
+      syncState = "updated-file";
+      localNewerVersion = file.stat.mtime > remoteFileInfo.timestamp;
+    } else {
+      syncState = "synced";
+    }
+    return { syncState, localNewerVersion, fileHash: currentFileHash };
+  }
+  async getFileHash(file) {
+    const content = await this.plugin.app.vault.read(file);
+    return import_crypto_js2.default.SHA256(content).toString();
   }
   async fetchEncryptedContent(txId, maxRetries = 3) {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -27033,20 +26951,74 @@ var VaultImportManager = class {
           error
         );
         if (attempt === maxRetries - 1) {
-          console.error(
-            `All attempts to fetch content for txId ${txId} failed.`
+          throw new Error(
+            `Failed to fetch content for txId ${txId} after ${maxRetries} attempts.`
           );
-          return null;
         }
         await new Promise(
           (resolve) => setTimeout(resolve, 1e3 * (attempt + 1))
         );
       }
     }
-    return null;
+    throw new Error("Unexpected error in fetchEncryptedContent");
   }
-  async getFileHash(content) {
-    return import_crypto_js2.default.SHA256(content).toString();
+  async fetchPreviousVersion(filePath, n) {
+    const query = `
+      query($id: ID!) {
+        transaction(id: $id) {
+          id
+          tags {
+            name
+            value
+          }
+          block {
+            height
+            timestamp
+          }
+        }
+      }
+    `;
+    try {
+      let currentTxId = this.getCurrentTransactionId(filePath);
+      if (!currentTxId) {
+        console.error(`No transaction ID found for file: ${filePath}`);
+        return null;
+      }
+      for (let i = 0; i < n; i++) {
+        if (!currentTxId) {
+          return null;
+        }
+        const variables = { id: currentTxId };
+        const results2 = await this.argql.run(query, variables);
+        const transaction = results2.data.transaction;
+        if (!transaction) {
+          return null;
+        }
+        const previousVersionTag = transaction.tags.find(
+          (tag) => tag.name === "Previous-Version"
+        );
+        currentTxId = previousVersionTag ? previousVersionTag.value : null;
+        if (i === n - 1) {
+          const data = await this.plugin.getArweave().transactions.getData(transaction.id, {
+            decode: true,
+            string: true
+          });
+          const content = typeof data === "string" ? data : new TextDecoder().decode(data);
+          return {
+            content: decrypt(content, this.encryptionPassword),
+            timestamp: transaction.block.timestamp
+          };
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error("Error fetching previous version:", error);
+      return null;
+    }
+  }
+  getCurrentTransactionId(filePath) {
+    const fileInfo = this.localUploadConfig[filePath];
+    return fileInfo ? fileInfo.txId : null;
   }
 };
 
@@ -27125,7 +27097,7 @@ var WalletConnectModal = class extends import_obsidian3.Modal {
 };
 
 // src/main.ts
-var import_arweave5 = __toESM(require_web());
+var import_arweave4 = __toESM(require_web());
 
 // src/settings/settings.ts
 var import_obsidian4 = require("obsidian");
@@ -27146,6 +27118,19 @@ var ArweaveSyncSettingTab = class extends import_obsidian4.PluginSettingTab {
     );
   }
 };
+
+// src/utils/helpers.ts
+function debounce(func, wait) {
+  let timeout = null;
+  return function(...args) {
+    const later = () => {
+      timeout = null;
+      func(...args);
+    };
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
 
 // src/components/SyncSidebar.ts
 var import_obsidian5 = require("obsidian");
@@ -27197,7 +27182,7 @@ var SyncSidebar = class extends import_obsidian5.ItemView {
       cls: "tab-container"
     });
     const tabs = ["export", "import"];
-    tabs.forEach((tab, index) => {
+    tabs.forEach((tab) => {
       const tabEl = tabContainer.createEl("div", {
         cls: `tab ${this.currentTab === tab ? "active" : ""}`,
         text: `${tab.charAt(0).toUpperCase() + tab.slice(1)} Files`
@@ -27229,8 +27214,8 @@ var SyncSidebar = class extends import_obsidian5.ItemView {
     });
   }
   async initializeFiles() {
-    this.files.export = this.buildFileTree(await this.getModifiedOrNewFiles());
-    this.files.import = await this.getNewOrModifiedRemoteFiles();
+    this.files.export = await this.getLocalFilesForExport();
+    this.files.import = await this.getRemoteFilesForImport();
     this.filesToSync = { export: [], import: [] };
   }
   async renderContent() {
@@ -27384,7 +27369,7 @@ var SyncSidebar = class extends import_obsidian5.ItemView {
     }
   }
   async renderFileNode(node, contentEl, isSource) {
-    const fileTitleEl = contentEl.createEl("div", {
+    contentEl.createEl("div", {
       cls: "tree-item-inner nav-file-title-content",
       text: this.displayFileName(node.name)
     });
@@ -27405,6 +27390,16 @@ var SyncSidebar = class extends import_obsidian5.ItemView {
         text: "Newer local version"
       });
     }
+    if (node.localOlderVersion) {
+      contentEl.addClass("has-local-older-version");
+      const indicatorContainer = contentEl.createEl("div", {
+        cls: "tree-item nav-file local-older-version-container"
+      });
+      indicatorContainer.createEl("div", {
+        cls: "tree-item-self local-older-version",
+        text: "Older local version"
+      });
+    }
   }
   async setFileNodeAttributes(contentEl, node) {
     if (node.fileInfo) {
@@ -27419,8 +27414,8 @@ Version: ${node.fileInfo.versionNumber}`
         node.path
       );
       if (file instanceof import_obsidian5.TFile) {
-        const syncState = await this.plugin.getFileSyncState(file);
-        contentEl.addClass(syncState);
+        const syncState = await this.plugin.vaultSyncManager.checkFileSync(file);
+        contentEl.addClass(syncState.syncState);
       }
     }
   }
@@ -27519,11 +27514,15 @@ Version: ${node.fileInfo.versionNumber}`
     return tree;
   }
   async submitChanges() {
+    if (!this.plugin.vaultSyncManager.isWalletConnected()) {
+      new import_obsidian5.Notice("Please connect a wallet before syncing.");
+      return;
+    }
     const filesToSync = this.flattenFileTree(this.filesToSync[this.currentTab]);
     if (this.currentTab === "export") {
-      await this.plugin.exportFilesToArweave(filesToSync);
+      await this.plugin.vaultSyncManager.exportFilesToArweave(filesToSync);
     } else {
-      await this.plugin.importFilesFromArweave(filesToSync);
+      await this.plugin.vaultSyncManager.importFilesFromArweave(filesToSync);
     }
     await this.initializeFiles();
     await this.renderContent();
@@ -27533,16 +27532,30 @@ Version: ${node.fileInfo.versionNumber}`
       return node.isFolder ? files.concat(this.flattenFileTree(node.children)) : files.concat(node.path);
     }, []);
   }
-  async getModifiedOrNewFiles() {
+  async getLocalFilesForExport() {
+    const newOrModifiedFiles = [];
     const files = this.plugin.app.vault.getFiles();
-    return (await Promise.all(
-      files.map(async (file) => {
-        const syncState = await this.plugin.getFileSyncState(file);
-        return syncState === "new-file" || syncState === "updated-file" ? file : null;
-      })
-    )).filter((file) => file !== null);
+    for (const file of files) {
+      const { syncState, localNewerVersion, fileHash } = await this.plugin.vaultSyncManager.checkFileSync(file);
+      if (syncState !== "synced" && localNewerVersion) {
+        const localFileInfo = this.plugin.settings.localUploadConfig[file.path];
+        const fileNode = this.createFileNode(file.path, {
+          txId: (localFileInfo == null ? void 0 : localFileInfo.txId) || "",
+          timestamp: file.stat.mtime,
+          fileHash,
+          encrypted: false,
+          filePath: file.path,
+          previousVersionTxId: (localFileInfo == null ? void 0 : localFileInfo.previousVersionTxId) || null,
+          versionNumber: ((localFileInfo == null ? void 0 : localFileInfo.versionNumber) || 0) + 1
+        });
+        fileNode.syncState = syncState;
+        fileNode.localNewerVersion = localNewerVersion;
+        newOrModifiedFiles.push(fileNode);
+      }
+    }
+    return this.buildFileTree(newOrModifiedFiles);
   }
-  async getNewOrModifiedRemoteFiles() {
+  async getRemoteFilesForImport() {
     const remoteConfig = this.plugin.settings.remoteUploadConfig;
     const localConfig = this.plugin.settings.localUploadConfig;
     const newOrModifiedFiles = [];
@@ -27550,11 +27563,11 @@ Version: ${node.fileInfo.versionNumber}`
       const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
       const localFileInfo = localConfig[filePath];
       if (file instanceof import_obsidian5.TFile) {
-        const localHash = await this.plugin.getFileHash(file);
-        if (localHash !== remoteFileInfo.fileHash) {
+        const { fileHash } = await this.plugin.vaultSyncManager.checkFileSync(file);
+        if (fileHash !== remoteFileInfo.fileHash) {
           const fileNode = this.createFileNode(filePath, remoteFileInfo);
-          fileNode.localNewerVersion = localFileInfo && localFileInfo.timestamp > remoteFileInfo.timestamp;
-          if (!fileNode.localNewerVersion) {
+          fileNode.localOlderVersion = remoteFileInfo.timestamp > file.stat.mtime;
+          if (fileNode.localOlderVersion) {
             newOrModifiedFiles.push(fileNode);
           }
         }
@@ -27622,7 +27635,7 @@ Version: ${node.fileInfo.versionNumber}`
     console.log("Updating file status:", file.path);
     const folderState = this.saveFolderState();
     try {
-      const syncState = await this.plugin.getFileSyncState(file);
+      const { syncState } = await this.plugin.vaultSyncManager.checkFileSync(file);
       if (syncState === "synced") {
         this.removeFileFromSidebar(file.path);
       } else {
@@ -27837,6 +27850,7 @@ var ArweaveSync = class extends import_obsidian6.Plugin {
     this.walletAddress = null;
     this.modifiedFiles = /* @__PURE__ */ new Set();
     this.activeSyncSidebar = null;
+    this.isConnecting = false;
   }
   async onload() {
     await this.loadSettings();
@@ -27845,7 +27859,7 @@ var ArweaveSync = class extends import_obsidian6.Plugin {
     this.setupUI();
     this.addCommands();
     this.registerView(SYNC_SIDEBAR_VIEW, (leaf) => new SyncSidebar(leaf, this));
-    this.addRibbonIcon("wallet", "Arweave Sync", (evt) => {
+    this.addRibbonIcon("wallet", "Arweave Sync", () => {
       if (this.walletAddress) {
         this.activateSyncSidebar();
       } else {
@@ -27854,19 +27868,19 @@ var ArweaveSync = class extends import_obsidian6.Plugin {
     });
   }
   initializeManagers() {
-    this.arweaveUploader = new ArweaveUploader();
+    initializeWalletManager();
     this.aoManager = new AOManager();
-    this.arweave = import_arweave5.default.init({
+    this.arweave = import_arweave4.default.init({
       host: "arweave.net",
       port: 443,
       protocol: "https"
     });
-    this.vaultImportManager = new VaultImportManager(
-      this.app.vault,
+    this.vaultSyncManager = new VaultSyncManager(
+      this,
       this.settings.encryptionPassword,
-      this.settings.remoteUploadConfig
+      this.settings.remoteUploadConfig,
+      this.settings.localUploadConfig
     );
-    initializeWalletManager();
   }
   setupEventListeners() {
     if (walletManager.isWalletLoaded()) {
@@ -28072,20 +28086,26 @@ var ArweaveSync = class extends import_obsidian6.Plugin {
     rightIconsContainer.appendChild(syncButton);
   }
   async handleWalletConnection(walletJson) {
-    const wallet = JSON.parse(walletJson);
-    await this.aoManager.initialize(wallet);
-    this.walletAddress = await this.arweave.wallets.jwkToAddress(wallet);
-    this.arweaveUploader.setWallet(wallet);
-    this.updateStatusBar();
+    if (this.isConnecting) {
+      console.log("Wallet connection already in progress");
+      return;
+    }
+    this.isConnecting = true;
     try {
+      await walletManager.connect(new File([walletJson], "wallet.json"));
+      this.walletAddress = walletManager.getAddress();
+      await this.aoManager.initialize(walletManager.getJWK());
+      this.updateStatusBar();
       await this.updateConfigsFromAO();
-      this.checkForNewFiles();
+      await this.checkForNewFiles();
     } catch (error) {
       console.error("Error during wallet connection:", error);
       new import_obsidian6.Notice(
         `Error: ${error.message}
 Check the console for more details.`
       );
+    } finally {
+      this.isConnecting = false;
     }
   }
   async updateConfigsFromAO() {
@@ -28094,10 +28114,11 @@ Check the console for more details.`
       this.settings.remoteUploadConfig = aoUploadConfig;
       this.mergeUploadConfigs();
     }
-    this.vaultImportManager = new VaultImportManager(
-      this.app.vault,
+    this.vaultSyncManager = new VaultSyncManager(
+      this,
       this.settings.encryptionPassword,
-      this.settings.remoteUploadConfig
+      this.settings.remoteUploadConfig,
+      this.settings.localUploadConfig
     );
   }
   async checkForNewFiles() {
@@ -28126,10 +28147,24 @@ Check the console for more details.`
   }
   async handleWalletDisconnection() {
     this.walletAddress = null;
-    this.arweaveUploader.setWallet(null);
+    this.vaultSyncManager.setWallet(null);
     await this.aoManager.initialize(null);
     this.updateStatusBar();
     new import_obsidian6.Notice("Wallet disconnected successfully");
+  }
+  updateLocalConfig(filePath, fileInfo) {
+    this.settings.localUploadConfig[filePath] = fileInfo;
+    this.saveSettings();
+  }
+  updateRemoteConfig(filePath, fileInfo) {
+    this.settings.remoteUploadConfig[filePath] = fileInfo;
+    this.saveSettings();
+    this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
+  }
+  syncConfigs() {
+    this.mergeUploadConfigs();
+    this.saveSettings();
+    this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
   }
   mergeUploadConfigs() {
     for (const [filePath, fileInfo] of Object.entries(
@@ -28143,7 +28178,7 @@ Check the console for more details.`
   }
   async importFilesFromArweave(selectedFiles) {
     try {
-      await this.vaultImportManager.importFilesFromArweave(selectedFiles);
+      await this.vaultSyncManager.importFilesFromArweave(selectedFiles);
       new import_obsidian6.Notice("File import completed!");
     } catch (error) {
       console.error("Error during file import:", error);
@@ -28182,37 +28217,9 @@ Check the console for more details.`
       syncButton.addClass("uploading");
     }
     try {
-      const { content, fileHash } = await this.prepareFileContent(file);
-      const currentFileInfo = this.settings.localUploadConfig[file.path];
-      const previousVersionTxId = currentFileInfo ? currentFileInfo.txId : null;
-      const versionNumber = currentFileInfo ? currentFileInfo.versionNumber + 1 : 1;
-      const txId = await this.arweaveUploader.uploadFile(
-        file.path,
-        content,
-        fileHash,
-        previousVersionTxId,
-        versionNumber
-      );
-      const newFileInfo = {
-        txId,
-        timestamp: Date.now(),
-        fileHash,
-        encrypted: true,
-        filePath: file.path,
-        previousVersionTxId,
-        versionNumber
-      };
-      this.settings.localUploadConfig[file.path] = newFileInfo;
-      this.settings.remoteUploadConfig[file.path] = newFileInfo;
-      await this.saveSettings();
-      await this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
-      console.log(
-        "Updated remoteUploadConfig:",
-        this.settings.remoteUploadConfig
-      );
-      this.updateSyncSidebarFile(file);
+      await this.vaultSyncManager.syncFile(file);
       this.updateUIAfterSync(file);
-      new import_obsidian6.Notice(`File ${file.name} synced to Arweave (encrypted)`);
+      new import_obsidian6.Notice(`File ${file.name} synced with Arweave`);
     } catch (error) {
       this.handleSyncError(file, error);
     } finally {
@@ -28226,12 +28233,6 @@ Check the console for more details.`
     return view == null ? void 0 : view.containerEl.querySelector(
       ".arweave-sync-button"
     );
-  }
-  async prepareFileContent(file) {
-    const content = await this.app.vault.read(file);
-    const fileHash = await this.getFileHash(file);
-    const encryptedContent = encrypt(content, this.settings.encryptionPassword);
-    return { content: encryptedContent, fileHash };
   }
   async refreshRemoteConfig() {
     try {
@@ -28261,18 +28262,17 @@ Check the console for more details.`
     this.modifiedFiles.add(file.path);
   }
   async handleFileModify(file) {
-    console.log("File updated:", file.path);
-    const newHash = await this.getFileHash(file);
-    const currentConfig = this.settings.localUploadConfig[file.path];
-    if (!currentConfig || currentConfig.fileHash !== newHash) {
+    const { syncState, fileHash } = await this.vaultSyncManager.checkFileSync(file);
+    if (syncState !== "synced") {
+      const currentConfig = this.settings.localUploadConfig[file.path];
       this.settings.localUploadConfig[file.path] = {
         txId: (currentConfig == null ? void 0 : currentConfig.txId) || "",
         timestamp: Date.now(),
-        fileHash: newHash,
+        fileHash,
         encrypted: true,
         filePath: file.path,
         previousVersionTxId: (currentConfig == null ? void 0 : currentConfig.txId) || null,
-        versionNumber: (currentConfig == null ? void 0 : currentConfig.versionNumber) || 0
+        versionNumber: ((currentConfig == null ? void 0 : currentConfig.versionNumber) || 0) + 1
       };
       this.modifiedFiles.add(file.path);
       await this.saveSettings();
@@ -28342,33 +28342,7 @@ Check the console for more details.`
       const file = this.app.vault.getAbstractFileByPath(filePath);
       if (file instanceof import_obsidian6.TFile) {
         try {
-          const content = await this.app.vault.read(file);
-          const encryptedContent = encrypt(
-            content,
-            this.settings.encryptionPassword
-          );
-          const fileHash = await this.getFileHash(file);
-          const currentFileInfo = this.settings.localUploadConfig[filePath];
-          const previousVersionTxId = currentFileInfo ? currentFileInfo.txId : null;
-          const versionNumber = currentFileInfo ? currentFileInfo.versionNumber + 1 : 1;
-          const txId = await this.arweaveUploader.uploadFile(
-            filePath,
-            encryptedContent,
-            fileHash,
-            previousVersionTxId,
-            versionNumber
-          );
-          const fileInfo = {
-            txId,
-            timestamp: Date.now(),
-            fileHash,
-            encrypted: true,
-            filePath: file.path,
-            previousVersionTxId,
-            versionNumber
-          };
-          this.settings.localUploadConfig[filePath] = fileInfo;
-          this.settings.remoteUploadConfig[filePath] = fileInfo;
+          await this.vaultSyncManager.syncFile(file);
           exportedFiles++;
           new import_obsidian6.Notice(`Exported ${exportedFiles}/${totalFiles} files`);
         } catch (error) {
@@ -28396,8 +28370,8 @@ Check the console for more details.`
   }
   async getFileHash(file) {
     const content = await this.app.vault.read(file);
-    const buffer = await this.arweave.utils.stringToBuffer(content);
-    return await this.arweave.utils.bufferTob64Url(
+    const buffer = this.arweave.utils.stringToBuffer(content);
+    return this.arweave.utils.bufferTob64Url(
       await this.arweave.crypto.hash(buffer)
     );
   }
@@ -28408,10 +28382,9 @@ Check the console for more details.`
     return decrypt(encryptedContent, this.settings.encryptionPassword);
   }
   async fetchPreviousVersion(filePath, n, uploadConfig) {
-    const result2 = await this.arweaveUploader.fetchPreviousVersion(
+    const result2 = await this.vaultSyncManager.fetchPreviousVersion(
       filePath,
-      n,
-      uploadConfig
+      n
     );
     if (result2) {
       return {
@@ -28435,9 +28408,7 @@ Check the console for more details.`
         new import_obsidian6.Notice(`No previous version found (requested: ${n} versions back)`);
         return;
       }
-      const decryptedContent = await this.decryptFileContent(
-        previousVersionInfo.content
-      );
+      const decryptedContent = previousVersionInfo.content;
       const formattedDate = new Date(
         previousVersionInfo.timestamp * 1e3
       ).toLocaleString();
@@ -28469,23 +28440,12 @@ Check the console for more details.`
     return `${safeName} (${versionNumber} versions ago).md`;
   }
   async isFileNeedingSync(file) {
-    const newHash = await this.getFileHash(file);
-    const currentConfig = this.settings.localUploadConfig[file.path];
-    return !currentConfig || currentConfig.fileHash !== newHash;
+    const { syncState } = await this.vaultSyncManager.checkFileSync(file);
+    return syncState !== "synced";
   }
   async getFileSyncState(file) {
-    const currentFileHash = await this.getFileHash(file);
-    const remoteConfig = this.settings.remoteUploadConfig[file.path];
-    if (!remoteConfig) {
-      console.log(`${file.path} is a new file`);
-      return "new-file";
-    } else if (remoteConfig.fileHash !== currentFileHash) {
-      console.log(`${file.path} is an updated file`);
-      return "updated-file";
-    } else {
-      console.log(`${file.path} is synced`);
-      return "synced";
-    }
+    const { syncState } = await this.vaultSyncManager.checkFileSync(file);
+    return syncState;
   }
   async activateSyncSidebar() {
     const { workspace } = this.app;
