@@ -41,7 +41,7 @@ export class SyncSidebar extends ItemView {
   }
 
   getIcon(): string {
-    return "sync";
+    return "wallet";
   }
 
   async onOpen() {

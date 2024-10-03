@@ -27,9 +27,9 @@ import { ArweaveSyncSettingTab } from "./settings/settings";
 import { encrypt, decrypt } from "./utils/encryption";
 import { debounce } from "./utils/helpers";
 import { SyncSidebar, SYNC_SIDEBAR_VIEW } from "./components/SyncSidebar";
-import { VaultSyncModal } from "./components/VaultSyncModal";
-import { PreviousVersionModal } from "./components/PreviousVersionModal";
 import "./styles.css";
+
+const WALLET_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"></path><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"></path><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4h-4z"></path></svg>`;
 
 export default class ArweaveSync extends Plugin {
   settings: ArweaveSyncSettings;
@@ -52,7 +52,7 @@ export default class ArweaveSync extends Plugin {
 
     this.registerView(SYNC_SIDEBAR_VIEW, (leaf) => new SyncSidebar(leaf, this));
 
-    this.addRibbonIcon("sync", "Arweave Sync", () =>
+    this.addRibbonIcon("wallet", "Arweave Sync", () =>
       this.activateSyncSidebar(),
     );
 
@@ -137,7 +137,7 @@ export default class ArweaveSync extends Plugin {
   private setupUI() {
     this.addRibbonIcon(
       "wallet",
-      "Connect Arweave Wallet",
+      "Arweave Sync",
       this.handleRibbonIconClick.bind(this),
     );
     this.createStatusBarItem();
@@ -146,7 +146,22 @@ export default class ArweaveSync extends Plugin {
   }
 
   private handleRibbonIconClick() {
-    this.walletAddress ? this.showSyncModal() : this.showWalletConnectModal();
+    if (this.walletAddress) {
+      this.toggleSyncSidebar();
+    } else {
+      this.showWalletConnectModal();
+    }
+  }
+
+  private toggleSyncSidebar() {
+    const { workspace } = this.app;
+    let leaf = workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
+
+    if (leaf) {
+      workspace.detachLeavesOfType(SYNC_SIDEBAR_VIEW);
+    } else {
+      this.activateSyncSidebar();
+    }
   }
 
   private setupSyncButton() {
@@ -170,32 +185,7 @@ export default class ArweaveSync extends Plugin {
     );
   }
 
-  private addCommands() {
-    this.addCommand({
-      id: "open-sync-modal",
-      name: "Open Vault Sync Modal",
-      callback: () => this.showSyncModal(),
-    });
-
-    this.addCommand({
-      id: "open-previous-version",
-      name: "Open Previous Version",
-      checkCallback: (checking: boolean) => {
-        const activeFile = this.app.workspace.getActiveFile();
-        if (activeFile && activeFile instanceof TFile) {
-          if (!checking) {
-            new PreviousVersionModal(this.app, this, activeFile).open();
-          }
-          return true;
-        }
-        return false;
-      },
-    });
-  }
-
-  private showSyncModal() {
-    new VaultSyncModal(this.app, this).open();
-  }
+  private addCommands() {}
 
   private showWalletConnectModal() {
     new WalletConnectModal(this.app, this).open();
@@ -393,7 +383,6 @@ export default class ArweaveSync extends Plugin {
     const newFiles = this.getNewFilesFromRemote();
     if (newFiles.length > 0) {
       new Notice("Wallet connected. New files available for import.");
-      this.showSyncModal();
     } else {
       new Notice("Wallet connected. No new files to import.");
     }
@@ -852,7 +841,7 @@ export default class ArweaveSync extends Plugin {
     let leaf: any = workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
 
     if (!leaf) {
-      leaf = workspace.getRightLeaf(false);
+      leaf = workspace.getLeftLeaf(false);
       await leaf.setViewState({ type: SYNC_SIDEBAR_VIEW, active: true });
     }
 
