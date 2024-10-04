@@ -17,6 +17,7 @@ import { ArweaveSyncSettingTab } from "./settings/settings";
 import { encrypt, decrypt } from "./utils/encryption";
 import { debounce } from "./utils/helpers";
 import { SyncSidebar, SYNC_SIDEBAR_VIEW } from "./components/SyncSidebar";
+import { testEncryptionWithSpecificFile } from "./utils/testEncryption";
 import "buffer";
 import "process";
 import "./styles.css";
@@ -134,6 +135,17 @@ export default class ArweaveSync extends Plugin {
   }
 
   private addCommands() {
+    this.addCommand({
+      id: "run-specific-file-encryption-test",
+      name: "Run Specific File Encryption Test",
+      callback: async () => {
+        const filePath = "Assets/testEncrypt.md";
+        await testEncryptionWithSpecificFile(this, filePath);
+        new Notice(
+          "Specific file encryption test completed. Check console for results.",
+        );
+      },
+    });
     this.addCommand({
       id: "open-arweave-sync-sidebar",
       name: "Open Arweave Sync Sidebar",
