@@ -113,7 +113,9 @@ export class ArPublishManager {
 
     // Update the HTML structure
     const baseDir = this.getBaseDir(currentFile.path);
-    const isIndex = currentFile.name === "index";
+    const isIndex = currentFile.name === "index.md";
+    console.log(currentFile.name);
+    console.log(isIndex);
     const pageTitle = isIndex ? "Home" : currentFile.basename;
 
     const fullHtml = `
@@ -143,7 +145,7 @@ export class ArPublishManager {
               </aside>
               <main class="content">
                   <article class="markdown-content">
-                      <h1 class="doc-title">${currentFile.basename}</h1>
+                      <h1 class="doc-title">${pageTitle}</h1>
                       ${htmlContent}
                   </article>
               </main>
@@ -198,7 +200,6 @@ export class ArPublishManager {
     const depth = Math.max(0, path.split("/").length - 2);
     return depth === 0 ? "./" : "../".repeat(depth);
   }
-
 
   private getBaseDir(path: string): string {
     const parts = path.split("/");
