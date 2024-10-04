@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf, TFile, Notice, request } from "obsidian";
 import ArweaveSync from "../main";
-import { FileUploadInfo } from "../types";
+import { FileUploadInfo, UploadConfig } from "../types";
 
 interface FileNode {
   name: string;
@@ -331,7 +331,17 @@ export class SyncSidebar extends ItemView {
     contentEl: HTMLElement,
     isSource: boolean,
   ) {
-    contentEl.createEl("div", {
+    contentEl.empty(); // Clear existing content
+
+    // Add base classes
+    contentEl.addClass("tree-item-self", "is-clickable", "nav-file-title");
+
+    // Add sync state class
+    if (node.syncState) {
+      contentEl.addClass(node.syncState);
+    }
+
+    const innerEl = contentEl.createEl("div", {
       cls: "tree-item-inner nav-file-title-content",
       text: this.displayFileName(node.name),
     });
@@ -489,6 +499,7 @@ export class SyncSidebar extends ItemView {
           children: [],
           expanded: true,
           fileInfo: isLastPart ? file.fileInfo : undefined,
+          syncState: file.syncState,
         };
         currentLevel.push(newNode);
         existingNode = newNode;
@@ -500,6 +511,9 @@ export class SyncSidebar extends ItemView {
           existingNode.children = [];
         }
         currentLevel = existingNode.children;
+      } else {
+        // Update existing node with new file info
+        Object.assign(existingNode, file);
       }
     }
 
@@ -623,39 +637,61 @@ export class SyncSidebar extends ItemView {
   }
 
   async getRemoteFilesForImport(): Promise<FileNode[]> {
-    const remoteConfig = this.plugin.settings.remoteUploadConfig;
-    const localConfig = this.plugin.settings.localUploadConfig;
+    const remoteConfig: UploadConfig = this.plugin.settings.remoteUploadConfig;
+    const localConfig: UploadConfig = this.plugin.settings.localUploadConfig;
     const newOrModifiedFiles: FileNode[] = [];
 
     for (const [filePath, remoteFileInfo] of Object.entries(remoteConfig)) {
       const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
       const localFileInfo = localConfig[filePath];
 
-      if (!file || !localFileInfo) {
-        // This is a new file that doesn't exist locally
-        newOrModifiedFiles.push(this.createFileNode(filePath, remoteFileInfo));
+      let syncState: string;
+      if (!file) {
+        syncState = "new-file";
       } else if (file instanceof TFile) {
-        const { syncState, localNewerVersion } =
-          await this.plugin.vaultSyncManager.checkFileSync(file);
+        syncState = await this.plugin.getFileSyncState(file);
+      }
 
-        if (syncState !== "synced" && !localNewerVersion) {
-          const fileNode = this.createFileNode(filePath, remoteFileInfo);
-          fileNode.localOlderVersion = true;
-          newOrModifiedFiles.push(fileNode);
-        }
+      if (syncState && syncState !== "synced") {
+        const fileNode = this.createFileNode(
+          filePath,
+          remoteFileInfo,
+          syncState,
+        );
+        fileNode.localOlderVersion = syncState === "updated-file";
+
+        newOrModifiedFiles.push(fileNode);
+      } else {
       }
     }
 
-    return this.buildFileTree(newOrModifiedFiles);
+    const fileTree = this.buildFileTree(newOrModifiedFiles);
+
+    return fileTree;
   }
 
-  private buildFileTree(files: TFile[] | FileNode[]): FileNode[] {
+  private createFileNode(
+    filePath: string,
+    fileInfo: FileUploadInfo,
+    syncState: string,
+  ): FileNode {
+    return {
+      name: filePath.split("/").pop() || "",
+      path: filePath,
+      fileInfo: fileInfo,
+      isFolder: false,
+      children: [],
+      expanded: false,
+      syncState: syncState,
+    };
+  }
+
+  private buildFileTree(files: FileNode[]): FileNode[] {
     const root: FileNode[] = [];
     const pathMap: Record<string, FileNode> = {};
 
-    const processFile = (file: TFile | FileNode) => {
-      const path = file instanceof TFile ? file.path : file.path;
-      const parts = path.split("/");
+    files.forEach((file) => {
+      const parts = file.path.split("/");
       let currentPath = "";
 
       parts.forEach((part, index) => {
@@ -667,6 +703,7 @@ export class SyncSidebar extends ItemView {
             isFolder: index < parts.length - 1,
             children: [],
             expanded: false,
+            syncState: index === parts.length - 1 ? file.syncState : undefined,
           };
           pathMap[currentPath] = newNode;
 
@@ -679,39 +716,16 @@ export class SyncSidebar extends ItemView {
         }
       });
 
-      if (file instanceof TFile) {
-        const localConfig = this.plugin.settings.localUploadConfig[file.path];
-        pathMap[path].fileInfo = {
-          txId: localConfig?.txId || "",
-          timestamp: file.stat.mtime,
-          fileHash: "",
-          encrypted: false,
-          filePath: file.path,
-          previousVersionTxId: localConfig?.previousVersionTxId || null,
-          versionNumber: localConfig?.versionNumber || 1,
-        };
-      } else if (file.fileInfo) {
-        pathMap[path].fileInfo = file.fileInfo;
+      // Add file info to the leaf node
+      if (file.fileInfo) {
+        pathMap[file.path].fileInfo = file.fileInfo;
       }
-    };
+    });
 
-    files.forEach(processFile);
     return root;
   }
 
-  private createFileNode(filePath: string, fileInfo: FileUploadInfo): FileNode {
-    return {
-      name: filePath.split("/").pop() || "",
-      path: filePath,
-      fileInfo: fileInfo,
-      isFolder: false,
-      children: [],
-      expanded: false,
-    };
-  }
-
   async updateFileStatus(file: TFile) {
-    console.log("Updating file status:", file.path);
     const folderState = this.saveFolderState();
 
     try {
@@ -917,7 +931,6 @@ export class SyncSidebar extends ItemView {
 
       await this.updateTotalPrice();
     } else {
-      console.log(`Skipping folder: ${file.path}`);
     }
   }
 

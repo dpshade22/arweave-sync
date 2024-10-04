@@ -139,6 +139,12 @@ export default class ArweaveSync extends Plugin {
       name: "Connect Arweave Wallet",
       callback: () => this.showWalletConnectModal(),
     });
+
+    this.addCommand({
+      id: "force-refresh-sidebar-files",
+      name: "Force Refresh Sidebar Files",
+      callback: () => this.forceRefreshSidebarFiles(),
+    });
   }
 
   public getArweave() {
@@ -692,6 +698,11 @@ export default class ArweaveSync extends Plugin {
 
     this.updateActiveSyncButton();
     this.refreshSyncSidebar();
+  }
+
+  async forceRefreshSidebarFiles() {
+    this.refreshSyncSidebar();
+    new Notice("Sidebar files refreshed");
   }
 
   private updateActiveSyncButton() {
