@@ -150,9 +150,9 @@ export default class ArweaveSync extends Plugin {
         if (file instanceof TFolder) {
           menu.addItem((item) => {
             item
-              .setTitle("Generate HTML files")
-              .setIcon("file-text")
-              .onClick(() => this.generateHtmlForFolder(file));
+              .setTitle("Publish as Website to Arweave")
+              .setIcon("globe")
+              .onClick(() => this.publishToArweave(file));
           });
         }
       }),
@@ -876,17 +876,17 @@ export default class ArweaveSync extends Plugin {
     }
   }
 
-  private async generateHtmlForFolder(folder: TFolder) {
+  private async publishToArweave(folder: TFolder) {
     try {
-      await this.arPublishManager.publishFolder(folder);
-      new Notice(`HTML files generated for folder: ${folder.name}`);
+      await this.arPublishManager.publishWebsiteToArweave(folder);
+      new Notice(`Folder "${folder.name}" published to Arweave as a website.`);
     } catch (error) {
       console.error(
-        `Error generating HTML files for folder ${folder.name}:`,
+        `Error publishing folder ${folder.name} to Arweave:`,
         error,
       );
       new Notice(
-        `Failed to generate HTML files for folder: ${folder.name}. Error: ${error.message}`,
+        `Failed to publish ${folder.name} to Arweave. Error: ${error.message}`,
       );
     }
   }

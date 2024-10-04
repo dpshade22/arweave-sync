@@ -1,6 +1,15 @@
 import { App, TFolder, TFile, Notice, MarkdownRenderer } from "obsidian";
 import ArweaveSync from "../main";
-import { join, dirname } from "../utils/path";
+import { join, dirname, relative } from "../utils/path";
+import { walletManager } from "./walletManager";
+
+interface PathManifest {
+  fallback: { id: string };
+  index: { path: string };
+  manifest: string;
+  paths: { [key: string]: { id: string } };
+  version: string;
+}
 
 interface FileTree {
   [key: string]: FileTree | null;
@@ -8,15 +17,14 @@ interface FileTree {
 
 export class ArPublishManager {
   private app: App;
+  private plugin: ArweaveSync;
 
-  constructor(
-    app: App,
-    private plugin: ArweaveSync,
-  ) {
+  constructor(app: App, plugin: ArweaveSync) {
     this.app = app;
+    this.plugin = plugin;
   }
 
-  async publishFolder(folder: TFolder) {
+  async publishWebsiteToArweave(folder: TFolder) {
     const markdownFiles = this.getMarkdownFiles(folder);
     const indexFile = markdownFiles.find((file) => file.name === "index.md");
 
@@ -26,6 +34,13 @@ export class ArPublishManager {
     }
 
     const outputDir = await this.createOutputDirectory(folder.name);
+    const pathManifest: PathManifest = {
+      fallback: { id: "" },
+      index: { path: "index.html" },
+      manifest: "arweave/paths",
+      paths: {},
+      version: "0.2.0",
+    };
 
     for (const file of markdownFiles) {
       const content = await this.app.vault.read(file);
@@ -33,14 +48,87 @@ export class ArPublishManager {
         content,
         markdownFiles,
         file,
-        outputDir,
       );
-      await this.saveHtmlFile(outputDir, file.path, htmlContent);
+      const htmlFilePath = await this.saveHtmlFile(
+        outputDir,
+        file.path,
+        htmlContent,
+      );
+      const relativePath = this.getManifestRelativePath(folder.name, file.path);
+
+      // const txId = "Test";
+      const txId = await this.uploadToArweave(htmlContent, "text/html");
+      pathManifest.paths[relativePath] = { id: txId };
+
+      if (file === indexFile) {
+        pathManifest.index.path = relativePath;
+      }
     }
 
-    await this.createNotFoundPage(outputDir, markdownFiles);
+    // Create and upload 404 page
+    const notFoundContent = await this.createNotFoundPage(markdownFiles);
+    // const notFoundTxId = "test";
+    const notFoundTxId = await this.uploadToArweave(
+      notFoundContent,
+      "text/html",
+    );
+    pathManifest.fallback.id = notFoundTxId;
+    pathManifest.paths["404.html"] = { id: notFoundTxId };
 
-    new Notice(`Folder "${folder.name}" published to ${outputDir}`);
+    // Upload path manifest
+    // const manifestTxId = "test";
+
+    const manifestTxId = await this.uploadToArweave(
+      JSON.stringify(pathManifest),
+      "application/x.arweave-manifest+json",
+    );
+
+    const arweaveLink = `https://arweave.net/${manifestTxId}`;
+    console.log("Manifest uploaded:", arweaveLink);
+    navigator.clipboard
+      .writeText(arweaveLink)
+      .then(() => {
+        new Notice(`Website link copied to clipboard: ${arweaveLink}`);
+      })
+      .catch((err) => {
+        console.error("Failed to copy to clipboard:", err);
+        new Notice(`Website published to Arweave. Link: ${arweaveLink}`);
+      });
+  }
+
+  private getRelativePath(folderPath: string, filePath: string): string {
+    const relativePath = relative(folderPath, filePath);
+    return relativePath.replace(/\.md$/, ".html");
+  }
+
+  private async uploadToArweave(
+    content: string,
+    contentType: string,
+  ): Promise<string> {
+    const wallet = walletManager.getJWK();
+    if (!wallet) {
+      throw new Error("Wallet not connected");
+    }
+
+    const transaction = await this.plugin
+      .getArweave()
+      .createTransaction({ data: content }, wallet);
+
+    transaction.addTag("Content-Type", contentType);
+    transaction.addTag("App-Name", "ArweaveSync");
+
+    await this.plugin.getArweave().transactions.sign(transaction, wallet);
+    const response = await this.plugin
+      .getArweave()
+      .transactions.post(transaction);
+
+    if (response.status !== 200) {
+      throw new Error(
+        `Upload failed with status ${response.status}: ${response.statusText}`,
+      );
+    }
+
+    return transaction.id;
   }
 
   private getMarkdownFiles(folder: TFolder): TFile[] {
@@ -78,13 +166,13 @@ export class ArPublishManager {
     await this.app.vault.adapter.mkdir(dirname(fullPath));
     await this.app.vault.adapter.write(fullPath, htmlContent);
     console.log(`Saved HTML file: ${fullPath}`);
+    return fullPath;
   }
 
   private async convertMarkdownToHtml(
     markdown: string,
     allFiles: TFile[],
     currentFile: TFile,
-    outputDir: string,
   ): Promise<string> {
     // Convert wiki links to Markdown links
     markdown = this.convertWikiLinks(markdown, currentFile);
@@ -114,8 +202,6 @@ export class ArPublishManager {
     // Update the HTML structure
     const baseDir = this.getBaseDir(currentFile.path);
     const isIndex = currentFile.name === "index.md";
-    console.log(currentFile.name);
-    console.log(isIndex);
     const pageTitle = isIndex ? "Home" : currentFile.basename;
 
     const fullHtml = `
@@ -194,6 +280,23 @@ export class ArPublishManager {
         return `[${linkText}](${url})`;
       },
     );
+  }
+
+  private getManifestRelativePath(
+    folderName: string,
+    filePath: string,
+  ): string {
+    const parts = filePath.split("/");
+    const folderIndex = parts.indexOf(folderName);
+    if (folderIndex === -1) {
+      throw new Error(
+        `Folder name "${folderName}" not found in file path "${filePath}"`,
+      );
+    }
+    return parts
+      .slice(folderIndex + 1)
+      .join("/")
+      .replace(/\.md$/, ".html");
   }
 
   private getRelativePathToRoot(path: string): string {
@@ -485,7 +588,7 @@ export class ArPublishManager {
           folderTitles.forEach(folderTitle => {
             folderTitle.addEventListener('click', (e) => {
               e.preventDefault();
-              e.stopPropagation(); // Prevent event bubbling
+              e.stopPropagation();
               const folder = folderTitle.closest('.nav-folder');
               folder.classList.toggle('is-collapsed');
 
@@ -552,10 +655,7 @@ export class ArPublishManager {
       `;
   }
 
-  private createSidebar(
-    files: TFile[],
-    currentFile: TFile | { path: string },
-  ): string {
+  private createSidebar(files: TFile[], currentFile: TFile): string {
     const tree = this.buildFileTree(files);
     const baseDir = Object.keys(tree)[0];
 
@@ -574,9 +674,7 @@ export class ArPublishManager {
 
   private createHomeLink(currentFile: TFile): string {
     const isActive = currentFile.name === "index.md" ? "is-active" : "";
-    const depth = Math.max(0, currentFile.path.split("/").length - 2);
-    const homeHref =
-      depth === 0 ? "./index.html" : "../".repeat(depth) + "index.html";
+    const homeHref = this.getCorrectRelativePath(currentFile.path, "index.md");
 
     return `
       <div class="tree-item nav-file">
@@ -597,6 +695,7 @@ export class ArPublishManager {
 
   private buildFileTree(files: TFile[]): FileTree {
     const tree: FileTree = {};
+
     files.forEach((file) => {
       const parts = file.path.split("/");
       let current: FileTree = tree;
@@ -615,7 +714,7 @@ export class ArPublishManager {
   private renderFileTree(
     tree: FileTree,
     path: string = "",
-    currentFile: TFile | { path: string },
+    currentFile: TFile,
     level: number = 0,
   ): string {
     let html = "";
@@ -630,10 +729,7 @@ export class ArPublishManager {
 
       if (subtree === null) {
         // File
-        const relativePrefix = this.getRelativePathToRoot(currentFile.path);
-        const href =
-          relativePrefix +
-          fullPath.split("/").slice(1).join("/").replace(/\.md$/, ".html");
+        const href = this.getCorrectRelativePath(currentFile.path, fullPath);
 
         html += `
           <div class="tree-item nav-file">
@@ -667,19 +763,53 @@ export class ArPublishManager {
     return html;
   }
 
-  private async createNotFoundPage(outputDir: string, files: TFile[]) {
+  private getCorrectRelativePath(
+    currentPath: string,
+    targetPath: string,
+  ): string {
+    const currentParts = currentPath.split("/").slice(0, -1);
+    const targetParts = targetPath.split("/");
+
+    // Special case for index.md
+    if (targetPath === "index.md") {
+      const depth = Math.max(0, currentParts.length - 1); // Subtract 1 to account for the base directory
+      return depth === 0 ? "index.html" : "../".repeat(depth) + "index.html";
+    }
+
+    let commonPrefixLength = 0;
+    while (
+      commonPrefixLength < currentParts.length &&
+      commonPrefixLength < targetParts.length &&
+      currentParts[commonPrefixLength] === targetParts[commonPrefixLength]
+    ) {
+      commonPrefixLength++;
+    }
+
+    const backSteps = currentParts.length - commonPrefixLength;
+    const forwardSteps = targetParts.slice(commonPrefixLength);
+
+    let relativePath = "../".repeat(backSteps) + forwardSteps.join("/");
+
+    // Replace .md with .html for the final file
+    relativePath = relativePath.replace(/\.md$/, ".html");
+
+    console.log("Current path:", currentPath);
+    console.log("Target path:", targetPath);
+    console.log("Relative path:", relativePath);
+
+    return relativePath;
+  }
+
+  private async createNotFoundPage(files: TFile[]): Promise<string> {
     // Create a dummy file object to represent the 404 page
     const dummyFile = {
       path: "404.md",
       name: "404.md",
       basename: "404",
       extension: "md",
-    };
+    } as TFile;
 
     let sidebarContent = this.createSidebar(files, dummyFile);
-
-    // Adjust the sidebar links for the 404 page
-    sidebarContent = this.adjust404SidebarLinks(sidebarContent);
 
     const notFoundContent = `
       <!DOCTYPE html>
@@ -718,11 +848,7 @@ export class ArPublishManager {
       </html>
     `;
 
-    await this.app.vault.adapter.write(
-      join(outputDir, "404.html"),
-      notFoundContent,
-    );
-    console.log(`Created 404.html in ${outputDir}`);
+    return notFoundContent;
   }
 
   private adjust404SidebarLinks(sidebarContent: string): string {
@@ -732,8 +858,11 @@ export class ArPublishManager {
     doc.querySelectorAll("a").forEach((link) => {
       let href = link.getAttribute("href");
       if (href) {
-        // Ensure all links are relative to the root
-        href = href.replace(/^(\.\.\/)+/, "");
+        // Use the same logic as for index.html
+        href = this.getCorrectRelativePath(
+          "404.md",
+          href.replace(/\.html$/, ".md"),
+        );
         link.setAttribute("href", href);
       }
     });
