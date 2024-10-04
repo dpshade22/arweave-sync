@@ -1,4 +1,11 @@
-import { Plugin, TFile, MarkdownView, Notice, WorkspaceLeaf } from "obsidian";
+import {
+  Plugin,
+  TFile,
+  MarkdownView,
+  Notice,
+  WorkspaceLeaf,
+  TFolder,
+} from "obsidian";
 import { AOManager } from "./managers/aoManager";
 import {
   initializeWalletManager,
@@ -18,6 +25,8 @@ import { encrypt, decrypt } from "./utils/encryption";
 import { debounce } from "./utils/helpers";
 import { SyncSidebar, SYNC_SIDEBAR_VIEW } from "./components/SyncSidebar";
 import { testEncryptionWithSpecificFile } from "./utils/testEncryption";
+import { ArPublishManager } from "./managers/arPublishManager";
+
 import "buffer";
 import "process";
 import "./styles.css";
@@ -26,6 +35,7 @@ export default class ArweaveSync extends Plugin {
   settings: ArweaveSyncSettings;
   public vaultSyncManager: VaultSyncManager;
   private aoManager: AOManager;
+  private arPublishManager: ArPublishManager;
   private arweave: Arweave;
   private walletAddress: string | null = null;
   private statusBarItem: HTMLElement;
@@ -53,6 +63,7 @@ export default class ArweaveSync extends Plugin {
 
   private initializeManagers() {
     initializeWalletManager();
+    this.arPublishManager = new ArPublishManager(this.app, this);
 
     this.aoManager = new AOManager(this);
     this.arweave = Arweave.init({
@@ -99,12 +110,13 @@ export default class ArweaveSync extends Plugin {
     this.registerEvent(
       this.app.vault.on("delete", this.handleFileDelete.bind(this)),
     );
-    this.registerEvent(
-      this.app.workspace.on(
-        "editor-change",
-        this.handleEditorChange.bind(this),
-      ),
-    );
+
+    // this.registerEvent(
+    //   this.app.workspace.on(
+    //     "editor-change",
+    //     this.handleEditorChange.bind(this),
+    //   ),
+    // );
   }
 
   private setupUI() {
@@ -122,6 +134,27 @@ export default class ArweaveSync extends Plugin {
             .setIcon("sync")
             .onClick(() => this.syncFile(file));
         });
+      }),
+    );
+
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu, file) => {
+        if (file instanceof TFile) {
+          menu.addItem((item) => {
+            item
+              .setTitle("Sync with Arweave")
+              .setIcon("sync")
+              .onClick(() => this.syncFile(file));
+          });
+        }
+        if (file instanceof TFolder) {
+          menu.addItem((item) => {
+            item
+              .setTitle("Generate HTML files")
+              .setIcon("file-text")
+              .onClick(() => this.generateHtmlForFolder(file));
+          });
+        }
       }),
     );
 
@@ -683,34 +716,34 @@ export default class ArweaveSync extends Plugin {
     }
   }
 
-  private async handleEditorChange(
-    editor: Editor,
-    info: MarkdownView | MarkdownFileInfo,
-  ) {
-    if (info instanceof MarkdownView) {
-      const file = info.file;
-      if (file) {
-        const { syncState } = await this.vaultSyncManager.checkFileSync(file);
-        if (syncState === "remote-newer") {
-          const modal = new RemoteNewerVersionModal(this.app, file, this);
-          modal.open();
-          const choice = await modal.awaitChoice();
+  // private async handleEditorChange(
+  //   editor: Editor,
+  //   info: MarkdownView | MarkdownFileInfo,
+  // ) {
+  //   if (info instanceof MarkdownView) {
+  //     const file = info.file;
+  //     if (file) {
+  //       const { syncState } = await this.vaultSyncManager.checkFileSync(file);
+  //       if (syncState === "remote-newer") {
+  //         const modal = new RemoteNewerVersionModal(this.app, file, this);
+  //         modal.open();
+  //         const choice = await modal.awaitChoice();
 
-          if (choice === "import") {
-            await this.vaultSyncManager.importFileFromArweave(file.path);
-            new Notice(`Imported newer version of ${file.name} from Arweave`);
-            // Refresh the editor content
-            const newContent = await this.app.vault.read(file);
-            editor.setValue(newContent);
-          } else {
-            new Notice(
-              `Proceeding with local edit of ${file.name}. Remote changes will be overwritten on next sync.`,
-            );
-          }
-        }
-      }
-    }
-  }
+  //         if (choice === "import") {
+  //           await this.vaultSyncManager.importFileFromArweave(file.path);
+  //           new Notice(`Imported newer version of ${file.name} from Arweave`);
+  //           // Refresh the editor content
+  //           const newContent = await this.app.vault.read(file);
+  //           editor.setValue(newContent);
+  //         } else {
+  //           new Notice(
+  //             `Proceeding with local edit of ${file.name}. Remote changes will be overwritten on next sync.`,
+  //           );
+  //         }
+  //       }
+  //     }
+  //   }
+  // }
 
   private removeSyncSidebarFile(filePath: string) {
     this.updateView((view) => {
@@ -840,6 +873,21 @@ export default class ArweaveSync extends Plugin {
   async reinitializeAOManager() {
     if (this.aoManager) {
       await this.aoManager.initialize(walletManager.getJWK());
+    }
+  }
+
+  private async generateHtmlForFolder(folder: TFolder) {
+    try {
+      await this.arPublishManager.publishFolder(folder);
+      new Notice(`HTML files generated for folder: ${folder.name}`);
+    } catch (error) {
+      console.error(
+        `Error generating HTML files for folder ${folder.name}:`,
+        error,
+      );
+      new Notice(
+        `Failed to generate HTML files for folder: ${folder.name}. Error: ${error.message}`,
+      );
     }
   }
 

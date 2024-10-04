@@ -1,6 +1,6 @@
-import { App, TFolder, TFile, Notice } from "obsidian";
+import { App, TFolder, TFile, Notice, MarkdownRenderer } from "obsidian";
 import ArweaveSync from "../main";
-import { join, dirname, basename } from "../utils/path";
+import { join, dirname, relative, basename } from "../utils/path";
 
 interface FileTree {
   [key: string]: FileTree | null;
@@ -22,115 +22,79 @@ export class ArPublishManager {
 
     for (const file of markdownFiles) {
       const content = await this.app.vault.read(file);
-      const htmlContent = this.convertMarkdownToHtml(
+      const htmlContent = await this.convertMarkdownToHtml(
         content,
         markdownFiles,
         file,
+        outputDir,
       );
-
-      await this.saveHtmlFile(outputDir, file.name, htmlContent);
+      await this.saveHtmlFile(outputDir, file.path, htmlContent);
     }
+
+    await this.createIndexFile(outputDir, markdownFiles);
 
     new Notice(`Folder "${folder.name}" published to ${outputDir}`);
   }
 
   private getMarkdownFiles(folder: TFolder): TFile[] {
-    return folder.children.filter(
-      (file): file is TFile => file instanceof TFile && file.extension === "md",
-    );
+    const files: TFile[] = [];
+
+    const collectFiles = (item: TFolder | TFile) => {
+      if (item instanceof TFolder) {
+        item.children.forEach(collectFiles);
+      } else if (item instanceof TFile && item.extension === "md") {
+        files.push(item);
+      }
+    };
+
+    collectFiles(folder);
+    return files;
   }
 
   private async createOutputDirectory(folderName: string): Promise<string> {
     const basePath = this.app.vault.configDir;
     const outputDir = join(basePath, "arweave-publish", folderName);
-
     await this.app.vault.adapter.mkdir(outputDir);
-
     return outputDir;
   }
 
   private async saveHtmlFile(
     outputDir: string,
-    fileName: string,
+    filePath: string,
     htmlContent: string,
   ) {
-    const htmlFileName = fileName.replace(/\.md$/, ".html");
-    const filePath = join(outputDir, htmlFileName);
+    const baseDir = this.getBaseDir(filePath);
+    const relativePath = filePath.replace(new RegExp(`^${baseDir}`), ".");
+    const htmlFileName = relativePath.replace(/\.md$/, ".html");
+    const fullPath = join(outputDir, htmlFileName.slice(1)); // Remove the leading dot
 
-    await this.app.vault.adapter.mkdir(dirname(filePath));
-    await this.app.vault.adapter.write(filePath, htmlContent);
-    console.log(`Saved HTML file: ${filePath}`);
+    await this.app.vault.adapter.mkdir(dirname(fullPath));
+    await this.app.vault.adapter.write(fullPath, htmlContent);
+    console.log(`Saved HTML file: ${fullPath}`);
   }
 
-  private convertMarkdownToHtml(
+  private async convertMarkdownToHtml(
     markdown: string,
     allFiles: TFile[],
     currentFile: TFile,
-  ): string {
-    const lines = markdown.split("\n");
-    let html = "";
-    let blockStack: number[] = [];
-    let inCodeBlock = false;
+    outputDir: string,
+  ): Promise<string> {
+    // Create a temporary div element to render the markdown
+    const tempDiv = createDiv();
 
-    const processLine = (line: string): string => {
-      // Check for code blocks
-      if (line.trim().startsWith("```")) {
-        inCodeBlock = !inCodeBlock;
-        return inCodeBlock ? "<pre><code>" : "</code></pre>";
-      }
-      if (inCodeBlock) return this.escapeHtml(line);
+    // Convert wiki links to relative paths
+    markdown = this.convertWikiLinks(markdown, currentFile, outputDir);
 
-      // Process headings
-      if (line.startsWith("#")) {
-        const level = line.split(" ")[0].length;
-        const content = line.substring(level + 1).trim();
-        return `<h${level}>${this.processInlineMarkdown(content)}</h${level}>`;
-      }
+    // Use MarkdownRenderer.renderMarkdown to convert Markdown to HTML
+    await MarkdownRenderer.renderMarkdown(
+      markdown,
+      tempDiv,
+      currentFile.path,
+      this.plugin,
+    );
 
-      // Process list items and indentation
-      const listMatch = line.match(/^(\s*)([•\-*+]|\d+\.)\s(.+)/);
-      if (listMatch) {
-        const [, indent, bullet, content] = listMatch;
-        const indentLevel = indent.length / 2;
-
-        while (blockStack.length > indentLevel) {
-          html += `</div>`.repeat(
-            blockStack.pop()! - (blockStack[blockStack.length - 1] || 0),
-          );
-        }
-
-        if (blockStack.length < indentLevel) {
-          html += `<div class="block-children">`.repeat(
-            indentLevel - blockStack.length,
-          );
-          blockStack.push(indentLevel);
-        }
-
-        return `
-        <div class="block">
-          <div class="block-header">
-            <span class="block-bullet">${bullet}</span>
-            <span class="block-content">${this.processInlineMarkdown(content)}</span>
-          </div>
-        </div>
-      `;
-      }
-
-      // Close any open blocks
-      if (blockStack.length > 0 && line.trim() === "") {
-        const closeTags = `</div>`.repeat(blockStack.length);
-        blockStack = [];
-        return closeTags;
-      }
-
-      // Process regular paragraphs
-      return line.trim() ? `<p>${this.processInlineMarkdown(line)}</p>` : "";
-    };
-
-    html = lines.map(processLine).join("\n");
-
-    // Close any remaining open blocks
-    html += `</div>`.repeat(blockStack.length);
+    // Get the rendered HTML content
+    const htmlContent = tempDiv.innerHTML;
 
     // Wrap the content in a modern HTML structure with a sidebar
     const sidebarHtml = this.createSidebar(allFiles, currentFile);
@@ -167,7 +131,7 @@ export class ArPublishManager {
                     <div class="metadata">
                         Created: ${this.formatDate(currentFile.stat.ctime)} &nbsp;&nbsp; Modified: ${this.formatDate(currentFile.stat.mtime)}
                     </div>
-                    ${html}
+                    ${htmlContent}
                 </article>
             </main>
         </div>
@@ -177,216 +141,79 @@ export class ArPublishManager {
     </script>
 </body>
 </html>
-  `;
+    `;
 
     return fullHtml;
   }
 
-  private processInlineMarkdown(text: string): string {
-    // Convert bold
-    text = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+  private convertWikiLinks(markdown: string, currentFile: TFile): string {
+    const baseDir = this.getBaseDir(currentFile.path);
+    return markdown.replace(/\[\[(.*?)\]\]/g, (match, p1) => {
+      const [linkText, displayText] = p1.split("|");
+      const linkedFile = this.app.metadataCache.getFirstLinkpathDest(
+        linkText,
+        currentFile.path,
+      );
 
-    // Convert italic
-    text = text.replace(/\*(.*?)\*/g, "<em>$1</em>");
+      if (linkedFile instanceof TFile) {
+        // Calculate relative path from current file to linked file
+        let relativePath = this.getRelativePath(
+          currentFile.path,
+          linkedFile.path,
+        );
 
-    // Convert highlights
-    text = text.replace(/==(.*?)==/g, "<mark>$1</mark>");
+        // Replace .md extension with .html
+        relativePath = relativePath.replace(/\.md$/, ".html");
 
-    // Convert internal links
-    text = text.replace(/\[\[(.*?)\]\]/g, (match, p1) => {
-      const parts = p1.split("|");
-      const link = parts[0].trim();
-      const label = parts[1] ? parts[1].trim() : link;
-      return `<a href="${link}.html" class="internal-link">${label}</a>`;
+        return `[${displayText || linkText}](${relativePath})`;
+      }
+
+      return match; // If the link can't be resolved, leave it as is
     });
+  }
 
-    // Convert external links
-    text = text.replace(
-      /\[([^\]]+)\]\(([^)]+)\)/g,
-      '<a href="$2" class="external-link">$1</a>',
-    );
+  private getRelativePath(fromPath: string, toPath: string): string {
+    const fromParts = fromPath.split("/");
+    const toParts = toPath.split("/");
 
-    return text;
+    // Remove the common base directory
+    while (
+      fromParts.length > 0 &&
+      toParts.length > 0 &&
+      fromParts[0] === toParts[0]
+    ) {
+      fromParts.shift();
+      toParts.shift();
+    }
+
+    // Calculate upCount, ensuring it's never negative
+    const upCount = Math.max(0, fromParts.length - 1);
+
+    // Construct the relative path
+    const relativePath = [...Array(upCount).fill(".."), ...toParts].join("/");
+
+    return relativePath || "."; // Return '.' if the paths are identical
+  }
+
+  private getBaseDir(path: string): string {
+    const parts = path.split("/");
+    return parts[0] || "";
   }
 
   private getStyles(): string {
     return `
-    :root {
-      --background-primary: #ffffff;
-      --background-secondary: #f5f6f8;
-      --text-normal: #2e3338;
-      --text-muted: #888888;
-      --text-faint: #999999;
-      --interactive-accent: #7b6cd9;
-      --background-modifier-border: #ddd;
-      --background-modifier-form-field: #fff;
-    }
-
-    body, html {
-      margin: 0;
-      padding: 0;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-      font-size: 16px;
-      line-height: 1.5;
-      color: var(--text-normal);
-      background-color: var(--background-primary);
-    }
-
-    .app-container {
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-    }
-
-    .app-nav {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 10px 20px;
-      background-color: var(--background-secondary);
-      border-bottom: 1px solid var(--background-modifier-border);
-    }
-
-    .nav-buttons, .nav-actions {
-      display: flex;
-    }
-
-    .nav-button {
-      background: none;
-      border: none;
-      font-size: 18px;
-      cursor: pointer;
-      color: var(--text-muted);
-      padding: 5px 10px;
-    }
-
-    .nav-title {
-      font-weight: 600;
-      color: var(--text-normal);
-    }
-
-    .main-container {
-      display: flex;
-      flex: 1;
-      overflow: hidden;
-    }
-
-    .sidebar {
-      width: 250px;
-      background-color: var(--background-secondary);
-      overflow-y: auto;
-      padding: 20px;
-      border-right: 1px solid var(--background-modifier-border);
-    }
-
-    .content {
-      flex: 1;
-      padding: 40px;
-      overflow-y: auto;
-    }
-
-    .markdown-content {
-      max-width: 750px;
-      margin: 0 auto;
-    }
-
-    h1, h2, h3, h4, h5, h6 {
-      margin-top: 1.5em;
-      margin-bottom: 0.5em;
-      font-weight: 600;
-      color: var(--text-normal);
-    }
-
-    h1 { font-size: 2em; }
-    h2 { font-size: 1.5em; }
-    h3 { font-size: 1.3em; }
-
-    a {
-      color: var(--interactive-accent);
-      text-decoration: none;
-    }
-
-    a:hover {
-      text-decoration: underline;
-    }
-
-    mark {
-      background-color: rgba(123, 108, 217, 0.15);
-      padding: 0.1em 0.2em;
-      border-radius: 3px;
-    }
-
-    .metadata {
-      font-size: 0.9em;
-      color: var(--text-muted);
-      margin-bottom: 2em;
-    }
-
-    .block {
-      margin-bottom: 5px;
-    }
-
-    .block-children {
-      margin-left: 20px;
-      padding-left: 10px;
-      border-left: 2px solid var(--background-modifier-border);
-    }
-
-    .block-header {
-      display: flex;
-      align-items: flex-start;
-    }
-
-    .block-bullet {
-      color: var(--text-muted);
-      margin-right: 5px;
-      flex-shrink: 0;
-    }
-
-    .block-content {
-      flex-grow: 1;
-    }
-
-    pre {
-      background-color: var(--background-secondary);
-      padding: 10px;
-      border-radius: 5px;
-      overflow-x: auto;
-    }
-
-    code {
-      font-family: 'Fira Code', monospace;
-      font-size: 0.9em;
-    }
-
-    .doc-title {
-      border-bottom: 1px solid var(--background-modifier-border);
-      padding-bottom: 10px;
-      margin-bottom: 20px;
-    }
-  `;
+    /* Your CSS styles here */
+    `;
   }
 
   private getJavaScript(): string {
     return `
-    document.addEventListener('DOMContentLoaded', (event) => {
-      document.querySelectorAll('.block-header').forEach(header => {
-        header.addEventListener('click', () => {
-          const block = header.closest('.block');
-          const children = block.querySelector('.block-children');
-          if (children) {
-            children.classList.toggle('collapsed');
-            const bullet = header.querySelector('.block-bullet');
-            bullet.textContent = children.classList.contains('collapsed') ? '▸' : bullet.textContent.replace('▸', '•');
-          }
-        });
-      });
-    });
-  `;
+    /* Your JavaScript here */
+    `;
   }
 
   private getNavTitle(currentFile: TFile): string {
-    const parts = currentFile.split("/");
+    const parts = currentFile.path.split("/");
     return parts.length > 1
       ? `${parts[parts.length - 2]} / ${currentFile.basename}`
       : currentFile.basename;
@@ -410,7 +237,7 @@ export class ArPublishManager {
   private buildFileTree(files: TFile[]): FileTree {
     const tree: FileTree = {};
     files.forEach((file) => {
-      const parts = file.split("/");
+      const parts = file.path.split("/");
       let current: FileTree = tree;
       parts.forEach((part, index) => {
         if (!current[part]) {
@@ -432,11 +259,12 @@ export class ArPublishManager {
     let html = "<ul>";
     for (const [name, subtree] of Object.entries(tree)) {
       const fullPath = path ? `${path}/${name}` : name;
+      const relativePath = this.getRelativePath(currentFile.path, fullPath);
       const isCurrentFile = fullPath === currentFile.path;
       const itemClass = isCurrentFile ? "current" : "";
 
       if (subtree === null) {
-        html += `<li class="${itemClass}"><a href="${fullreplace(/\.md$/, ".html")}">${name}</a></li>`;
+        html += `<li class="${itemClass}"><a href="${relativePath.replace(/\.md$/, ".html")}">${name}</a></li>`;
       } else {
         html += `<li class="folder ${itemClass}">
                    <span class="folder-name">${name}</span>
@@ -448,12 +276,39 @@ export class ArPublishManager {
     return html;
   }
 
-  private escapeHtml(text: string): string {
-    return text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+  private async createIndexFile(outputDir: string, files: TFile[]) {
+    const indexContent = `
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Index</title>
+      <style>
+          ${this.getStyles()}
+      </style>
+  </head>
+  <body>
+      <div class="app-container">
+          <h1>Index</h1>
+          <ul>
+              ${files
+                .map((file) => {
+                  // Remove the base directory (e.g., "Bible") from the file path
+                  const relativePath = file.path.split("/").slice(1).join("/");
+                  return `<li><a href="${relativePath.replace(/\.md$/, ".html")}">${file.basename}</a></li>`;
+                })
+                .join("\n")}
+          </ul>
+      </div>
+  </body>
+  </html>
+    `;
+
+    await this.app.vault.adapter.write(
+      join(outputDir, "index.html"),
+      indexContent,
+    );
+    console.log(`Created index.html in ${outputDir}`);
   }
 }
