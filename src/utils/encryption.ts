@@ -1,5 +1,5 @@
 import CryptoJS from "crypto-js";
-import "buffer";
+import { Buffer } from "buffer";
 
 function isTextData(data: string | Buffer): boolean {
   if (typeof data === "string") {

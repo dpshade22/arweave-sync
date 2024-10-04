@@ -139,7 +139,7 @@ export default class ArweaveSync extends Plugin {
       id: "run-specific-file-encryption-test",
       name: "Run Specific File Encryption Test",
       callback: async () => {
-        const filePath = "Assets/testEncrypt.md";
+        const filePath = "Assets/mobileTest.png";
         await testEncryptionWithSpecificFile(this, filePath);
         new Notice(
           "Specific file encryption test completed. Check console for results.",

@@ -50,6 +50,12 @@ const buildOptions = {
         build.onResolve({ filter: /^crypto-js$/ }, (args) => {
           return { path: require.resolve("crypto-js"), external: false };
         });
+        build.onResolve({ filter: /^buffer$/ }, (args) => {
+          return { path: require.resolve("buffer/"), external: false };
+        });
+        build.onResolve({ filter: /^process$/ }, (args) => {
+          return { path: require.resolve("process/browser"), external: false };
+        });
       },
     },
     copyStylesPlugin,

@@ -1,6 +1,7 @@
 import { encrypt, decrypt } from "./encryption";
 import { TFile, Notice } from "obsidian";
 import ArweaveSync from "../main";
+import { Buffer } from "buffer";
 
 export async function testEncryptionWithSpecificFile(
   plugin: ArweaveSync,
