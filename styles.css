@@ -403,8 +403,28 @@
 }
 
 .submit-changes[data-state="submitting"] {
-    opacity: 0.6;
+    opacity: 0.7;
     cursor: not-allowed;
+}
+
+.loading-dots::after {
+    content: "...";
+    animation: loading 1.5s infinite;
+    display: inline-block;
+    width: 1em;
+    text-align: left;
+}
+
+@keyframes loading {
+    0% {
+        content: ".";
+    }
+    33% {
+        content: "..";
+    }
+    66% {
+        content: "...";
+    }
 }
 
 .tree-item-self.is-clickable.nav-folder-title {

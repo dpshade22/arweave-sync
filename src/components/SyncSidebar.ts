@@ -9,7 +9,7 @@ interface FileNode {
   isFolder: boolean;
   children: FileNode[];
   expanded: boolean;
-  syncState?: "new-file" | "updated-file" | "synced";
+  syncState?: "new-file" | "updated-file" | "synced" | string;
   localNewerVersion?: boolean;
   localOlderVersion?: boolean;
 }
@@ -703,7 +703,7 @@ export class SyncSidebar extends ItemView {
       const fileNode = this.removeFileFromTree(
         this.filesToSync.import,
         filePath,
-      );
+      )[0];
       if (fileNode) {
         this.files.import = this.removeFileFromTree(
           this.files.import,
@@ -735,15 +735,19 @@ export class SyncSidebar extends ItemView {
 
       if (syncState !== "synced" && localNewerVersion) {
         const localFileInfo = this.plugin.settings.localUploadConfig[file.path];
-        const fileNode = this.createFileNode(file.path, {
-          txId: localFileInfo?.txId || "",
-          timestamp: file.stat.mtime,
-          fileHash: fileHash,
-          encrypted: false,
-          filePath: file.path,
-          previousVersionTxId: localFileInfo?.previousVersionTxId || null,
-          versionNumber: (localFileInfo?.versionNumber || 0) + 1,
-        });
+        const fileNode = this.createFileNode(
+          file.path,
+          {
+            txId: localFileInfo?.txId || "",
+            timestamp: file.stat.mtime,
+            fileHash: fileHash,
+            encrypted: false,
+            filePath: file.path,
+            previousVersionTxId: localFileInfo?.previousVersionTxId || null,
+            versionNumber: (localFileInfo?.versionNumber || 0) + 1,
+          },
+          syncState,
+        );
 
         fileNode.syncState = syncState;
         fileNode.localNewerVersion = localNewerVersion;
@@ -764,11 +768,25 @@ export class SyncSidebar extends ItemView {
       const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
       const localFileInfo = localConfig[filePath];
 
-      let syncState: string;
+      let syncState: any;
+      let localNewerVersion = false;
+      let localOlderVersion = false;
+
       if (!file) {
         syncState = "new-file";
       } else if (file instanceof TFile) {
         syncState = await this.plugin.getFileSyncState(file);
+
+        // Add timestamp comparison
+        const localTimestamp = file.stat.mtime;
+        const remoteTimestamp = remoteFileInfo.timestamp;
+
+        if (localTimestamp > remoteTimestamp) {
+          localNewerVersion = true;
+          continue;
+        } else if (localTimestamp < remoteTimestamp) {
+          localOlderVersion = true;
+        }
       }
 
       if (syncState && syncState !== "synced") {
@@ -777,10 +795,16 @@ export class SyncSidebar extends ItemView {
           remoteFileInfo,
           syncState,
         );
-        fileNode.localOlderVersion = syncState === "updated-file";
+
+        // Set the version flags based on both the existing conditions and the new timestamp comparison
+        fileNode.localNewerVersion =
+          localNewerVersion ||
+          (syncState === "updated-file" && !localOlderVersion);
+        fileNode.localOlderVersion =
+          localOlderVersion ||
+          (syncState === "updated-file" && !localNewerVersion);
 
         newOrModifiedFiles.push(fileNode);
-      } else {
       }
     }
 
@@ -802,6 +826,8 @@ export class SyncSidebar extends ItemView {
       children: [],
       expanded: false,
       syncState: syncState,
+      localNewerVersion: false,
+      localOlderVersion: false,
     };
   }
 

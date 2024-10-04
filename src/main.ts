@@ -486,7 +486,6 @@ export default class ArweaveSync extends Plugin {
   async importFilesFromArweave(selectedFiles: string[]) {
     try {
       await this.vaultSyncManager.importFilesFromArweave(selectedFiles);
-      new Notice("File import completed!");
     } catch (error) {
       console.error("Error during file import:", error);
       new Notice(
@@ -529,7 +528,6 @@ export default class ArweaveSync extends Plugin {
     try {
       await this.vaultSyncManager.syncFile(file);
       this.updateUIAfterSync(file);
-      new Notice(`File ${file.name} synced with Arweave`);
     } catch (error) {
       this.handleSyncError(file, error);
     } finally {
@@ -537,6 +535,7 @@ export default class ArweaveSync extends Plugin {
         syncButton.removeClass("uploading");
       }
     }
+    this.forceRefreshSidebarFiles();
   }
 
   private getSyncButtonForFile(file: TFile): HTMLElement | null {
