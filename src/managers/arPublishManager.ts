@@ -195,32 +195,10 @@ export class ArPublishManager {
   }
 
   private getRelativePathToRoot(path: string): string {
-    const depth = path.split("/").length - 1;
-    return depth === 0 ? "" : "../".repeat(depth);
+    const depth = Math.max(0, path.split("/").length - 2);
+    return depth === 0 ? "./" : "../".repeat(depth);
   }
 
-  private getRelativePath(fromPath: string, toPath: string): string {
-    const fromParts = fromPath.split("/");
-    const toParts = toPath.split("/");
-
-    // Remove the common base directory
-    while (
-      fromParts.length > 0 &&
-      toParts.length > 0 &&
-      fromParts[0] === toParts[0]
-    ) {
-      fromParts.shift();
-      toParts.shift();
-    }
-
-    // Calculate upCount, ensuring it's never negative
-    const upCount = Math.max(0, fromParts.length - 1);
-
-    // Construct the relative path
-    const relativePath = [...Array(upCount).fill(".."), ...toParts].join("/");
-
-    return relativePath || "."; // Return '.' if the paths are identical
-  }
 
   private getBaseDir(path: string): string {
     const parts = path.split("/");
@@ -595,9 +573,9 @@ export class ArPublishManager {
 
   private createHomeLink(currentFile: TFile): string {
     const isActive = currentFile.name === "index.md" ? "is-active" : "";
-    const depth = currentFile.path.split("/").length - 1;
+    const depth = Math.max(0, currentFile.path.split("/").length - 2);
     const homeHref =
-      depth === 0 ? "/index.html" : "../".repeat(depth) + "index.html";
+      depth === 0 ? "./index.html" : "../".repeat(depth) + "index.html";
 
     return `
       <div class="tree-item nav-file">
@@ -755,9 +733,6 @@ export class ArPublishManager {
       if (href) {
         // Ensure all links are relative to the root
         href = href.replace(/^(\.\.\/)+/, "");
-        if (!href.startsWith("/") && href !== "index.html") {
-          href = "/" + href;
-        }
         link.setAttribute("href", href);
       }
     });
