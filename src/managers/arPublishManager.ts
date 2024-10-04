@@ -8,7 +8,6 @@ interface FileTree {
 
 export class ArPublishManager {
   private app: App;
-  private folderState: { [key: string]: boolean } = {};
 
   constructor(
     app: App,
@@ -19,6 +18,13 @@ export class ArPublishManager {
 
   async publishFolder(folder: TFolder) {
     const markdownFiles = this.getMarkdownFiles(folder);
+    const indexFile = markdownFiles.find((file) => file.name === "index.md");
+
+    if (!indexFile) {
+      new Notice("Error: index.md file is required in the root of the folder.");
+      return;
+    }
+
     const outputDir = await this.createOutputDirectory(folder.name);
 
     for (const file of markdownFiles) {
@@ -32,8 +38,7 @@ export class ArPublishManager {
       await this.saveHtmlFile(outputDir, file.path, htmlContent);
     }
 
-    await this.createIndexFile(outputDir, markdownFiles);
-    await this.createNotFoundPage(outputDir);
+    await this.createNotFoundPage(outputDir, markdownFiles);
 
     new Notice(`Folder "${folder.name}" published to ${outputDir}`);
   }
@@ -108,13 +113,16 @@ export class ArPublishManager {
 
     // Update the HTML structure
     const baseDir = this.getBaseDir(currentFile.path);
+    const isIndex = currentFile.name === "index";
+    const pageTitle = isIndex ? "Home" : currentFile.basename;
+
     const fullHtml = `
       <!DOCTYPE html>
       <html lang="en">
       <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>${currentFile.basename}</title>
+          <title>${pageTitle}</title>
           <style>${this.getStyles()}</style>
       </head>
       <body>
@@ -160,7 +168,7 @@ export class ArPublishManager {
     let toc = "<ul>";
     headings.forEach((heading) => {
       const level = parseInt(heading.tagName.charAt(1));
-      const text = heading.textContent;
+      const text = heading.textContent || "";
       const id = heading.id || this.slugify(text);
       toc += `<li class="toc-item toc-item-${level}"><a href="#${id}">${text}</a></li>`;
     });
@@ -184,6 +192,11 @@ export class ArPublishManager {
         return `[${linkText}](${url})`;
       },
     );
+  }
+
+  private getRelativePathToRoot(path: string): string {
+    const depth = path.split("/").length - 1;
+    return depth === 0 ? "" : "../".repeat(depth);
   }
 
   private getRelativePath(fromPath: string, toPath: string): string {
@@ -326,6 +339,14 @@ export class ArPublishManager {
         width: 16px;
         height: 16px;
         margin-right: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .tree-item-icon svg {
+        width: 16px;
+        height: 16px;
       }
 
       .nav-folder-children {
@@ -552,12 +573,47 @@ export class ArPublishManager {
       `;
   }
 
-  private createSidebar(files: TFile[], currentFile: TFile): string {
+  private createSidebar(
+    files: TFile[],
+    currentFile: TFile | { path: string },
+  ): string {
     const tree = this.buildFileTree(files);
-    // Get the base directory (first level of the tree)
     const baseDir = Object.keys(tree)[0];
+
+    // Create the home link
+    const homeLink = this.createHomeLink(currentFile);
+
     // Render the tree starting from the subdirectories
-    return this.renderFileTree(tree[baseDir] as FileTree, baseDir, currentFile);
+    const fileTree = this.renderFileTree(
+      tree[baseDir] as FileTree,
+      baseDir,
+      currentFile,
+    );
+
+    return homeLink + fileTree;
+  }
+
+  private createHomeLink(currentFile: TFile): string {
+    const isActive = currentFile.name === "index.md" ? "is-active" : "";
+    const depth = currentFile.path.split("/").length - 1;
+    const homeHref =
+      depth === 0 ? "/index.html" : "../".repeat(depth) + "index.html";
+
+    return `
+      <div class="tree-item nav-file">
+        <div class="tree-item-self is-clickable ${isActive}" data-path="index.md">
+          <a href="${homeHref}" class="nav-file-title">
+            <div class="tree-item-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-home">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+              </svg>
+            </div>
+            <div class="nav-file-title-content">Home</div>
+          </a>
+        </div>
+      </div>
+    `;
   }
 
   private buildFileTree(files: TFile[]): FileTree {
@@ -580,89 +636,72 @@ export class ArPublishManager {
   private renderFileTree(
     tree: FileTree,
     path: string = "",
-    currentFile: TFile,
+    currentFile: TFile | { path: string },
     level: number = 0,
   ): string {
     let html = "";
 
     for (const [name, subtree] of Object.entries(tree)) {
+      if (name === "index.md") continue;
+
       const fullPath = path ? `${path}/${name}` : name;
-      const relativePath = this.getRelativePath(currentFile.path, fullPath);
       const isCurrentFile = fullPath === currentFile.path;
       const itemClass = isCurrentFile ? "is-active" : "";
       const displayName = name.replace(/\.md$/, "");
 
       if (subtree === null) {
         // File
+        const relativePrefix = this.getRelativePathToRoot(currentFile.path);
+        const href =
+          relativePrefix +
+          fullPath.split("/").slice(1).join("/").replace(/\.md$/, ".html");
+
         html += `
-            <div class="tree-item nav-file">
-              <div class="tree-item-self is-clickable ${itemClass}" data-path="${fullPath}">
-                <a href="${relativePath.replace(/\.md$/, ".html")}" class="nav-file-title">
-                  <div class="nav-file-title-content">${displayName}</div>
-                </a>
-              </div>
+          <div class="tree-item nav-file">
+            <div class="tree-item-self is-clickable ${itemClass}" data-path="${fullPath}">
+              <a href="${href}" class="nav-file-title">
+                <div class="nav-file-title-content">${displayName}</div>
+              </a>
             </div>
-          `;
+          </div>
+        `;
       } else {
         // Folder
         html += `
-            <div class="tree-item nav-folder">
-              <div class="tree-item-self is-clickable nav-folder-title" data-path="${fullPath}">
-                <div class="tree-item-icon collapse-icon nav-folder-collapse-indicator">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon right-triangle">
-                    <path d="M3 8L12 17L21 8"></path>
-                  </svg>
-                </div>
-                <div class="nav-folder-title-content">${displayName}</div>
+          <div class="tree-item nav-folder">
+            <div class="tree-item-self is-clickable nav-folder-title" data-path="${fullPath}">
+              <div class="tree-item-icon collapse-icon nav-folder-collapse-indicator">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon right-triangle">
+                  <path d="M3 8L12 17L21 8"></path>
+                </svg>
               </div>
-              <div class="tree-item-children nav-folder-children">
-                ${this.renderFileTree(subtree, fullPath, currentFile, level + 1)}
-              </div>
+              <div class="nav-folder-title-content">${displayName}</div>
             </div>
-          `;
+            <div class="tree-item-children nav-folder-children">
+              ${this.renderFileTree(subtree, fullPath, currentFile, level + 1)}
+            </div>
+          </div>
+        `;
       }
     }
 
     return html;
   }
 
-  private async createIndexFile(outputDir: string, files: TFile[]) {
-    const indexContent = `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Index</title>
-          <style>${this.getStyles()}</style>
-      </head>
-      <body>
-          <div class="app-container">
-              <h1>Index</h1>
-              <ul>
-                  ${files
-                    .map((file) => {
-                      const relativePath = file.path
-                        .split("/")
-                        .slice(1)
-                        .join("/");
-                      return `<li><a href="${relativePath.replace(/\.md$/, ".html")}">${file.basename}</a></li>`;
-                    })
-                    .join("\n")}
-              </ul>
-          </div>
-      </body>
-      </html>
-      `;
+  private async createNotFoundPage(outputDir: string, files: TFile[]) {
+    // Create a dummy file object to represent the 404 page
+    const dummyFile = {
+      path: "404.md",
+      name: "404.md",
+      basename: "404",
+      extension: "md",
+    };
 
-    await this.app.vault.adapter.write(
-      join(outputDir, "index.html"),
-      indexContent,
-    );
-    console.log(`Created index.html in ${outputDir}`);
-  }
+    let sidebarContent = this.createSidebar(files, dummyFile);
 
-  private async createNotFoundPage(outputDir: string) {
+    // Adjust the sidebar links for the 404 page
+    sidebarContent = this.adjust404SidebarLinks(sidebarContent);
+
     const notFoundContent = `
       <!DOCTYPE html>
       <html lang="en">
@@ -675,23 +714,54 @@ export class ArPublishManager {
       <body>
           <div class="app-container">
               <aside class="sidebar">
-                  <!-- Sidebar content (you may want to include a simplified version here) -->
+                  <div class="sidebar-header">
+                      <div class="logo">
+                          <!-- SVG element goes here -->
+                      </div>
+                      <h1 class="site-title">404 - Not Found</h1>
+                  </div>
+                  <div class="sidebar-search">
+                      <input type="text" placeholder="Search pages...">
+                  </div>
+                  <nav class="sidebar-nav">
+                      ${sidebarContent}
+                  </nav>
               </aside>
               <main class="content">
                   <article class="markdown-content">
                       <h1 class="doc-title">Page Not Found</h1>
-                      <p>The requested page could not be found. Please check the URL or return to the <a href="index.html">index</a>.</p>
+                      <p>The requested page could not be found. Please check the URL or use the sidebar to navigate to an existing page.</p>
                   </article>
               </main>
           </div>
+          <script>${this.getJavaScript()}</script>
       </body>
       </html>
-      `;
+    `;
 
     await this.app.vault.adapter.write(
       join(outputDir, "404.html"),
       notFoundContent,
     );
     console.log(`Created 404.html in ${outputDir}`);
+  }
+
+  private adjust404SidebarLinks(sidebarContent: string): string {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(sidebarContent, "text/html");
+
+    doc.querySelectorAll("a").forEach((link) => {
+      let href = link.getAttribute("href");
+      if (href) {
+        // Ensure all links are relative to the root
+        href = href.replace(/^(\.\.\/)+/, "");
+        if (!href.startsWith("/") && href !== "index.html") {
+          href = "/" + href;
+        }
+        link.setAttribute("href", href);
+      }
+    });
+
+    return doc.body.innerHTML;
   }
 }
