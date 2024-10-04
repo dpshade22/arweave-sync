@@ -274,10 +274,11 @@ export class ArPublishManager {
 
   private convertWikiLinks(markdown: string, currentFile: TFile): string {
     return markdown.replace(
-      /\[\[([^\]]+)\]\](\([^\)]+\))?/g,
-      (_, linkText, linkUrl) => {
+      /\[\[([^\]|]+)(\|[^\]]+)?\]\](\([^\)]+\))?/g,
+      (match, linkText, displayText, linkUrl) => {
+        const display = displayText ? displayText.slice(1) : linkText;
         const url = linkUrl ? linkUrl.slice(1, -1) : `${linkText}.html`;
-        return `[${linkText}](${url})`;
+        return `[${display}](${url})`;
       },
     );
   }
