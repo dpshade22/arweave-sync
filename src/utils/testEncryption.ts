@@ -10,7 +10,6 @@ export async function testEncryptionWithSpecificFile(
   const password = "testPassword123";
 
   try {
-    // Get the file from the vault
     const file = plugin.app.vault.getAbstractFileByPath(filePath);
 
     if (!file || !(file instanceof TFile)) {
@@ -18,32 +17,36 @@ export async function testEncryptionWithSpecificFile(
       return;
     }
 
-    // Read the file as an ArrayBuffer
-    const fileArrayBuffer = await plugin.app.vault.readBinary(file);
-    const fileBuffer = Buffer.from(fileArrayBuffer);
+    const isBinary = plugin.vaultSyncManager.isBinaryFile(file);
+    const fileContent = isBinary
+      ? await plugin.app.vault.readBinary(file)
+      : await plugin.app.vault.read(file);
 
     console.log(`Testing encryption for file: ${file.path}`);
-    console.log("Original file size:", fileBuffer.length, "bytes");
+    console.log("Original file size:", fileContent.length, "bytes");
+    console.log("Is Binary:", isBinary);
 
-    // Encrypt the file
-    const encrypted = encrypt(fileBuffer, password);
+    const encrypted = encrypt(fileContent, password, isBinary);
     console.log("Encrypted data:", encrypted.substring(0, 50) + "...");
 
-    // Decrypt the file
     const decrypted = decrypt(encrypted, password);
 
     if (Buffer.isBuffer(decrypted)) {
       console.log("Decrypted file size:", decrypted.length, "bytes");
-      console.log("Match:", fileBuffer.equals(decrypted));
-
-      // Optionally, save the decrypted file to verify
-      const decryptedFilePath = `${file.parent.path}/decrypted_${file.name}`;
-      await plugin.app.vault.createBinary(decryptedFilePath, decrypted);
-      new Notice(`Decrypted file saved as ${decryptedFilePath}`);
+      console.log("Match:", Buffer.from(fileContent).equals(decrypted));
     } else {
-      console.log(decrypted);
-      console.log("Decryption did not return a Buffer as expected");
+      console.log("Decrypted file size:", decrypted.length, "characters");
+      console.log("Match:", fileContent === decrypted);
     }
+
+    // Optionally, save the decrypted file to verify
+    const decryptedFilePath = `${file.parent?.path ?? ""}/decrypted${file.name}`;
+    if (Buffer.isBuffer(decrypted)) {
+      await plugin.app.vault.createBinary(decryptedFilePath, decrypted);
+    } else {
+      await plugin.app.vault.create(decryptedFilePath, decrypted);
+    }
+    new Notice(`Decrypted file saved as ${decryptedFilePath}`);
   } catch (error) {
     console.error("Error during file encryption test:", error);
     new Notice("Error during file encryption test. Check console for details.");

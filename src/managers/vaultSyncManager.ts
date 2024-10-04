@@ -6,6 +6,7 @@ import CryptoJS from "crypto-js";
 import ArweaveSync from "../main";
 import { arGql } from "ar-gql";
 import { walletManager } from "./walletManager";
+import { Buffer } from "buffer";
 
 export class VaultSyncManager {
   private vault: Vault;
@@ -72,34 +73,41 @@ export class VaultSyncManager {
   }
 
   private async importFileFromArweave(filePath: string): Promise<void> {
-    const remoteFileInfo = this.remoteUploadConfig[filePath];
-    if (!remoteFileInfo) {
-      throw new Error(`No remote file info found for ${filePath}`);
+    try {
+      const normalizedPath = normalizePath(filePath);
+
+      const remoteFileInfo = this.remoteUploadConfig[filePath];
+      if (!remoteFileInfo) {
+        throw new Error(`No remote file info found for ${filePath}`);
+      }
+
+      const encryptedContent = await this.fetchEncryptedContent(
+        remoteFileInfo.txId,
+      );
+
+      const decryptedContent = decrypt(
+        encryptedContent,
+        this.encryptionPassword,
+      );
+
+      if (Buffer.isBuffer(decryptedContent)) {
+        // For binary data, use createBinary with the ArrayBuffer
+        await this.plugin.app.vault.createBinary(
+          normalizedPath,
+          decryptedContent.buffer,
+        );
+      } else if (typeof decryptedContent === "string") {
+        // For text data, use create
+        await this.plugin.app.vault.create(normalizedPath, decryptedContent);
+      } else {
+        throw new Error(`Unexpected decrypted content type for ${filePath}`);
+      }
+
+      console.log(`Imported file: ${normalizedPath}`);
+    } catch (error) {
+      console.error(`Failed to import file: ${filePath}`, error);
+      throw error;
     }
-
-    const encryptedContent = await this.fetchEncryptedContent(
-      remoteFileInfo.txId,
-    );
-    const decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
-
-    // Normalize the file path
-    const normalizedPath = normalizePath(filePath);
-
-    // Ensure the directory exists
-    await this.ensureDirectoryExists(normalizedPath);
-
-    let file = this.vault.getAbstractFileByPath(normalizedPath);
-    if (!file) {
-      file = await this.vault.create(normalizedPath, decryptedContent);
-    } else if (file instanceof TFile) {
-      await this.vault.modify(file, decryptedContent);
-    } else {
-      throw new Error(`${normalizedPath} is not a file`);
-    }
-
-    this.localUploadConfig[normalizedPath] = { ...remoteFileInfo };
-    this.plugin.updateLocalConfig(normalizedPath, remoteFileInfo);
-    console.log(`File ${normalizedPath} imported from Arweave.`);
   }
 
   private async ensureDirectoryExists(filePath: string) {
@@ -129,8 +137,15 @@ export class VaultSyncManager {
       throw new Error("Unable to retrieve wallet. Please try reconnecting.");
     }
 
-    const content = await this.vault.read(file);
-    const encryptedContent = encrypt(content, this.encryptionPassword);
+    const isBinary = this.isBinaryFile(file);
+    const content = isBinary
+      ? await this.vault.readBinary(file)
+      : await this.vault.read(file);
+    const encryptedContent = encrypt(
+      content,
+      this.encryptionPassword,
+      isBinary,
+    );
 
     const currentFileInfo = this.localUploadConfig[file.path];
     const previousVersionTxId = currentFileInfo ? currentFileInfo.txId : null;
@@ -216,8 +231,16 @@ export class VaultSyncManager {
   }
 
   public async getFileHash(file: TFile): Promise<string> {
-    const content = await this.plugin.app.vault.read(file);
-    return CryptoJS.SHA256(content).toString();
+    const isBinary = this.isBinaryFile(file);
+    const content = isBinary
+      ? await this.plugin.app.vault.readBinary(file)
+      : await this.plugin.app.vault.read(file);
+
+    if (isBinary) {
+      return CryptoJS.SHA256(CryptoJS.lib.WordArray.create(content)).toString();
+    } else {
+      return CryptoJS.SHA256(content).toString();
+    }
   }
 
   private async fetchEncryptedContent(
@@ -323,5 +346,19 @@ export class VaultSyncManager {
   private getCurrentTransactionId(filePath: string): string | null {
     const fileInfo = this.localUploadConfig[filePath];
     return fileInfo ? fileInfo.txId : null;
+  }
+
+  private isBinaryFile(file: TFile): boolean {
+    const binaryExtensions = [
+      "png",
+      "jpg",
+      "jpeg",
+      "gif",
+      "pdf",
+      "mp3",
+      "mp4",
+      "zip",
+    ];
+    return binaryExtensions.includes(file.extension.toLowerCase());
   }
 }
