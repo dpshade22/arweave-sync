@@ -90,17 +90,33 @@ export class VaultSyncManager {
         this.encryptionPassword,
       );
 
-      if (Buffer.isBuffer(decryptedContent)) {
-        // For binary data, use createBinary with the ArrayBuffer
-        await this.plugin.app.vault.createBinary(
-          normalizedPath,
-          decryptedContent.buffer,
-        );
-      } else if (typeof decryptedContent === "string") {
-        // For text data, use create
-        await this.plugin.app.vault.create(normalizedPath, decryptedContent);
+      const file = this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
+
+      if (file instanceof TFile) {
+        // File exists, update it
+        if (Buffer.isBuffer(decryptedContent)) {
+          await this.plugin.app.vault.modifyBinary(
+            file,
+            decryptedContent.buffer,
+          );
+        } else if (typeof decryptedContent === "string") {
+          await this.plugin.app.vault.modify(file, decryptedContent);
+        } else {
+          throw new Error(`Unexpected decrypted content type for ${filePath}`);
+        }
       } else {
-        throw new Error(`Unexpected decrypted content type for ${filePath}`);
+        // File doesn't exist, create it
+        await this.ensureDirectoryExists(normalizedPath);
+        if (Buffer.isBuffer(decryptedContent)) {
+          await this.plugin.app.vault.createBinary(
+            normalizedPath,
+            decryptedContent.buffer,
+          );
+        } else if (typeof decryptedContent === "string") {
+          await this.plugin.app.vault.create(normalizedPath, decryptedContent);
+        } else {
+          throw new Error(`Unexpected decrypted content type for ${filePath}`);
+        }
       }
 
       console.log(`Imported file: ${normalizedPath}`);

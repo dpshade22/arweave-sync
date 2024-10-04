@@ -27161,15 +27161,30 @@ var VaultSyncManager = class {
         encryptedContent,
         this.encryptionPassword
       );
-      if (import_buffer3.Buffer.isBuffer(decryptedContent)) {
-        await this.plugin.app.vault.createBinary(
-          normalizedPath,
-          decryptedContent.buffer
-        );
-      } else if (typeof decryptedContent === "string") {
-        await this.plugin.app.vault.create(normalizedPath, decryptedContent);
+      const file = this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
+      if (file instanceof import_obsidian2.TFile) {
+        if (import_buffer3.Buffer.isBuffer(decryptedContent)) {
+          await this.plugin.app.vault.modifyBinary(
+            file,
+            decryptedContent.buffer
+          );
+        } else if (typeof decryptedContent === "string") {
+          await this.plugin.app.vault.modify(file, decryptedContent);
+        } else {
+          throw new Error(`Unexpected decrypted content type for ${filePath}`);
+        }
       } else {
-        throw new Error(`Unexpected decrypted content type for ${filePath}`);
+        await this.ensureDirectoryExists(normalizedPath);
+        if (import_buffer3.Buffer.isBuffer(decryptedContent)) {
+          await this.plugin.app.vault.createBinary(
+            normalizedPath,
+            decryptedContent.buffer
+          );
+        } else if (typeof decryptedContent === "string") {
+          await this.plugin.app.vault.create(normalizedPath, decryptedContent);
+        } else {
+          throw new Error(`Unexpected decrypted content type for ${filePath}`);
+        }
       }
       console.log(`Imported file: ${normalizedPath}`);
     } catch (error) {
@@ -28780,6 +28795,7 @@ Check the console for more details.`
       new import_obsidian7.Notice(
         `Wallet connected. ${newOrModifiedFiles.length} new or modified files available for import.`
       );
+      this.forceRefreshSidebarFiles();
       await this.openSyncSidebarWithImportTab();
     } else {
       new import_obsidian7.Notice("Wallet connected. No new files to import.");

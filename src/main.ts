@@ -426,6 +426,7 @@ export default class ArweaveSync extends Plugin {
       new Notice(
         `Wallet connected. ${newOrModifiedFiles.length} new or modified files available for import.`,
       );
+      this.forceRefreshSidebarFiles();
       await this.openSyncSidebarWithImportTab();
     } else {
       new Notice("Wallet connected. No new files to import.");
