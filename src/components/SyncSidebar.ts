@@ -261,11 +261,11 @@ export class SyncSidebar extends ItemView {
           attr: { "data-path": node.path },
         });
 
-        // this.setNodeStyles(contentEl, depth);
-
-        node.isFolder
-          ? this.renderFolderNode(node, contentEl, itemEl, isSource, depth)
-          : this.renderFileNode(node, contentEl, isSource);
+        if (node.isFolder) {
+          this.renderFolderNode(node, contentEl, itemEl, isSource, depth);
+        } else {
+          this.renderFileNode(node, contentEl, isSource);
+        }
       });
   }
 
@@ -306,17 +306,61 @@ export class SyncSidebar extends ItemView {
 
     childrenEl.style.display = node.expanded ? "block" : "none";
 
-    const toggleFolder = (e: MouseEvent) => {
+    const toggleFolder = (e: Event) => {
+      e.preventDefault();
       e.stopPropagation();
       node.expanded = !node.expanded;
       this.updateChevronRotation(chevronSvg, node.expanded);
       childrenEl.style.display = node.expanded ? "block" : "none";
-      if (node.expanded && !childrenEl.hasChildNodes()) {
+      if (node.expanded && childrenEl.childElementCount === 0) {
         this.renderFileNodes(node.children, childrenEl, isSource, depth + 1);
       }
     };
 
-    contentEl.addEventListener("click", toggleFolder);
+    let pressTimer: number;
+    let longPressTriggered = false;
+    let startX: number;
+    let startY: number;
+
+    const startPress = (e: MouseEvent | TouchEvent) => {
+      startX = e instanceof MouseEvent ? e.clientX : e.touches[0].clientX;
+      startY = e instanceof MouseEvent ? e.clientY : e.touches[0].clientY;
+      pressTimer = window.setTimeout(() => {
+        longPressTriggered = true;
+        this.toggleEntireFolder(node, isSource);
+      }, 500); // 500ms for long press
+    };
+
+    const endPress = (e: MouseEvent | TouchEvent) => {
+      const endX =
+        e instanceof MouseEvent ? e.clientX : e.changedTouches[0].clientX;
+      const endY =
+        e instanceof MouseEvent ? e.clientY : e.changedTouches[0].clientY;
+      const distance = Math.sqrt(
+        Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2),
+      );
+
+      clearTimeout(pressTimer);
+      if (!longPressTriggered && distance < 5) {
+        // 5px threshold for movement
+        toggleFolder(e);
+      }
+      longPressTriggered = false;
+    };
+
+    const cancelPress = () => {
+      clearTimeout(pressTimer);
+      longPressTriggered = false;
+    };
+
+    contentEl.addEventListener("mousedown", startPress);
+    contentEl.addEventListener("touchstart", startPress, { passive: true });
+
+    contentEl.addEventListener("mouseup", endPress);
+    contentEl.addEventListener("touchend", endPress);
+
+    contentEl.addEventListener("mouseleave", cancelPress);
+    contentEl.addEventListener("touchcancel", cancelPress);
 
     if (node.expanded) {
       this.renderFileNodes(node.children, childrenEl, isSource, depth + 1);
@@ -471,6 +515,34 @@ export class SyncSidebar extends ItemView {
     this.showNoFilesMessage(isEmpty);
   }
 
+  private expandParentFolders(filePath: string, tree: FileNode[]) {
+    const parts = filePath.split("/");
+    let currentPath = "";
+    for (let i = 0; i < parts.length - 1; i++) {
+      currentPath += (i > 0 ? "/" : "") + parts[i];
+      const folder = this.findNodeByPath(tree, currentPath);
+      if (folder && folder.isFolder) {
+        folder.expanded = true;
+      }
+    }
+  }
+
+  private findNodeByPath(
+    nodes: FileNode[],
+    path: string,
+  ): FileNode | undefined {
+    for (const node of nodes) {
+      if (node.path === path) {
+        return node;
+      }
+      if (node.isFolder && path.startsWith(node.path + "/")) {
+        const found = this.findNodeByPath(node.children, path);
+        if (found) return found;
+      }
+    }
+    return undefined;
+  }
+
   private toggleFileSelection(file: FileNode, isSource: boolean) {
     const sourceTree = isSource ? this.files : this.filesToSync;
     const targetTree = isSource ? this.filesToSync : this.files;
@@ -483,6 +555,9 @@ export class SyncSidebar extends ItemView {
       targetTree[this.currentTab],
       file,
     );
+
+    // Expand parent folders in the target tree
+    this.expandParentFolders(file.path, targetTree[this.currentTab]);
 
     this.files[this.currentTab] = this.removeEmptyFolders(
       this.files[this.currentTab],
