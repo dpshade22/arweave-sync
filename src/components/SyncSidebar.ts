@@ -183,31 +183,33 @@ export class SyncSidebar extends ItemView {
   }
 
   private renderSubmitButton() {
-    const priceInfoBox = this.contentContainer.createEl("div", {
-      cls: "price-info-box",
-    });
+    if (this.currentTab === "export") {
+      const priceInfoBox = this.contentContainer.createEl("div", {
+        cls: "price-info-box",
+      });
 
-    priceInfoBox.createEl("div", {
-      cls: "balance-display",
-      attr: {
-        "data-label": "Current Balance:",
-        "data-value": `${this.currentBalance} AR`,
-      },
-    });
-    priceInfoBox.createEl("div", {
-      cls: "total-price-display",
-      attr: {
-        "data-label": "Total Price:",
-        "data-value": `${this.totalPrice} AR`,
-      },
-    });
-    priceInfoBox.createEl("div", {
-      cls: "new-balance-display",
-      attr: {
-        "data-label": "New Balance:",
-        "data-value": `${this.newBalance} AR`,
-      },
-    });
+      priceInfoBox.createEl("div", {
+        cls: "balance-display",
+        attr: {
+          "data-label": "Current Balance:",
+          "data-value": `${this.currentBalance} AR`,
+        },
+      });
+      priceInfoBox.createEl("div", {
+        cls: "total-price-display",
+        attr: {
+          "data-label": "Total Price:",
+          "data-value": `${this.totalPrice} AR`,
+        },
+      });
+      priceInfoBox.createEl("div", {
+        cls: "new-balance-display",
+        attr: {
+          "data-label": "New Balance:",
+          "data-value": `${this.newBalance} AR`,
+        },
+      });
+    }
 
     const submitButton = this.contentContainer.createEl("button", {
       text: `${this.currentTab === "export" ? "Export" : "Import"}`,

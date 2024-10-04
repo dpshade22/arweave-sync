@@ -27588,30 +27588,32 @@ var SyncSidebar = class extends import_obsidian5.ItemView {
     );
   }
   renderSubmitButton() {
-    const priceInfoBox = this.contentContainer.createEl("div", {
-      cls: "price-info-box"
-    });
-    priceInfoBox.createEl("div", {
-      cls: "balance-display",
-      attr: {
-        "data-label": "Current Balance:",
-        "data-value": `${this.currentBalance} AR`
-      }
-    });
-    priceInfoBox.createEl("div", {
-      cls: "total-price-display",
-      attr: {
-        "data-label": "Total Price:",
-        "data-value": `${this.totalPrice} AR`
-      }
-    });
-    priceInfoBox.createEl("div", {
-      cls: "new-balance-display",
-      attr: {
-        "data-label": "New Balance:",
-        "data-value": `${this.newBalance} AR`
-      }
-    });
+    if (this.currentTab === "export") {
+      const priceInfoBox = this.contentContainer.createEl("div", {
+        cls: "price-info-box"
+      });
+      priceInfoBox.createEl("div", {
+        cls: "balance-display",
+        attr: {
+          "data-label": "Current Balance:",
+          "data-value": `${this.currentBalance} AR`
+        }
+      });
+      priceInfoBox.createEl("div", {
+        cls: "total-price-display",
+        attr: {
+          "data-label": "Total Price:",
+          "data-value": `${this.totalPrice} AR`
+        }
+      });
+      priceInfoBox.createEl("div", {
+        cls: "new-balance-display",
+        attr: {
+          "data-label": "New Balance:",
+          "data-value": `${this.newBalance} AR`
+        }
+      });
+    }
     const submitButton = this.contentContainer.createEl("button", {
       text: `${this.currentTab === "export" ? "Export" : "Import"}`,
       cls: "mod-cta submit-changes",
@@ -27699,6 +27701,9 @@ var SyncSidebar = class extends import_obsidian5.ItemView {
       pressTimer = window.setTimeout(() => {
         longPressTriggered = true;
         this.toggleEntireFolder(node, isSource);
+        if (navigator.vibrate) {
+          navigator.vibrate(50);
+        }
       }, 500);
     };
     const endPress = (e) => {
