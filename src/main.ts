@@ -98,6 +98,12 @@ export default class ArweaveSync extends Plugin {
     this.registerEvent(
       this.app.vault.on("delete", this.handleFileDelete.bind(this)),
     );
+    this.registerEvent(
+      this.app.workspace.on(
+        "editor-change",
+        this.handleEditorChange.bind(this),
+      ),
+    );
   }
 
   private setupUI() {
@@ -247,8 +253,7 @@ export default class ArweaveSync extends Plugin {
   }
 
   private async updateSyncButtonState(syncButton: HTMLElement, file: TFile) {
-    const syncState = await this.getFileSyncState(file);
-    console.log(`Sync state for ${file.path}: ${syncState}`);
+    const { syncState } = await this.vaultSyncManager.checkFileSync(file);
 
     const stateConfig: Record<
       string,
@@ -261,6 +266,10 @@ export default class ArweaveSync extends Plugin {
       "updated-file": {
         color: "var(--text-warning)",
         title: "File updated, click to sync",
+      },
+      "remote-newer": {
+        color: "var(--text-accent)",
+        title: "Remote version is newer, click to sync",
       },
       synced: {
         color: "var(--text-success)",
@@ -335,7 +344,6 @@ export default class ArweaveSync extends Plugin {
   async handleWalletConnection(walletJson: string) {
     // Add a flag to prevent multiple simultaneous connections
     if (this.isConnecting) {
-      console.log("Wallet connection already in progress");
       return;
     }
     this.isConnecting = true;
@@ -494,7 +502,6 @@ export default class ArweaveSync extends Plugin {
         this.settings.remoteUploadConfig = aoUploadConfig;
         this.mergeUploadConfigs();
         await this.saveSettings();
-        console.log("Upload config fetched from AO and saved");
       }
     } catch (error) {
       console.error("Failed to fetch upload config from AO:", error);
@@ -602,7 +609,6 @@ export default class ArweaveSync extends Plugin {
       if (syncButton) {
         this.updateSyncButtonState(syncButton, file);
       } else {
-        console.log("No sync button found");
       }
     }
   }
@@ -653,7 +659,6 @@ export default class ArweaveSync extends Plugin {
 
       try {
         await this.aoManager.deleteUploadConfig(file.path);
-        console.log("File deleted from remote config:", file.path);
       } catch (error) {
         console.error("Error deleting file from remote config:", error);
         new Notice(
@@ -661,11 +666,37 @@ export default class ArweaveSync extends Plugin {
         );
       }
 
-      // Remove this line:
-      // this.updateSyncButtonForActiveFile(file);
-
-      // Instead of updating the sync sidebar file status, we should remove the file from the sidebar
       this.removeSyncSidebarFile(file.path);
+      this.forceRefreshSidebarFiles();
+    }
+  }
+
+  private async handleEditorChange(
+    editor: Editor,
+    info: MarkdownView | MarkdownFileInfo,
+  ) {
+    if (info instanceof MarkdownView) {
+      const file = info.file;
+      if (file) {
+        const { syncState } = await this.vaultSyncManager.checkFileSync(file);
+        if (syncState === "remote-newer") {
+          const modal = new RemoteNewerVersionModal(this.app, file, this);
+          modal.open();
+          const choice = await modal.awaitChoice();
+
+          if (choice === "import") {
+            await this.vaultSyncManager.importFileFromArweave(file.path);
+            new Notice(`Imported newer version of ${file.name} from Arweave`);
+            // Refresh the editor content
+            const newContent = await this.app.vault.read(file);
+            editor.setValue(newContent);
+          } else {
+            new Notice(
+              `Proceeding with local edit of ${file.name}. Remote changes will be overwritten on next sync.`,
+            );
+          }
+        }
+      }
     }
   }
 
@@ -674,6 +705,7 @@ export default class ArweaveSync extends Plugin {
       view.removeFile(filePath);
     });
   }
+
   async exportFilesToArweave(filesToExport: string[]) {
     const totalFiles = filesToExport.length;
     let exportedFiles = 0;

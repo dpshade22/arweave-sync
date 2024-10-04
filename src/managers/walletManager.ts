@@ -36,7 +36,6 @@ export class WalletManager extends Events {
       this.jwk = jwk;
       this.walletJson = jwkJson;
       this.address = await this.arweave.wallets.jwkToAddress(jwk);
-      console.log("Wallet initialized:", this.address);
       this.cacheWalletInfo();
     } catch (error) {
       console.error("Failed to initialize wallet:", error);

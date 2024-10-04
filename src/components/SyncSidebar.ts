@@ -78,8 +78,6 @@ export class SyncSidebar extends ItemView {
         text: `${tab.charAt(0).toUpperCase() + tab.slice(1)} Files`,
       });
       tabEl.addEventListener("click", () => this.switchTab(tab));
-
-      tabEl.style.order = this.currentTab === tab ? "0" : "1";
     });
   }
 
@@ -105,7 +103,6 @@ export class SyncSidebar extends ItemView {
           ?.toLowerCase()
           .startsWith(this.currentTab);
         tabEl.classList.toggle("active", isActive);
-        tabEl.style.order = isActive ? "0" : "1";
       }
     });
   }
@@ -213,7 +210,7 @@ export class SyncSidebar extends ItemView {
     });
 
     const submitButton = this.contentContainer.createEl("button", {
-      text: `Submit ${this.currentTab === "export" ? "Export" : "Import"}`,
+      text: `${this.currentTab === "export" ? "Export" : "Import"}`,
       cls: "mod-cta submit-changes",
       attr: {
         "data-state": "ready",
@@ -261,7 +258,7 @@ export class SyncSidebar extends ItemView {
         });
         const contentEl = itemEl.createEl("div", {
           cls: `tree-item-self is-clickable ${node.isFolder ? "nav-folder-title mod-collapsible" : "nav-file-title"}`,
-          attr: { "data-path": node.path, draggable: "true" },
+          attr: { "data-path": node.path },
         });
 
         // this.setNodeStyles(contentEl, depth);
@@ -324,6 +321,51 @@ export class SyncSidebar extends ItemView {
     if (node.expanded) {
       this.renderFileNodes(node.children, childrenEl, isSource, depth + 1);
     }
+  }
+
+  private createArrowSvg(direction: "up" | "down"): SVGElement {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    svg.setAttribute("width", "24");
+    svg.setAttribute("height", "24");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.classList.add("svg-icon", "toggle-arrow", direction);
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute(
+      "d",
+      direction === "down" ? "M7 10l5 5 5-5" : "M7 15l5-5 5 5",
+    );
+    svg.appendChild(path);
+
+    return svg;
+  }
+
+  private getFolderIconSvg(): string {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-folder"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>`;
+  }
+
+  private toggleEntireFolder(folder: FileNode, isSource: boolean) {
+    const allFiles = this.getAllFilesInFolder(folder);
+    allFiles.forEach((file) => this.toggleFileSelection(file, isSource));
+    this.renderContent(); // Re-render to update the UI
+  }
+
+  private getAllFilesInFolder(folder: FileNode): FileNode[] {
+    let files: FileNode[] = [];
+    folder.children.forEach((child) => {
+      if (child.isFolder) {
+        files = files.concat(this.getAllFilesInFolder(child));
+      } else {
+        files.push(child);
+      }
+    });
+    return files;
   }
 
   private async renderFileNode(
@@ -480,40 +522,42 @@ export class SyncSidebar extends ItemView {
   }
 
   private addFileToTree(tree: FileNode[], file: FileNode): FileNode[] {
+    if (!file.path) {
+      console.error("Path is undefined for file:", file);
+      return tree;
+    }
+
     const parts = file.path.split("/");
-    let currentLevel = tree;
-    let currentPath = "";
+    let currentLevel: FileNode[] = tree;
 
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
-      currentPath += (i > 0 ? "/" : "") + part;
-      const isLastPart = i === parts.length - 1;
+      if (!part) continue; // Skip empty parts
 
-      let existingNode = currentLevel.find((node) => node.path === currentPath);
+      let existingNode = currentLevel.find((node) => node.name === part);
 
-      if (!existingNode) {
-        const newNode: FileNode = {
-          name: part,
-          path: currentPath,
-          isFolder: !isLastPart,
-          children: [],
-          expanded: true,
-          fileInfo: isLastPart ? file.fileInfo : undefined,
-          syncState: file.syncState,
-        };
-        currentLevel.push(newNode);
-        existingNode = newNode;
-      }
-
-      if (!isLastPart) {
-        if (!existingNode.isFolder) {
-          existingNode.isFolder = true;
-          existingNode.children = [];
+      if (i === parts.length - 1) {
+        // This is the file name
+        if (existingNode) {
+          // Update existing node
+          Object.assign(existingNode, file);
+        } else {
+          // Add new file node
+          currentLevel.push(file);
+        }
+      } else {
+        if (!existingNode) {
+          // Create new folder node
+          existingNode = {
+            name: part,
+            path: parts.slice(0, i + 1).join("/"),
+            isFolder: true,
+            children: [],
+            expanded: false,
+          };
+          currentLevel.push(existingNode);
         }
         currentLevel = existingNode.children;
-      } else {
-        // Update existing node with new file info
-        Object.assign(existingNode, file);
       }
     }
 

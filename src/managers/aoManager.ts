@@ -95,7 +95,6 @@ export class AOManager {
         owner: this.plugin.getWalletAddress(),
       };
       const result = await this.argql.run(query, variables);
-      console.log(result);
       const edges = result.data?.transactions?.edges;
       if (edges && edges.length > 0) {
         return edges[0].node.id;

@@ -1,6 +1,5 @@
 import Arweave from "arweave";
-import { Vault, TFile, Notice } from "obsidian";
-import { JWKInterface } from "arweave/node/lib/wallet";
+import { Vault, TFile, Notice, TFolder, normalizePath } from "obsidian";
 import { UploadConfig, FileUploadInfo } from "../types";
 import { encrypt, decrypt } from "../utils/encryption";
 import CryptoJS from "crypto-js";
@@ -32,7 +31,7 @@ export class VaultSyncManager {
   }
 
   isWalletSet(): boolean {
-    return this.wallet !== null;
+    return walletManager.isConnected();
   }
 
   async syncFile(file: TFile): Promise<void> {
@@ -47,7 +46,7 @@ export class VaultSyncManager {
     if (localNewerVersion) {
       await this.exportFileToArweave(file, fileHash);
     } else {
-      await this.importFileFromArweave(file);
+      await this.importFileFromArweave(file.path);
     }
   }
 
@@ -83,42 +82,37 @@ export class VaultSyncManager {
     );
     const decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
 
-    // Ensure the entire directory structure exists
-    // const dirPath = filePath.substring(0, filePath.lastIndexOf("/"));
-    // if (dirPath) {
-    //   await this.createNestedFolders(dirPath);
-    // }
+    // Normalize the file path
+    const normalizedPath = normalizePath(filePath);
 
-    // Create the file if it doesn't exist, or modify it if it does
-    let file = this.vault.getAbstractFileByPath(filePath);
+    // Ensure the directory exists
+    await this.ensureDirectoryExists(normalizedPath);
+
+    let file = this.vault.getAbstractFileByPath(normalizedPath);
     if (!file) {
-      file = await this.vault.create(filePath, decryptedContent);
+      file = await this.vault.create(normalizedPath, decryptedContent);
     } else if (file instanceof TFile) {
       await this.vault.modify(file, decryptedContent);
     } else {
-      throw new Error(`${filePath} is not a file`);
+      throw new Error(`${normalizedPath} is not a file`);
     }
 
-    // Update localUploadConfig with the remote file info
-    this.localUploadConfig[filePath] = { ...remoteFileInfo };
-
-    // Update the plugin's local config
-    this.plugin.updateLocalConfig(filePath, remoteFileInfo);
-
-    console.log(`File ${filePath} imported from Arweave.`);
+    this.localUploadConfig[normalizedPath] = { ...remoteFileInfo };
+    this.plugin.updateLocalConfig(normalizedPath, remoteFileInfo);
+    console.log(`File ${normalizedPath} imported from Arweave.`);
   }
 
-  // private async createNestedFolders(path: string): Promise<void> {
-  //   const folders = path.split("/").filter(Boolean);
-  //   let currentPath = "";
-
-  //   for (const folder of folders) {
-  //     currentPath += folder + "/";
-  //     if (!(await this.vault.adapter.exists(currentPath))) {
-  //       await this.vault.createFolder(currentPath);
-  //     }
-  //   }
-  // }
+  private async ensureDirectoryExists(filePath: string) {
+    const dirPath = filePath.split("/").slice(0, -1).join("/");
+    if (dirPath) {
+      const dir = this.vault.getAbstractFileByPath(dirPath);
+      if (!dir) {
+        await this.vault.createFolder(dirPath);
+      } else if (!(dir instanceof TFolder)) {
+        throw new Error(`${dirPath} exists but is not a folder`);
+      }
+    }
+  }
 
   private async exportFileToArweave(
     file: TFile,

@@ -407,10 +407,84 @@
     cursor: not-allowed;
 }
 
+.tree-item-self.is-clickable.nav-folder-title {
+    display: flex;
+    align-items: center;
+    padding-right: 32px; /* Make room for the toggle icon */
+    position: relative;
+}
+
+.tree-item-icon.nav-folder-icon {
+    margin-right: 4px;
+    cursor: pointer;
+}
+
+.tree-item-inner.nav-folder-title-content {
+    flex-grow: 1;
+    cursor: pointer;
+}
+
+.folder-toggle-icon {
+    position: absolute;
+    right: 8px;
+    top: 55%;
+    transform: translateY(-50%);
+    cursor: pointer;
+}
+
+.folder-toggle-icon svg {
+    width: 16px;
+    height: 16px;
+    transition: transform 0.2s ease;
+}
+
+.folder-toggle-icon:hover svg {
+    transform: scale(1.2);
+}
+
+.folder-toggle-icon .toggle-arrow {
+    transition: transform 0.3s ease;
+}
+
+.folder-toggle-icon:hover .toggle-arrow {
+    transform: translateY(-2px);
+}
+
+.folder-toggle-icon .toggle-arrow.up {
+    transform: rotate(180deg);
+}
+
+.folder-toggle-icon:hover .toggle-arrow.up {
+    transform: rotate(180deg) translateY(2px);
+}
+
 .nav-folder .tree-item-self.is-clickable.nav-file-title.new-file,
 .nav-folder .tree-item-self.is-clickable.nav-file-title.updated-file {
     margin-inline-start: -13px !important;
     padding-inline-start: 41px !important;
+}
+
+.RemoteNewerVersionModal .button-container {
+    display: flex;
+    justify-content: space-around;
+    margin-top: 20px;
+}
+
+.RemoteNewerVersionModal button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.RemoteNewerVersionModal button:first-child {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.RemoteNewerVersionModal button:last-child {
+    background-color: var(--background-modifier-error);
+    color: var(--text-on-accent);
 }
 
 @media (max-width: 768px) {
