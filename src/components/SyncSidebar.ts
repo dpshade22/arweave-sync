@@ -328,6 +328,9 @@ export class SyncSidebar extends ItemView {
       pressTimer = window.setTimeout(() => {
         longPressTriggered = true;
         this.toggleEntireFolder(node, isSource);
+        if (navigator.vibrate) {
+          navigator.vibrate(50);
+        }
       }, 500); // 500ms for long press
     };
 
