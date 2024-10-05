@@ -183,7 +183,10 @@ export default class ArweaveSync extends Plugin {
     this.addCommand({
       id: "force-refresh-sidebar-files",
       name: "Force Refresh Sidebar Files",
-      callback: () => this.forceRefreshSidebarFiles(),
+      callback: () => {
+        this.forceRefreshSidebarFiles();
+        new Notice("Sidebar files refreshed");
+      },
     });
   }
 
@@ -768,7 +771,6 @@ export default class ArweaveSync extends Plugin {
 
   async forceRefreshSidebarFiles() {
     this.refreshSyncSidebar();
-    new Notice("Sidebar files refreshed");
   }
 
   private updateActiveSyncButton() {
