@@ -127,17 +127,6 @@ export default class ArweaveSync extends Plugin {
 
   private setupSyncButton() {
     this.registerEvent(
-      this.app.workspace.on("file-menu", (menu, file: TFile) => {
-        menu.addItem((item) => {
-          item
-            .setTitle("Sync with Arweave")
-            .setIcon("sync")
-            .onClick(() => this.syncFile(file));
-        });
-      }),
-    );
-
-    this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
         if (file instanceof TFile) {
           menu.addItem((item) => {
