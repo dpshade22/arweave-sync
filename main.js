@@ -12060,7 +12060,7 @@ __export(main_exports, {
   default: () => ArweaveSync
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian7 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 
 // node_modules/@permaweb/aoconnect/dist/browser.js
 var __create2 = Object.create;
@@ -28469,10 +28469,754 @@ async function testEncryptionWithSpecificFile(plugin, filePath) {
   }
 }
 
+// src/managers/arPublishManager.ts
+var import_obsidian7 = require("obsidian");
+
+// src/utils/path.ts
+function join2(...parts) {
+  return parts.join("/").replace(/\/+/g, "/");
+}
+function dirname(path2) {
+  return path2.replace(/\/+$/, "").replace(/\/[^\/]*$/, "");
+}
+function relative(from, to) {
+  const fromParts = from.split("/").filter(Boolean);
+  const toParts = to.split("/").filter(Boolean);
+  let commonLength = 0;
+  for (let i = 0; i < Math.min(fromParts.length, toParts.length); i++) {
+    if (fromParts[i] !== toParts[i]) break;
+    commonLength++;
+  }
+  const upCount = fromParts.length - commonLength;
+  const downParts = toParts.slice(commonLength);
+  const relativePath = [...Array(upCount).fill(".."), ...downParts];
+  return relativePath.join("/") || ".";
+}
+
+// src/managers/arPublishManager.ts
+var ArPublishManager = class {
+  constructor(app, plugin) {
+    this.app = app;
+    this.plugin = plugin;
+  }
+  async publishWebsiteToArweave(folder) {
+    const markdownFiles = this.getMarkdownFiles(folder);
+    const indexFile = markdownFiles.find((file) => file.name === "index.md");
+    if (!indexFile) {
+      new import_obsidian7.Notice("Error: index.md file is required in the root of the folder.");
+      return;
+    }
+    const outputDir = await this.createOutputDirectory(folder.name);
+    const pathManifest = {
+      fallback: { id: "" },
+      index: { path: "index.html" },
+      manifest: "arweave/paths",
+      paths: {},
+      version: "0.2.0"
+    };
+    for (const file of markdownFiles) {
+      const content = await this.app.vault.read(file);
+      const htmlContent = await this.convertMarkdownToHtml(
+        content,
+        markdownFiles,
+        file
+      );
+      const htmlFilePath = await this.saveHtmlFile(
+        outputDir,
+        file.path,
+        htmlContent
+      );
+      const relativePath = this.getManifestRelativePath(folder.name, file.path);
+      const txId = await this.uploadToArweave(htmlContent, "text/html");
+      pathManifest.paths[relativePath] = { id: txId };
+      if (file === indexFile) {
+        pathManifest.index.path = relativePath;
+      }
+    }
+    const notFoundContent = await this.createNotFoundPage(markdownFiles);
+    const notFoundTxId = await this.uploadToArweave(
+      notFoundContent,
+      "text/html"
+    );
+    pathManifest.fallback.id = notFoundTxId;
+    pathManifest.paths["404.html"] = { id: notFoundTxId };
+    const manifestTxId = await this.uploadToArweave(
+      JSON.stringify(pathManifest),
+      "application/x.arweave-manifest+json"
+    );
+    console.log("Manifest uploaded: https://arweave.net/" + manifestTxId);
+    new import_obsidian7.Notice(`Website published to Arweave. Manifest TX ID: ${manifestTxId}`);
+  }
+  getRelativePath(folderPath, filePath) {
+    const relativePath = relative(folderPath, filePath);
+    return relativePath.replace(/\.md$/, ".html");
+  }
+  async uploadToArweave(content, contentType) {
+    const wallet = walletManager.getJWK();
+    if (!wallet) {
+      throw new Error("Wallet not connected");
+    }
+    const transaction = await this.plugin.getArweave().createTransaction({ data: content }, wallet);
+    transaction.addTag("Content-Type", contentType);
+    transaction.addTag("App-Name", "ArweaveSync");
+    await this.plugin.getArweave().transactions.sign(transaction, wallet);
+    const response = await this.plugin.getArweave().transactions.post(transaction);
+    if (response.status !== 200) {
+      throw new Error(
+        `Upload failed with status ${response.status}: ${response.statusText}`
+      );
+    }
+    return transaction.id;
+  }
+  getMarkdownFiles(folder) {
+    const files = [];
+    const collectFiles = (item) => {
+      if (item instanceof import_obsidian7.TFolder) {
+        item.children.forEach(collectFiles);
+      } else if (item instanceof import_obsidian7.TFile && item.extension === "md") {
+        files.push(item);
+      }
+    };
+    collectFiles(folder);
+    return files;
+  }
+  async createOutputDirectory(folderName) {
+    const basePath = this.app.vault.configDir;
+    const outputDir = join2(basePath, "arweave-publish", folderName);
+    await this.app.vault.adapter.mkdir(outputDir);
+    return outputDir;
+  }
+  async saveHtmlFile(outputDir, filePath, htmlContent) {
+    const baseDir = this.getBaseDir(filePath);
+    const relativePath = filePath.replace(new RegExp(`^${baseDir}`), ".");
+    const htmlFileName = relativePath.replace(/\.md$/, ".html");
+    const fullPath = join2(outputDir, htmlFileName.slice(1));
+    await this.app.vault.adapter.mkdir(dirname(fullPath));
+    await this.app.vault.adapter.write(fullPath, htmlContent);
+    console.log(`Saved HTML file: ${fullPath}`);
+    return fullPath;
+  }
+  async convertMarkdownToHtml(markdown, allFiles, currentFile) {
+    markdown = this.convertWikiLinks(markdown, currentFile);
+    const tempDiv = createDiv();
+    await import_obsidian7.MarkdownRenderer.renderMarkdown(
+      markdown,
+      tempDiv,
+      currentFile.path,
+      this.plugin
+    );
+    let htmlContent = tempDiv.innerHTML;
+    htmlContent = htmlContent.replace(/" dir="auto">/g, '">');
+    htmlContent = htmlContent.replace(/data-heading="[^"]*"/g, "");
+    htmlContent = htmlContent.replace(
+      /\[([^\]]+)\]\(([^\)]+)\.html\)/g,
+      '<a href="$2.html">$1</a>'
+    );
+    const baseDir = this.getBaseDir(currentFile.path);
+    const isIndex = currentFile.name === "index.md";
+    const pageTitle = isIndex ? "Home" : currentFile.basename;
+    const fullHtml = `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${pageTitle}</title>
+          <style>${this.getStyles()}</style>
+      </head>
+      <body>
+      <div class="app-container">
+              <aside class="sidebar">
+                <div class="sidebar-header">
+                  <div class="logo">
+                      <!-- SVG element goes here -->
+                  </div>
+                  <h1 class="site-title">${baseDir}</h1>
+                </div>
+                <div class="sidebar-search">
+                  <input type="text" placeholder="Search pages...">
+                </div>
+                <nav class="sidebar-nav">
+                    ${this.createSidebar(allFiles, currentFile)}
+                </nav>
+              </aside>
+              <main class="content">
+                  <article class="markdown-content">
+                      <h1 class="doc-title">${pageTitle}</h1>
+                      ${htmlContent}
+                  </article>
+              </main>
+              <aside class="page-toc">
+                  <h3>ON THIS PAGE</h3>
+                  ${this.generateTableOfContents(htmlContent)}
+              </aside>
+          </div>
+          <script>${this.getJavaScript()}<\/script>
+      </body>
+      </html>
+    `;
+    return fullHtml;
+  }
+  generateTableOfContents(htmlContent) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlContent, "text/html");
+    const headings = doc.querySelectorAll("h1, h2, h3");
+    let toc = "<ul>";
+    headings.forEach((heading) => {
+      const level = parseInt(heading.tagName.charAt(1));
+      const text = heading.textContent || "";
+      const id = heading.id || this.slugify(text);
+      toc += `<li class="toc-item toc-item-${level}"><a href="#${id}">${text}</a></li>`;
+    });
+    toc += "</ul>";
+    return toc;
+  }
+  slugify(text) {
+    return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  }
+  convertWikiLinks(markdown, currentFile) {
+    return markdown.replace(
+      /\[\[([^\]]+)\]\](\([^\)]+\))?/g,
+      (_4, linkText, linkUrl) => {
+        const url = linkUrl ? linkUrl.slice(1, -1) : `${linkText}.html`;
+        return `[${linkText}](${url})`;
+      }
+    );
+  }
+  getManifestRelativePath(folderName, filePath) {
+    const parts = filePath.split("/");
+    const folderIndex = parts.indexOf(folderName);
+    if (folderIndex === -1) {
+      throw new Error(
+        `Folder name "${folderName}" not found in file path "${filePath}"`
+      );
+    }
+    return parts.slice(folderIndex + 1).join("/").replace(/\.md$/, ".html");
+  }
+  getRelativePathToRoot(path2) {
+    const depth = Math.max(0, path2.split("/").length - 2);
+    return depth === 0 ? "./" : "../".repeat(depth);
+  }
+  getBaseDir(path2) {
+    const parts = path2.split("/");
+    return parts[0] || "";
+  }
+  getStyles() {
+    return `
+      :root {
+        --background-primary: #ffffff;
+        --background-secondary: #f5f6f8;
+        --text-normal: #2e3338;
+        --text-muted: #6e7781;
+        --text-faint: #999999;
+        --interactive-accent: #7f6df2;
+        --interactive-accent-rgb: 127, 109, 242;
+        --font-ui-small: 13px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
+        line-height: 1.6;
+        color: var(--text-normal);
+        background-color: var(--background-primary);
+      }
+
+      input {
+        outline: none;
+      }
+
+      .app-container {
+        display: flex;
+        height: 100vh;
+      }
+
+      .sidebar {
+        width: 300px;
+        background-color: var(--background-secondary);
+        padding: 20px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .sidebar-header {
+        margin-bottom: 20px;
+      }
+
+      .logo {
+        margin-right: 10px;
+      }
+
+      .site-title {
+        font-size: 1.2rem;
+        font-weight: 600;
+      }
+
+      .sidebar-search {
+        margin-bottom: 20px;
+      }
+
+      .sidebar-search input {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid var(--text-faint);
+        border-radius: 4px;
+        font-size: var(--font-ui-small);
+      }
+
+      .sidebar-nav {
+        flex-grow: 1;
+        margin-top: 2vh;
+      }
+
+      .sidebar-nav ul {
+        list-style-type: none;
+        padding-left: 0;
+      }
+
+      .sidebar-nav li {
+        margin-bottom: 0;
+      }
+
+      .nav-file-title, .nav-folder-title {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        padding: 2px 0;
+        color: var(--text-muted);
+        font-size: var(--font-ui-small);
+        text-decoration: none;
+      }
+
+      .nav-file-title:hover, .nav-folder-title:hover {
+        color: var(--text-normal);
+      }
+
+      .nav-file-title-content, .nav-folder-title-content {
+        flex-grow: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .tree-item-self {
+        padding-left: 4px;
+      }
+
+      .tree-item-icon {
+        width: 16px;
+        height: 16px;
+        margin-right: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .tree-item-icon svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .nav-folder-children {
+        padding-left: 20px;
+      }
+
+      .is-active > .nav-file-title {
+        color: var(--text-normal);
+        font-weight: bold;
+      }
+
+      .content {
+        flex: 1;
+        padding: 20px 40px;
+        overflow-y: auto;
+        scrollbar-width: none;
+      }
+
+      .markdown-content {
+        max-width: 750px;
+        margin: 0 auto;
+      }
+
+      .doc-title {
+        font-size: 2rem;
+        margin-bottom: 20px;
+        color: var(--text-normal);
+      }
+
+      .page-toc {
+        width: 200px;
+        padding: 20px;
+        border-left: 1px solid var(--background-secondary);
+      }
+
+      .page-toc h3 {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        margin-bottom: 10px;
+      }
+
+      .page-toc ul {
+        list-style-type: none;
+      }
+
+      .page-toc a {
+        color: var(--text-muted);
+        text-decoration: none;
+        font-size: var(--font-ui-small);
+      }
+
+      .page-toc a:hover {
+        color: var(--interactive-accent);
+      }
+
+      .tree-item-children {
+        margin-left: 20px;
+      }
+
+      .tree-item-self {
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+      }
+
+      .nav-folder-children {
+        display: block;
+        padding-left: 20px;
+      }
+
+      .nav-folder.is-collapsed > .nav-folder-children {
+        display: none;
+      }
+
+      .nav-folder > .nav-folder-title > .nav-folder-collapse-indicator {
+        transition: transform 100ms ease-in-out;
+      }
+
+      .nav-folder.is-collapsed > .nav-folder-title > .nav-folder-collapse-indicator {
+        transform: rotate(-90deg);
+      }
+
+      .tree-item-icon svg {
+        width: 12px;
+        height: 12px;
+      }
+
+      .collapse-icon {
+        transition: transform 0.3s ease;
+      }
+
+      .collapse-icon.is-collapsed {
+        transform: rotate(-90deg);
+      }
+
+      .markdown-content a {
+        color: var(--interactive-accent);
+        text-decoration: none;
+      }
+
+      .markdown-content a:hover {
+        text-decoration: underline;
+      }
+
+      .markdown-content h1, .markdown-content h2, .markdown-content h3,
+      .markdown-content h4, .markdown-content h5, .markdown-content h6 {
+        margin-top: 1em;
+        margin-bottom: 0.5em;
+      }
+
+      .markdown-content pre {
+        background-color: var(--background-secondary);
+        padding: 10px;
+        border-radius: 4px;
+        overflow-x: auto;
+      }
+
+      .markdown-content code {
+        font-family: monospace;
+        font-size: 0.9em;
+      }
+
+      .markdown-content blockquote {
+        border-left: 3px solid var(--interactive-accent);
+        margin: 1em 0;
+        padding-left: 1em;
+        color: var(--text-muted);
+      }
+
+      .tree-item {
+        margin-bottom: 2px;
+      }
+
+      .tree-item-self {
+        display: flex;
+        align-items: center;
+      }
+
+      .nav-file-title, .nav-folder-title {
+        display: flex;
+        align-items: center;
+        width: 100%;
+      }
+
+      .nav-file-title-content, .nav-folder-title-content {
+        flex-grow: 1;
+      }
+    `;
+  }
+  getJavaScript() {
+    return `
+        document.addEventListener('DOMContentLoaded', (event) => {
+          // Expand/collapse folders in sidebar
+          const folderTitles = document.querySelectorAll('.nav-folder > .nav-folder-title');
+          folderTitles.forEach(folderTitle => {
+            folderTitle.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation(); // Prevent event bubbling
+              const folder = folderTitle.closest('.nav-folder');
+              folder.classList.toggle('is-collapsed');
+
+              // Save folder state
+              const folderPath = folder.querySelector('.nav-folder-title').getAttribute('data-path');
+              localStorage.setItem('folderState_' + folderPath, folder.classList.contains('is-collapsed'));
+            });
+          });
+
+          // Restore folder state
+          document.querySelectorAll('.nav-folder').forEach(folder => {
+            const folderPath = folder.querySelector('.nav-folder-title').getAttribute('data-path');
+            const isCollapsed = localStorage.getItem('folderState_' + folderPath) === 'true';
+            if (isCollapsed) {
+              folder.classList.add('is-collapsed');
+            } else {
+              folder.classList.remove('is-collapsed');
+            }
+          });
+
+          // Expand parent folders of the current page
+          const currentFileLink = document.querySelector('.nav-file-title.is-active');
+          if (currentFileLink) {
+            let parent = currentFileLink.closest('.nav-folder');
+            while (parent) {
+              parent.classList.remove('is-collapsed');
+              parent = parent.parentElement.closest('.nav-folder');
+            }
+          }
+
+          // Highlight active page in sidebar
+          const currentPath = window.location.pathname;
+          const sidebarLinks = document.querySelectorAll('.nav-file-title');
+          sidebarLinks.forEach(link => {
+            if (link.getAttribute('href') === currentPath) {
+              link.classList.add('is-active');
+            }
+          });
+
+          // Search functionality
+          const searchInput = document.querySelector('.sidebar-search input');
+          const navItems = document.querySelectorAll('.nav-file-title, .nav-folder-title');
+
+          searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+
+            navItems.forEach(item => {
+              const text = item.textContent.toLowerCase();
+              const parent = item.closest('.tree-item');
+
+              if (text.includes(searchTerm)) {
+                parent.style.display = 'block';
+                let folder = parent.closest('.nav-folder');
+                while (folder) {
+                  folder.classList.remove('is-collapsed');
+                  folder = folder.parentElement.closest('.nav-folder');
+                }
+              } else {
+                parent.style.display = 'none';
+              }
+            });
+          });
+        });
+      `;
+  }
+  createSidebar(files, currentFile) {
+    const tree = this.buildFileTree(files);
+    const baseDir = Object.keys(tree)[0];
+    const homeLink = this.createHomeLink(currentFile);
+    const fileTree = this.renderFileTree(
+      tree[baseDir],
+      baseDir,
+      currentFile
+    );
+    return homeLink + fileTree;
+  }
+  createHomeLink(currentFile) {
+    const isActive = currentFile.name === "index.md" ? "is-active" : "";
+    const homeHref = this.getCorrectRelativePath(currentFile.path, "index.md");
+    return `
+      <div class="tree-item nav-file">
+        <div class="tree-item-self is-clickable ${isActive}" data-path="index.md">
+          <a href="${homeHref}" class="nav-file-title">
+            <div class="tree-item-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-home">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+              </svg>
+            </div>
+            <div class="nav-file-title-content">Home</div>
+          </a>
+        </div>
+      </div>
+    `;
+  }
+  buildFileTree(files) {
+    const tree = {};
+    files.forEach((file) => {
+      const parts = file.path.split("/");
+      let current = tree;
+      parts.forEach((part, index) => {
+        if (!current[part]) {
+          current[part] = index === parts.length - 1 ? null : {};
+        }
+        if (current[part] !== null) {
+          current = current[part];
+        }
+      });
+    });
+    return tree;
+  }
+  renderFileTree(tree, path2 = "", currentFile, level = 0) {
+    let html = "";
+    for (const [name, subtree] of Object.entries(tree)) {
+      if (name === "index.md") continue;
+      const fullPath = path2 ? `${path2}/${name}` : name;
+      const isCurrentFile = fullPath === currentFile.path;
+      const itemClass = isCurrentFile ? "is-active" : "";
+      const displayName = name.replace(/\.md$/, "");
+      if (subtree === null) {
+        const href = this.getCorrectRelativePath(currentFile.path, fullPath);
+        html += `
+          <div class="tree-item nav-file">
+            <div class="tree-item-self is-clickable ${itemClass}" data-path="${fullPath}">
+              <a href="${href}" class="nav-file-title">
+                <div class="nav-file-title-content">${displayName}</div>
+              </a>
+            </div>
+          </div>
+        `;
+      } else {
+        html += `
+          <div class="tree-item nav-folder">
+            <div class="tree-item-self is-clickable nav-folder-title" data-path="${fullPath}">
+              <div class="tree-item-icon collapse-icon nav-folder-collapse-indicator">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon right-triangle">
+                  <path d="M3 8L12 17L21 8"></path>
+                </svg>
+              </div>
+              <div class="nav-folder-title-content">${displayName}</div>
+            </div>
+            <div class="tree-item-children nav-folder-children">
+              ${this.renderFileTree(subtree, fullPath, currentFile, level + 1)}
+            </div>
+          </div>
+        `;
+      }
+    }
+    return html;
+  }
+  getCorrectRelativePath(currentPath, targetPath) {
+    const currentParts = currentPath.split("/").slice(0, -1);
+    const targetParts = targetPath.split("/");
+    if (targetPath === "index.md") {
+      const depth = Math.max(0, currentParts.length - 1);
+      return depth === 0 ? "index.html" : "../".repeat(depth) + "index.html";
+    }
+    let commonPrefixLength = 0;
+    while (commonPrefixLength < currentParts.length && commonPrefixLength < targetParts.length && currentParts[commonPrefixLength] === targetParts[commonPrefixLength]) {
+      commonPrefixLength++;
+    }
+    const backSteps = currentParts.length - commonPrefixLength;
+    const forwardSteps = targetParts.slice(commonPrefixLength);
+    let relativePath = "../".repeat(backSteps) + forwardSteps.join("/");
+    relativePath = relativePath.replace(/\.md$/, ".html");
+    console.log("Current path:", currentPath);
+    console.log("Target path:", targetPath);
+    console.log("Relative path:", relativePath);
+    return relativePath;
+  }
+  async createNotFoundPage(files) {
+    const dummyFile = {
+      path: "404.md",
+      name: "404.md",
+      basename: "404",
+      extension: "md"
+    };
+    let sidebarContent = this.createSidebar(files, dummyFile);
+    const notFoundContent = `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Page Not Found</title>
+          <style>${this.getStyles()}</style>
+      </head>
+      <body>
+          <div class="app-container">
+              <aside class="sidebar">
+                  <div class="sidebar-header">
+                      <div class="logo">
+                          <!-- SVG element goes here -->
+                      </div>
+                      <h1 class="site-title">404 - Not Found</h1>
+                  </div>
+                  <div class="sidebar-search">
+                      <input type="text" placeholder="Search pages...">
+                  </div>
+                  <nav class="sidebar-nav">
+                      ${sidebarContent}
+                  </nav>
+              </aside>
+              <main class="content">
+                  <article class="markdown-content">
+                      <h1 class="doc-title">Page Not Found</h1>
+                      <p>The requested page could not be found. Please check the URL or use the sidebar to navigate to an existing page.</p>
+                  </article>
+              </main>
+          </div>
+          <script>${this.getJavaScript()}<\/script>
+      </body>
+      </html>
+    `;
+    return notFoundContent;
+  }
+  adjust404SidebarLinks(sidebarContent) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(sidebarContent, "text/html");
+    doc.querySelectorAll("a").forEach((link) => {
+      let href = link.getAttribute("href");
+      if (href) {
+        href = this.getCorrectRelativePath(
+          "404.md",
+          href.replace(/\.html$/, ".md")
+        );
+        link.setAttribute("href", href);
+      }
+    });
+    return doc.body.innerHTML;
+  }
+};
+
 // src/main.ts
 var import_buffer5 = __toESM(require_buffer2());
 var import_process = __toESM(require_browser2());
-var ArweaveSync = class extends import_obsidian7.Plugin {
+var ArweaveSync = class extends import_obsidian8.Plugin {
   constructor() {
     super(...arguments);
     this.walletAddress = null;
@@ -28497,6 +29241,7 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
   }
   initializeManagers() {
     initializeWalletManager();
+    this.arPublishManager = new ArPublishManager(this.app, this);
     this.aoManager = new AOManager(this);
     this.arweave = import_arweave3.default.init({
       host: "arweave.net",
@@ -28537,12 +29282,6 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
     this.registerEvent(
       this.app.vault.on("delete", this.handleFileDelete.bind(this))
     );
-    this.registerEvent(
-      this.app.workspace.on(
-        "editor-change",
-        this.handleEditorChange.bind(this)
-      )
-    );
   }
   setupUI() {
     this.createStatusBarItem();
@@ -28555,6 +29294,20 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
         menu.addItem((item) => {
           item.setTitle("Sync with Arweave").setIcon("sync").onClick(() => this.syncFile(file));
         });
+      })
+    );
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu, file) => {
+        if (file instanceof import_obsidian8.TFile) {
+          menu.addItem((item) => {
+            item.setTitle("Sync with Arweave").setIcon("sync").onClick(() => this.syncFile(file));
+          });
+        }
+        if (file instanceof import_obsidian8.TFolder) {
+          menu.addItem((item) => {
+            item.setTitle("Publish as Website to Arweave").setIcon("globe").onClick(() => this.publishToArweave(file));
+          });
+        }
       })
     );
     const debouncedAddSyncButtonToLeaf = debounce(
@@ -28572,7 +29325,7 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
       callback: async () => {
         const filePath = "Assets/mobileTest.png";
         await testEncryptionWithSpecificFile(this, filePath);
-        new import_obsidian7.Notice(
+        new import_obsidian8.Notice(
           "Specific file encryption test completed. Check console for results."
         );
       }
@@ -28638,17 +29391,17 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
   async copyWalletAddress() {
     if (this.walletAddress) {
       await navigator.clipboard.writeText(this.walletAddress);
-      new import_obsidian7.Notice("Wallet address copied to clipboard");
+      new import_obsidian8.Notice("Wallet address copied to clipboard");
     }
   }
   async disconnectWallet() {
     await walletManager.disconnect();
     this.updateStatusBar();
-    new import_obsidian7.Notice("Wallet disconnected");
+    new import_obsidian8.Notice("Wallet disconnected");
   }
   async addSyncButtonToLeaf(leaf) {
     const view = leaf.view;
-    if (view instanceof import_obsidian7.MarkdownView) {
+    if (view instanceof import_obsidian8.MarkdownView) {
       await this.addSyncButton(view);
     }
   }
@@ -28754,7 +29507,7 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
       await this.checkForNewFiles();
     } catch (error) {
       console.error("Error during wallet connection:", error);
-      new import_obsidian7.Notice(
+      new import_obsidian8.Notice(
         `Error: ${error.message}
 Check the console for more details.`
       );
@@ -28783,7 +29536,7 @@ Check the console for more details.`
       const localFile = this.app.vault.getAbstractFileByPath(filePath);
       if (!localFile) {
         newOrModifiedFiles.push(filePath);
-      } else if (localFile instanceof import_obsidian7.TFile) {
+      } else if (localFile instanceof import_obsidian8.TFile) {
         const localFileHash = await this.vaultSyncManager.getFileHash(localFile);
         const localFileTimestamp = localFile.stat.mtime;
         if (remoteFileInfo.fileHash !== localFileHash && remoteFileInfo.timestamp > localFileTimestamp) {
@@ -28792,13 +29545,13 @@ Check the console for more details.`
       }
     }
     if (newOrModifiedFiles.length > 0) {
-      new import_obsidian7.Notice(
+      new import_obsidian8.Notice(
         `Wallet connected. ${newOrModifiedFiles.length} new or modified files available for import.`
       );
       this.forceRefreshSidebarFiles();
       await this.openSyncSidebarWithImportTab();
     } else {
-      new import_obsidian7.Notice("Wallet connected. No new files to import.");
+      new import_obsidian8.Notice("Wallet connected. No new files to import.");
     }
     return newOrModifiedFiles;
   }
@@ -28808,7 +29561,7 @@ Check the console for more details.`
       this.settings.remoteUploadConfig
     )) {
       const file = this.app.vault.getAbstractFileByPath(filePath);
-      if (file instanceof import_obsidian7.TFile) {
+      if (file instanceof import_obsidian8.TFile) {
         const { syncState } = await this.vaultSyncManager.checkFileSync(file);
         if (syncState !== "synced") {
           newOrModifiedFiles.push(filePath);
@@ -28823,7 +29576,7 @@ Check the console for more details.`
     this.walletAddress = null;
     await this.aoManager.initialize(null);
     this.updateStatusBar();
-    new import_obsidian7.Notice("Wallet disconnected successfully");
+    new import_obsidian8.Notice("Wallet disconnected successfully");
   }
   updateLocalConfig(filePath, fileInfo) {
     this.settings.localUploadConfig[filePath] = fileInfo;
@@ -28854,7 +29607,7 @@ Check the console for more details.`
       await this.vaultSyncManager.importFilesFromArweave(selectedFiles);
     } catch (error) {
       console.error("Error during file import:", error);
-      new import_obsidian7.Notice(
+      new import_obsidian8.Notice(
         `Error: ${error.message}
 Check the console for more details.`
       );
@@ -28870,7 +29623,7 @@ Check the console for more details.`
       }
     } catch (error) {
       console.error("Failed to fetch upload config from AO:", error);
-      new import_obsidian7.Notice("Failed to fetch upload config from AO");
+      new import_obsidian8.Notice("Failed to fetch upload config from AO");
     }
   }
   async loadSettings() {
@@ -28900,7 +29653,7 @@ Check the console for more details.`
     this.forceRefreshSidebarFiles();
   }
   getSyncButtonForFile(file) {
-    const view = this.app.workspace.getActiveViewOfType(import_obsidian7.MarkdownView);
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian8.MarkdownView);
     return view == null ? void 0 : view.containerEl.querySelector(
       ".arweave-sync-button"
     );
@@ -28922,14 +29675,14 @@ Check the console for more details.`
   }
   updateUIAfterSync(file) {
     this.modifiedFiles.delete(file.path);
-    new import_obsidian7.Notice(`File ${file.name} synced to Arweave (encrypted)`);
+    new import_obsidian8.Notice(`File ${file.name} synced to Arweave (encrypted)`);
     const syncButton = this.getSyncButtonForFile(file);
     if (syncButton) {
       this.updateSyncButtonState(syncButton, file);
     }
   }
   handleSyncError(file, error) {
-    new import_obsidian7.Notice(`Failed to sync file: ${error.message}`);
+    new import_obsidian8.Notice(`Failed to sync file: ${error.message}`);
     this.modifiedFiles.add(file.path);
   }
   async handleFileModify(file) {
@@ -28952,7 +29705,7 @@ Check the console for more details.`
     this.updateSyncSidebarFile(file);
   }
   updateSyncButtonForActiveFile(file) {
-    const activeView = this.app.workspace.getActiveViewOfType(import_obsidian7.MarkdownView);
+    const activeView = this.app.workspace.getActiveViewOfType(import_obsidian8.MarkdownView);
     if (activeView && activeView.file === file) {
       const syncButton = activeView.containerEl.querySelector(
         ".arweave-sync-button"
@@ -28996,7 +29749,7 @@ Check the console for more details.`
         await this.aoManager.deleteUploadConfig(file.path);
       } catch (error) {
         console.error("Error deleting file from remote config:", error);
-        new import_obsidian7.Notice(
+        new import_obsidian8.Notice(
           `Failed to delete ${file.path} from remote config. Please try again later.`
         );
       }
@@ -29004,29 +29757,33 @@ Check the console for more details.`
       this.forceRefreshSidebarFiles();
     }
   }
-  async handleEditorChange(editor, info) {
-    if (info instanceof import_obsidian7.MarkdownView) {
-      const file = info.file;
-      if (file) {
-        const { syncState } = await this.vaultSyncManager.checkFileSync(file);
-        if (syncState === "remote-newer") {
-          const modal = new RemoteNewerVersionModal(this.app, file, this);
-          modal.open();
-          const choice = await modal.awaitChoice();
-          if (choice === "import") {
-            await this.vaultSyncManager.importFileFromArweave(file.path);
-            new import_obsidian7.Notice(`Imported newer version of ${file.name} from Arweave`);
-            const newContent = await this.app.vault.read(file);
-            editor.setValue(newContent);
-          } else {
-            new import_obsidian7.Notice(
-              `Proceeding with local edit of ${file.name}. Remote changes will be overwritten on next sync.`
-            );
-          }
-        }
-      }
-    }
-  }
+  // private async handleEditorChange(
+  //   editor: Editor,
+  //   info: MarkdownView | MarkdownFileInfo,
+  // ) {
+  //   if (info instanceof MarkdownView) {
+  //     const file = info.file;
+  //     if (file) {
+  //       const { syncState } = await this.vaultSyncManager.checkFileSync(file);
+  //       if (syncState === "remote-newer") {
+  //         const modal = new RemoteNewerVersionModal(this.app, file, this);
+  //         modal.open();
+  //         const choice = await modal.awaitChoice();
+  //         if (choice === "import") {
+  //           await this.vaultSyncManager.importFileFromArweave(file.path);
+  //           new Notice(`Imported newer version of ${file.name} from Arweave`);
+  //           // Refresh the editor content
+  //           const newContent = await this.app.vault.read(file);
+  //           editor.setValue(newContent);
+  //         } else {
+  //           new Notice(
+  //             `Proceeding with local edit of ${file.name}. Remote changes will be overwritten on next sync.`,
+  //           );
+  //         }
+  //       }
+  //     }
+  //   }
+  // }
   removeSyncSidebarFile(filePath) {
     this.updateView((view) => {
       view.removeFile(filePath);
@@ -29037,29 +29794,29 @@ Check the console for more details.`
     let exportedFiles = 0;
     for (const filePath of filesToExport) {
       const file = this.app.vault.getAbstractFileByPath(filePath);
-      if (file instanceof import_obsidian7.TFile) {
+      if (file instanceof import_obsidian8.TFile) {
         try {
           await this.vaultSyncManager.syncFile(file);
           exportedFiles++;
-          new import_obsidian7.Notice(`Exported ${exportedFiles}/${totalFiles} files`);
+          new import_obsidian8.Notice(`Exported ${exportedFiles}/${totalFiles} files`);
         } catch (error) {
           console.error(`Error exporting file ${filePath}:`, error);
-          new import_obsidian7.Notice(`Failed to export ${filePath}. Error: ${error.message}`);
+          new import_obsidian8.Notice(`Failed to export ${filePath}. Error: ${error.message}`);
         }
       }
     }
     await this.saveSettings();
     await this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
-    new import_obsidian7.Notice(`Exported ${exportedFiles}/${totalFiles} files to Arweave`);
+    new import_obsidian8.Notice(`Exported ${exportedFiles}/${totalFiles} files to Arweave`);
     this.updateActiveSyncButton();
     this.refreshSyncSidebar();
   }
   async forceRefreshSidebarFiles() {
     this.refreshSyncSidebar();
-    new import_obsidian7.Notice("Sidebar files refreshed");
+    new import_obsidian8.Notice("Sidebar files refreshed");
   }
   updateActiveSyncButton() {
-    const activeView = this.app.workspace.getActiveViewOfType(import_obsidian7.MarkdownView);
+    const activeView = this.app.workspace.getActiveViewOfType(import_obsidian8.MarkdownView);
     if (activeView && activeView.file) {
       const syncButton = activeView.containerEl.querySelector(
         ".arweave-sync-button"
@@ -29134,6 +29891,20 @@ Check the console for more details.`
   async reinitializeAOManager() {
     if (this.aoManager) {
       await this.aoManager.initialize(walletManager.getJWK());
+    }
+  }
+  async publishToArweave(folder) {
+    try {
+      await this.arPublishManager.publishWebsiteToArweave(folder);
+      new import_obsidian8.Notice(`Folder "${folder.name}" published to Arweave as a website.`);
+    } catch (error) {
+      console.error(
+        `Error publishing folder ${folder.name} to Arweave:`,
+        error
+      );
+      new import_obsidian8.Notice(
+        `Failed to publish ${folder.name} to Arweave. Error: ${error.message}`
+      );
     }
   }
   onunload() {
