@@ -18,6 +18,7 @@ export interface ArweaveSyncSettings {
   localUploadConfig: UploadConfig;
   remoteUploadConfig: UploadConfig;
   customProcessId: string;
+  autoImportUnsyncedChanges: boolean;
 }
 
 export const DEFAULT_SETTINGS: ArweaveSyncSettings = {
@@ -26,4 +27,5 @@ export const DEFAULT_SETTINGS: ArweaveSyncSettings = {
   customProcessId: "",
   localUploadConfig: {},
   remoteUploadConfig: {},
+  autoImportUnsyncedChanges: false,
 };

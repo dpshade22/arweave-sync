@@ -31,6 +31,18 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Auto-import Unsynced Changes")
+      .setDesc("Automatically import unsynced changes when connecting wallet")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.autoImportUnsyncedChanges)
+          .onChange(async (value) => {
+            this.plugin.settings.autoImportUnsyncedChanges = value;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
       .setName("Custom Process ID")
       .setDesc("Optionally provide a custom AO process ID")
       .addText((text) =>

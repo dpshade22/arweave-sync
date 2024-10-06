@@ -379,7 +379,6 @@ export default class ArweaveSync extends Plugin {
   }
 
   async handleWalletConnection(walletJson: string) {
-    // Add a flag to prevent multiple simultaneous connections
     if (this.isConnecting) {
       return;
     }
@@ -394,7 +393,25 @@ export default class ArweaveSync extends Plugin {
       this.updateStatusBar();
 
       await this.updateConfigsFromAO();
-      await this.checkForNewFiles();
+      const newOrModifiedFiles = await this.checkForNewFiles();
+
+      if (
+        this.settings.autoImportUnsyncedChanges &&
+        newOrModifiedFiles.length > 0
+      ) {
+        await this.importFilesFromArweave(newOrModifiedFiles);
+        new Notice(
+          `Automatically imported ${newOrModifiedFiles.length} new or modified files.`,
+        );
+      } else if (newOrModifiedFiles.length > 0) {
+        new Notice(
+          `${newOrModifiedFiles.length} new or modified files available for import.`,
+        );
+        this.forceRefreshSidebarFiles();
+        await this.openSyncSidebarWithImportTab();
+      } else {
+        new Notice("Wallet connected. No new files to import.");
+      }
     } catch (error) {
       console.error("Error during wallet connection:", error);
       new Notice(
@@ -453,8 +470,6 @@ export default class ArweaveSync extends Plugin {
       );
       this.forceRefreshSidebarFiles();
       await this.openSyncSidebarWithImportTab();
-    } else {
-      new Notice("Wallet connected. No new files to import.");
     }
 
     return newOrModifiedFiles;
