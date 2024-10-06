@@ -286,11 +286,11 @@ export default class ArweaveSync extends Plugin {
       { color: string; title: string; disabled?: boolean }
     > = {
       "new-local": {
-        color: "var(--text-accent)",
+        color: "var(--text-error)",
         title: "New local file, click to sync",
       },
       "new-remote": {
-        color: "var(--text-accent-hover)",
+        color: "var(--text-error)",
         title: "New remote file, click to sync",
       },
       "local-newer": {
@@ -298,7 +298,7 @@ export default class ArweaveSync extends Plugin {
         title: "Local version is newer, click to sync",
       },
       "remote-newer": {
-        color: "var(--text-error)",
+        color: "var(--text-warning)",
         title: "Remote version is newer, click to sync",
       },
       synced: {

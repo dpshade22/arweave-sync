@@ -29271,11 +29271,11 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
     const { syncState } = await this.vaultSyncManager.checkFileSync(file);
     const stateConfig = {
       "new-local": {
-        color: "var(--text-accent)",
+        color: "var(--text-error)",
         title: "New local file, click to sync"
       },
       "new-remote": {
-        color: "var(--text-accent-hover)",
+        color: "var(--text-error)",
         title: "New remote file, click to sync"
       },
       "local-newer": {
@@ -29283,7 +29283,7 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
         title: "Local version is newer, click to sync"
       },
       "remote-newer": {
-        color: "var(--text-error)",
+        color: "var(--text-warning)",
         title: "Remote version is newer, click to sync"
       },
       synced: {
