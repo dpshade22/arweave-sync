@@ -38,7 +38,7 @@ export class VaultSyncManager {
   async syncFile(file: TFile): Promise<void> {
     await this.updateRemoteConfig();
 
-    const { syncState, fileHash } = await this.checkFileSync(file);
+    const { syncState } = await this.checkFileSync(file);
 
     if (syncState === "synced") {
       console.log(`File ${file.path} is already synced.`);
@@ -50,27 +50,24 @@ export class VaultSyncManager {
       case "local-newer":
         console.log(`Exporting local changes for ${file.path}`);
         await this.exportFilesToArweave([file.path]);
-        // No need to update localUploadConfig here as exportFilesToArweave does it
         break;
       case "new-remote":
       case "remote-newer":
         console.log(`Importing remote changes for ${file.path}`);
         await this.importFileFromArweave(file.path);
-        // Update localUploadConfig after import
         const remoteFileInfo = this.remoteUploadConfig[file.path];
         if (remoteFileInfo) {
           this.localUploadConfig[file.path] = {
             ...remoteFileInfo,
-            timestamp: Date.now(), // Use current timestamp for local version
+            timestamp: Date.now(),
           };
         }
         break;
       default:
         console.warn(`Unexpected sync state for ${file.path}: ${syncState}`);
-        return; // Exit without saving settings for unexpected states
+        return;
     }
 
-    // Save settings after sync operations
     await this.plugin.saveSettings();
 
     console.log(`File ${file.path} synced successfully.`);
@@ -110,15 +107,18 @@ export class VaultSyncManager {
         remoteFileInfo.txId,
       );
 
-      const decryptedContent = decrypt(
-        encryptedContent,
-        this.encryptionPassword,
-      );
+      let decryptedContent: string | Buffer;
+      try {
+        decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
+      } catch (decryptError) {
+        console.error(`Failed to decrypt ${filePath}:`, decryptError);
+        await this.handleDecryptionFailure(filePath);
+        return;
+      }
 
       const file = this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
 
       if (file instanceof TFile) {
-        // File exists, update it
         if (Buffer.isBuffer(decryptedContent)) {
           await this.plugin.app.vault.modifyBinary(
             file,
@@ -130,7 +130,6 @@ export class VaultSyncManager {
           throw new Error(`Unexpected decrypted content type for ${filePath}`);
         }
       } else {
-        // File doesn't exist, create it
         await this.ensureDirectoryExists(normalizedPath);
         if (Buffer.isBuffer(decryptedContent)) {
           await this.plugin.app.vault.createBinary(
@@ -146,7 +145,6 @@ export class VaultSyncManager {
 
       this.plugin.updateLocalConfig(filePath, remoteFileInfo);
 
-      // Save updated local config
       await this.plugin.saveSettings();
 
       console.log(`Imported file: ${normalizedPath}`);
@@ -154,6 +152,21 @@ export class VaultSyncManager {
       console.error(`Failed to import file: ${filePath}`, error);
       throw error;
     }
+  }
+
+  private async handleDecryptionFailure(filePath: string): Promise<void> {
+    console.log(
+      `Removing ${filePath} from remote upload config due to decryption failure`,
+    );
+
+    let updatedRemoteConfig = this.remoteUploadConfig;
+    delete updatedRemoteConfig[filePath];
+
+    await this.plugin.aoManager.updateUploadConfig(updatedRemoteConfig);
+
+    new Notice(
+      `Failed to decrypt ${filePath}. It has been removed from the sync list.`,
+    );
   }
 
   private async ensureDirectoryExists(filePath: string) {
@@ -188,7 +201,7 @@ export class VaultSyncManager {
       ? await this.vault.readBinary(file)
       : await this.vault.read(file);
     const encryptedContent = encrypt(
-      content,
+      content instanceof ArrayBuffer ? Buffer.from(content) : content,
       this.encryptionPassword,
       isBinary,
     );
@@ -243,7 +256,6 @@ export class VaultSyncManager {
   async exportFilesToArweave(filePaths: string[]): Promise<void> {
     const updatedFiles: FileUploadInfo[] = [];
 
-    // Get the current remote config
     const currentRemoteConfig =
       (await this.plugin.aoManager.getUploadConfig()) || {};
 
@@ -254,20 +266,16 @@ export class VaultSyncManager {
         if (syncState !== "synced") {
           const newFileInfo = await this.exportFileToArweave(file, fileHash);
           updatedFiles.push(newFileInfo);
-          // Update local config for this file
           this.localUploadConfig[file.path] = newFileInfo;
-          // Update the current remote config with the new file info
           currentRemoteConfig[file.path] = newFileInfo;
         }
       }
     }
 
-    // Update the AO process with the updated remote config
     if (updatedFiles.length > 0) {
       await this.plugin.aoManager.updateUploadConfig(currentRemoteConfig);
     }
 
-    // Save the updated local config
     await this.plugin.saveSettings();
   }
 
@@ -285,7 +293,8 @@ export class VaultSyncManager {
       | "new-remote"
       | "local-newer"
       | "remote-newer"
-      | "synced";
+      | "synced"
+      | "decrypt-failed";
     fileHash: string;
   }> {
     const currentFileHash = await this.getFileHash(file);
@@ -297,12 +306,23 @@ export class VaultSyncManager {
       | "new-remote"
       | "local-newer"
       | "remote-newer"
-      | "synced";
+      | "synced"
+      | "decrypt-failed";
 
     if (!remoteFileInfo && localFileInfo) {
       syncState = "new-local";
     } else if (!localFileInfo && remoteFileInfo) {
-      syncState = "new-remote";
+      try {
+        const encryptedContent = await this.fetchEncryptedContent(
+          remoteFileInfo.txId,
+        );
+        decrypt(encryptedContent, this.encryptionPassword);
+        syncState = "new-remote";
+      } catch (decryptError) {
+        console.error(`Failed to decrypt ${file.path}:`, decryptError);
+        await this.handleDecryptionFailure(file.path);
+        syncState = "decrypt-failed";
+      }
     } else if (currentFileHash !== remoteFileInfo?.fileHash) {
       if (remoteFileInfo && remoteFileInfo.timestamp > file.stat.mtime) {
         syncState = "remote-newer";
@@ -323,9 +343,11 @@ export class VaultSyncManager {
       : await this.plugin.app.vault.read(file);
 
     if (isBinary) {
-      return CryptoJS.SHA256(CryptoJS.lib.WordArray.create(content)).toString();
+      return CryptoJS.SHA256(
+        CryptoJS.lib.WordArray.create(content as ArrayBuffer),
+      ).toString();
     } else {
-      return CryptoJS.SHA256(content).toString();
+      return CryptoJS.SHA256(content as string).toString();
     }
   }
 
@@ -352,7 +374,7 @@ export class VaultSyncManager {
         }
         await new Promise((resolve) =>
           setTimeout(resolve, 1000 * (attempt + 1)),
-        ); // Exponential backoff
+        );
       }
     }
     throw new Error("Unexpected error in fetchEncryptedContent");
@@ -388,7 +410,7 @@ export class VaultSyncManager {
 
       for (let i = 0; i < n; i++) {
         if (!currentTxId) {
-          return null; // Not enough versions available
+          return null;
         }
 
         const variables = { id: currentTxId };
@@ -396,16 +418,14 @@ export class VaultSyncManager {
         const transaction = results.data.transaction;
 
         if (!transaction) {
-          return null; // Transaction not found
+          return null;
         }
 
-        // Find the "Previous-Version" tag
         const previousVersionTag = transaction.tags.find(
           (tag) => tag.name === "Previous-Version",
         );
         currentTxId = previousVersionTag ? previousVersionTag.value : null;
 
-        // If we've reached the desired version, fetch and return the data
         if (i === n - 1) {
           const data = await this.plugin
             .getArweave()
@@ -415,14 +435,18 @@ export class VaultSyncManager {
             });
           const content =
             typeof data === "string" ? data : new TextDecoder().decode(data);
+          const decryptedContent = decrypt(content, this.encryptionPassword);
           return {
-            content: decrypt(content, this.encryptionPassword),
+            content:
+              typeof decryptedContent === "string"
+                ? decryptedContent
+                : decryptedContent.toString("utf-8"),
             timestamp: transaction.block.timestamp,
           };
         }
       }
 
-      return null; // Not enough versions available
+      return null;
     } catch (error) {
       console.error("Error fetching previous version:", error);
       return null;
