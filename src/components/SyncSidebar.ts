@@ -10,8 +10,6 @@ interface FileNode {
   children: FileNode[];
   expanded: boolean;
   syncState?: "new-file" | "updated-file" | "synced" | string;
-  localNewerVersion?: boolean;
-  localOlderVersion?: boolean;
 }
 
 export const SYNC_SIDEBAR_VIEW = "arweave-sync-view";

@@ -496,6 +496,7 @@ export default class ArweaveSync extends Plugin {
         fileHash: fileHash,
         encrypted: true,
         filePath: filePath,
+        oldFilePath: existingConfig?.oldFilePath || null,
         previousVersionTxId: existingConfig?.previousVersionTxId || null,
         versionNumber: existingConfig?.versionNumber || 1,
       };
@@ -572,6 +573,7 @@ export default class ArweaveSync extends Plugin {
         txId: currentConfig?.txId || "",
         filePath: file.path,
         fileHash: fileHash,
+        oldFilePath: currentConfig?.oldFilePath || null,
         previousVersionTxId: currentConfig?.txId || null,
         versionNumber: (currentConfig?.versionNumber || 0) + 1,
       };
@@ -594,14 +596,27 @@ export default class ArweaveSync extends Plugin {
     console.log(`File renamed from ${oldPath} to ${file.path}`);
     await this.saveSettings();
 
-    try {
-      await this.aoManager.updateUploadConfig(this.settings.localUploadConfig);
-    } catch (error) {
-      console.error("Error updating remote config after file rename:", error);
-      new Notice(
-        `Failed to update remote config after rename ${file.path}. Please try again later.`,
-      );
+    // Check if the file exists in the remote config
+    const remoteConfig = await this.aoManager.getUploadConfig();
+    if (remoteConfig && remoteConfig[oldPath]) {
+      // File exists in remote config, so we need to update it
+      remoteConfig[file.path] = {
+        ...remoteConfig[oldPath],
+        filePath: file.path,
+        oldFilePath: oldPath,
+      };
+      delete remoteConfig[oldPath];
+
+      try {
+        await this.aoManager.updateUploadConfig(remoteConfig);
+      } catch (error) {
+        console.error("Error updating remote config after file rename:", error);
+        new Notice(
+          `Failed to update remote config after rename ${file.path}. Please try again later.`,
+        );
+      }
     }
+
     this.updateSyncUI();
   }
 
@@ -610,14 +625,27 @@ export default class ArweaveSync extends Plugin {
     delete this.settings.localUploadConfig[file.path];
     console.log("File deleted:", file.path);
 
-    try {
-      await this.aoManager.updateUploadConfig(this.settings.localUploadConfig);
-    } catch (error) {
-      console.error("Error updating remote config after file deletion:", error);
-      new Notice(
-        `Failed to update remote config after deleting ${file.path}. Please try again later.`,
-      );
+    await this.saveSettings();
+
+    // Check if the file exists in the remote config
+    const remoteConfig = await this.aoManager.getUploadConfig();
+    if (remoteConfig && remoteConfig[file.path]) {
+      // File exists in remote config, so we need to update it
+      delete remoteConfig[file.path];
+
+      try {
+        await this.aoManager.updateUploadConfig(remoteConfig);
+      } catch (error) {
+        console.error(
+          "Error updating remote config after file deletion:",
+          error,
+        );
+        new Notice(
+          `Failed to update remote config after deleting ${file.path}. Please try again later.`,
+        );
+      }
     }
+
     this.removeSyncSidebarFile(file.path);
     this.updateSyncUI();
   }

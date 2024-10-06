@@ -8,6 +8,7 @@ export interface FileUploadInfo {
   fileHash: string;
   encrypted: boolean;
   filePath: string;
+  oldFilePath?: string | null;
   previousVersionTxId: string | null;
   versionNumber: number;
 }

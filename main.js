@@ -26770,69 +26770,104 @@ var AOManager = class {
   }
 };
 var AO_PROCESS_CODE = `
--- ArweaveSync AO Process
-local json = require("json")
+  local json = require("json")
 
--- Initialize state
-State = State or {}
-State.encryptedUploadConfig = State.encryptedUploadConfig or ""
+  -- Initialize state
+  State = State or {}
+  State.encryptedUploadConfig = State.encryptedUploadConfig or ""
+  State.encryptedRenameTracker = State.encryptedRenameTracker or ""
 
--- Handler for updating the encrypted upload config
-Handlers.add(
-    "UpdateEncryptedUploadConfig",
-    Handlers.utils.hasMatchingTag("Action", "UpdateEncryptedUploadConfig"),
-    function(msg)
-        local encryptedData = msg.Data
-        if encryptedData and encryptedData ~= "" then
-            State.encryptedUploadConfig = encryptedData
-            print("Updated encrypted upload config")
-            ao.send({
-                Target = msg.From,
-                Action = "UpdateEncryptedUploadConfigResponse",
-                Data = json.encode({ success = true, message = "Encrypted upload config updated" })
-            })
-        else
-            print("Error: Invalid encrypted data")
-            ao.send({
-                Target = msg.From,
-                Action = "UpdateEncryptedUploadConfigResponse",
-                Data = json.encode({ success = false, message = "Error: Invalid encrypted data" })
-            })
-        end
-    end
-)
+  -- Handler for updating the encrypted upload config
+  Handlers.add(
+      "UpdateEncryptedUploadConfig",
+      Handlers.utils.hasMatchingTag("Action", "UpdateEncryptedUploadConfig"),
+      function(msg)
+          local encryptedData = msg.Data
+          if encryptedData and encryptedData ~= "" then
+              State.encryptedUploadConfig = encryptedData
+              print("Updated encrypted upload config")
+              ao.send({
+                  Target = msg.From,
+                  Action = "UpdateEncryptedUploadConfigResponse",
+                  Data = json.encode({ success = true, message = "Encrypted upload config updated" })
+              })
+          else
+              print("Error: Invalid encrypted data")
+              ao.send({
+                  Target = msg.From,
+                  Action = "UpdateEncryptedUploadConfigResponse",
+                  Data = json.encode({ success = false, message = "Error: Invalid encrypted data" })
+              })
+          end
+      end
+  )
 
--- Handler for retrieving the encrypted upload config
-Handlers.add(
-    "GetEncryptedUploadConfig",
-    Handlers.utils.hasMatchingTag("Action", "GetEncryptedUploadConfig"),
-    function(msg)
-        print("Sending encrypted upload config")
-        local configData = State.encryptedUploadConfig
-        if configData:sub(1, 1) == '"' and configData:sub(-1) == '"' then
-            configData = configData:sub(2, -2)
-        end
-        ao.send({
-            Target = msg.From,
-            Action = "GetEncryptedUploadConfigResponse",
-            Data = configData
-        })
-    end
-)
+  -- Handler for updating the encrypted rename tracker
+  Handlers.add(
+      "UpdateEncryptedRenameTracker",
+      Handlers.utils.hasMatchingTag("Action", "UpdateEncryptedRenameTracker"),
+      function(msg)
+          local encryptedData = msg.Data
+          if encryptedData and encryptedData ~= "" then
+              State.encryptedRenameTracker = encryptedData
+              print("Updated encrypted rename tracker")
+              ao.send({
+                  Target = msg.From,
+                  Action = "UpdateEncryptedRenameTrackerResponse",
+                  Data = json.encode({ success = true, message = "Encrypted rename tracker updated" })
+              })
+          else
+              print("Error: Invalid encrypted rename tracker data")
+              ao.send({
+                  Target = msg.From,
+                  Action = "UpdateEncryptedRenameTrackerResponse",
+                  Data = json.encode({ success = false, message = "Error: Invalid encrypted data" })
+              })
+          end
+      end
+  )
 
--- Handler for getting the full state (for debugging purposes)
-Handlers.add(
-    "GetState",
-    Handlers.utils.hasMatchingTag("Action", "GetState"),
-    function(msg)
-        print("Sending full state")
-        ao.send({
-            Target = msg.From,
-            Action = "GetStateResponse",
-            Data = json.encode(State)
-        })
-    end
-)
+  -- Handler for retrieving the encrypted upload config
+  Handlers.add(
+      "GetEncryptedUploadConfig",
+      Handlers.utils.hasMatchingTag("Action", "GetEncryptedUploadConfig"),
+      function(msg)
+          print("Sending encrypted upload config")
+          ao.send({
+              Target = msg.From,
+              Action = "GetEncryptedUploadConfigResponse",
+              Data = State.encryptedUploadConfig
+          })
+      end
+  )
+
+  -- Handler for retrieving the encrypted rename tracker
+  Handlers.add(
+      "GetEncryptedRenameTracker",
+      Handlers.utils.hasMatchingTag("Action", "GetEncryptedRenameTracker"),
+      function(msg)
+          print("Sending encrypted rename tracker")
+          ao.send({
+              Target = msg.From,
+              Action = "GetEncryptedRenameTrackerResponse",
+              Data = State.encryptedRenameTracker
+          })
+      end
+  )
+
+  -- Handler for getting the full state (for debugging purposes)
+  Handlers.add(
+      "GetState",
+      Handlers.utils.hasMatchingTag("Action", "GetState"),
+      function(msg)
+          print("Sending full state")
+          ao.send({
+              Target = msg.From,
+              Action = "GetStateResponse",
+              Data = json.encode(State)
+          })
+      end
+  )
 `;
 
 // src/managers/walletManager.ts
@@ -26979,7 +27014,7 @@ var VaultSyncManager = class {
   }
   async syncFile(file) {
     await this.updateRemoteConfig();
-    const { syncState, fileHash } = await this.checkFileSync(file);
+    const { syncState } = await this.checkFileSync(file);
     if (syncState === "synced") {
       console.log(`File ${file.path} is already synced.`);
       return;
@@ -26999,7 +27034,6 @@ var VaultSyncManager = class {
           this.localUploadConfig[file.path] = {
             ...remoteFileInfo,
             timestamp: Date.now()
-            // Use current timestamp for local version
           };
         }
         break;
@@ -27034,13 +27068,18 @@ var VaultSyncManager = class {
       if (!remoteFileInfo) {
         throw new Error(`No remote file info found for ${filePath}`);
       }
+      await this.remoteRename(normalizedPath, remoteFileInfo);
       const encryptedContent = await this.fetchEncryptedContent(
         remoteFileInfo.txId
       );
-      const decryptedContent = decrypt(
-        encryptedContent,
-        this.encryptionPassword
-      );
+      let decryptedContent;
+      try {
+        decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
+      } catch (decryptError) {
+        console.error(`Failed to decrypt ${filePath}:`, decryptError);
+        await this.handleDecryptionFailure(filePath);
+        return;
+      }
       const file = this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
       if (file instanceof import_obsidian2.TFile) {
         if (import_buffer3.Buffer.isBuffer(decryptedContent)) {
@@ -27074,6 +27113,17 @@ var VaultSyncManager = class {
       throw error;
     }
   }
+  async handleDecryptionFailure(filePath) {
+    console.log(
+      `Removing ${filePath} from remote upload config due to decryption failure`
+    );
+    let updatedRemoteConfig = this.remoteUploadConfig;
+    delete updatedRemoteConfig[filePath];
+    await this.plugin.aoManager.updateUploadConfig(updatedRemoteConfig);
+    new import_obsidian2.Notice(
+      `Failed to decrypt ${filePath}. It has been removed from the sync list.`
+    );
+  }
   async ensureDirectoryExists(filePath) {
     const dirPath = filePath.split("/").slice(0, -1).join("/");
     if (dirPath) {
@@ -27098,7 +27148,7 @@ var VaultSyncManager = class {
     const isBinary = this.isBinaryFile(file);
     const content = isBinary ? await this.vault.readBinary(file) : await this.vault.read(file);
     const encryptedContent = encrypt(
-      content,
+      content instanceof ArrayBuffer ? import_buffer3.Buffer.from(content) : content,
       this.encryptionPassword,
       isBinary
     );
@@ -27172,7 +27222,17 @@ var VaultSyncManager = class {
     if (!remoteFileInfo && localFileInfo) {
       syncState = "new-local";
     } else if (!localFileInfo && remoteFileInfo) {
-      syncState = "new-remote";
+      try {
+        const encryptedContent = await this.fetchEncryptedContent(
+          remoteFileInfo.txId
+        );
+        decrypt(encryptedContent, this.encryptionPassword);
+        syncState = "new-remote";
+      } catch (decryptError) {
+        console.error(`Failed to decrypt ${file.path}:`, decryptError);
+        await this.handleDecryptionFailure(file.path);
+        syncState = "decrypt-failed";
+      }
     } else if (currentFileHash !== (remoteFileInfo == null ? void 0 : remoteFileInfo.fileHash)) {
       if (remoteFileInfo && remoteFileInfo.timestamp > file.stat.mtime) {
         syncState = "remote-newer";
@@ -27188,7 +27248,9 @@ var VaultSyncManager = class {
     const isBinary = this.isBinaryFile(file);
     const content = isBinary ? await this.plugin.app.vault.readBinary(file) : await this.plugin.app.vault.read(file);
     if (isBinary) {
-      return import_crypto_js2.default.SHA256(import_crypto_js2.default.lib.WordArray.create(content)).toString();
+      return import_crypto_js2.default.SHA256(
+        import_crypto_js2.default.lib.WordArray.create(content)
+      ).toString();
     } else {
       return import_crypto_js2.default.SHA256(content).toString();
     }
@@ -27260,8 +27322,9 @@ var VaultSyncManager = class {
             string: true
           });
           const content = typeof data === "string" ? data : new TextDecoder().decode(data);
+          const decryptedContent = decrypt(content, this.encryptionPassword);
           return {
-            content: decrypt(content, this.encryptionPassword),
+            content: typeof decryptedContent === "string" ? decryptedContent : decryptedContent.toString("utf-8"),
             timestamp: transaction.block.timestamp
           };
         }
@@ -27270,6 +27333,27 @@ var VaultSyncManager = class {
     } catch (error) {
       console.error("Error fetching previous version:", error);
       return null;
+    }
+  }
+  async remoteRename(filePath, remoteFileInfo) {
+    if (remoteFileInfo.oldFilePath) {
+      const oldFile = this.plugin.app.vault.getAbstractFileByPath(
+        remoteFileInfo.oldFilePath
+      );
+      if (oldFile instanceof import_obsidian2.TFile) {
+        try {
+          await this.plugin.app.fileManager.renameFile(oldFile, filePath);
+          console.log(
+            `Renamed file from ${remoteFileInfo.oldFilePath} to ${filePath}`
+          );
+        } catch (error) {
+          console.error(
+            `Failed to rename file from ${remoteFileInfo.oldFilePath} to ${filePath}:`,
+            error
+          );
+          throw new Error(`Failed to rename file: ${error.message}`);
+        }
+      }
     }
   }
   getCurrentTransactionId(filePath) {
@@ -29427,6 +29511,7 @@ Check the console for more details.`
         fileHash,
         encrypted: true,
         filePath,
+        oldFilePath: (existingConfig == null ? void 0 : existingConfig.oldFilePath) || null,
         previousVersionTxId: (existingConfig == null ? void 0 : existingConfig.previousVersionTxId) || null,
         versionNumber: (existingConfig == null ? void 0 : existingConfig.versionNumber) || 1
       };
@@ -29492,6 +29577,7 @@ Check the console for more details.`
         txId: (currentConfig == null ? void 0 : currentConfig.txId) || "",
         filePath: file.path,
         fileHash,
+        oldFilePath: (currentConfig == null ? void 0 : currentConfig.oldFilePath) || null,
         previousVersionTxId: (currentConfig == null ? void 0 : currentConfig.txId) || null,
         versionNumber: ((currentConfig == null ? void 0 : currentConfig.versionNumber) || 0) + 1
       };
@@ -29509,26 +29595,43 @@ Check the console for more details.`
     }
     console.log(`File renamed from ${oldPath} to ${file.path}`);
     await this.saveSettings();
-    try {
-      await this.aoManager.updateUploadConfig(this.settings.localUploadConfig);
-    } catch (error) {
-      console.error("Error updating remote config after file rename:", error);
-      new import_obsidian7.Notice(
-        `Failed to update remote config after rename ${file.path}. Please try again later.`
-      );
+    const remoteConfig = await this.aoManager.getUploadConfig();
+    if (remoteConfig && remoteConfig[oldPath]) {
+      remoteConfig[file.path] = {
+        ...remoteConfig[oldPath],
+        filePath: file.path,
+        oldFilePath: oldPath
+      };
+      delete remoteConfig[oldPath];
+      try {
+        await this.aoManager.updateUploadConfig(remoteConfig);
+      } catch (error) {
+        console.error("Error updating remote config after file rename:", error);
+        new import_obsidian7.Notice(
+          `Failed to update remote config after rename ${file.path}. Please try again later.`
+        );
+      }
     }
     this.updateSyncUI();
   }
   async handleFileDelete(file) {
     delete this.settings.localUploadConfig[file.path];
     console.log("File deleted:", file.path);
-    try {
-      await this.aoManager.updateUploadConfig(this.settings.localUploadConfig);
-    } catch (error) {
-      console.error("Error updating remote config after file deletion:", error);
-      new import_obsidian7.Notice(
-        `Failed to update remote config after deleting ${file.path}. Please try again later.`
-      );
+    await this.saveSettings();
+    const remoteConfig = await this.aoManager.getUploadConfig();
+    if (remoteConfig && remoteConfig[file.path]) {
+      delete remoteConfig[file.path];
+      try {
+        await this.aoManager.updateUploadConfig(remoteConfig);
+      } catch (error) {
+        console.error(
+          "Error updating remote config after file deletion:",
+          error
+        );
+        new import_obsidian7.Notice(
+          `Failed to update remote config after deleting ${file.path}. Please try again later.`
+        );
+      }
     }
     this.removeSyncSidebarFile(file.path);
     this.updateSyncUI();

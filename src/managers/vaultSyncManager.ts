@@ -94,7 +94,7 @@ export class VaultSyncManager {
     return importedFiles;
   }
 
-  private async importFileFromArweave(filePath: string): Promise<void> {
+  public async importFileFromArweave(filePath: string): Promise<void> {
     try {
       const normalizedPath = normalizePath(filePath);
 
@@ -102,6 +102,9 @@ export class VaultSyncManager {
       if (!remoteFileInfo) {
         throw new Error(`No remote file info found for ${filePath}`);
       }
+
+      // Check for remote rename
+      await this.remoteRename(normalizedPath, remoteFileInfo);
 
       const encryptedContent = await this.fetchEncryptedContent(
         remoteFileInfo.txId,
@@ -450,6 +453,31 @@ export class VaultSyncManager {
     } catch (error) {
       console.error("Error fetching previous version:", error);
       return null;
+    }
+  }
+
+  private async remoteRename(
+    filePath: string,
+    remoteFileInfo: FileUploadInfo,
+  ): Promise<void> {
+    if (remoteFileInfo.oldFilePath) {
+      const oldFile = this.plugin.app.vault.getAbstractFileByPath(
+        remoteFileInfo.oldFilePath,
+      );
+      if (oldFile instanceof TFile) {
+        try {
+          await this.plugin.app.fileManager.renameFile(oldFile, filePath);
+          console.log(
+            `Renamed file from ${remoteFileInfo.oldFilePath} to ${filePath}`,
+          );
+        } catch (error) {
+          console.error(
+            `Failed to rename file from ${remoteFileInfo.oldFilePath} to ${filePath}:`,
+            error,
+          );
+          throw new Error(`Failed to rename file: ${error.message}`);
+        }
+      }
     }
   }
 

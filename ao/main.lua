@@ -3,6 +3,7 @@ local json = require("json")
 -- Initialize state
 State = State or {}
 State.encryptedUploadConfig = State.encryptedUploadConfig or ""
+State.encryptedRenameTracker = State.encryptedRenameTracker or ""
 
 -- Handler for updating the encrypted upload config
 Handlers.add(
@@ -29,6 +30,31 @@ Handlers.add(
     end
 )
 
+-- Handler for updating the encrypted rename tracker
+Handlers.add(
+    "UpdateEncryptedRenameTracker",
+    Handlers.utils.hasMatchingTag("Action", "UpdateEncryptedRenameTracker"),
+    function(msg)
+        local encryptedData = msg.Data
+        if encryptedData and encryptedData ~= "" then
+            State.encryptedRenameTracker = encryptedData
+            print("Updated encrypted rename tracker")
+            ao.send({
+                Target = msg.From,
+                Action = "UpdateEncryptedRenameTrackerResponse",
+                Data = json.encode({ success = true, message = "Encrypted rename tracker updated" })
+            })
+        else
+            print("Error: Invalid encrypted rename tracker data")
+            ao.send({
+                Target = msg.From,
+                Action = "UpdateEncryptedRenameTrackerResponse",
+                Data = json.encode({ success = false, message = "Error: Invalid encrypted data" })
+            })
+        end
+    end
+)
+
 -- Handler for retrieving the encrypted upload config
 Handlers.add(
     "GetEncryptedUploadConfig",
@@ -39,6 +65,20 @@ Handlers.add(
             Target = msg.From,
             Action = "GetEncryptedUploadConfigResponse",
             Data = State.encryptedUploadConfig
+        })
+    end
+)
+
+-- Handler for retrieving the encrypted rename tracker
+Handlers.add(
+    "GetEncryptedRenameTracker",
+    Handlers.utils.hasMatchingTag("Action", "GetEncryptedRenameTracker"),
+    function(msg)
+        print("Sending encrypted rename tracker")
+        ao.send({
+            Target = msg.From,
+            Action = "GetEncryptedRenameTrackerResponse",
+            Data = State.encryptedRenameTracker
         })
     end
 )
