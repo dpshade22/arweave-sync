@@ -1,9 +1,11 @@
 import { JWKInterface } from "arweave/node/lib/wallet";
 import { UploadConfig, FileUploadInfo } from "../types";
 import { dryrun, message, result, spawn } from "@permaweb/aoconnect";
+import { encrypt, decrypt } from "../utils/encryption";
 import * as WarpArBundles from "warp-arbundles";
 import { arGql } from "ar-gql";
 import ArweaveSync from "../main";
+import CryptoJS from "crypto-js";
 const { createData, ArweaveSigner } = WarpArBundles;
 
 export function createDataItemSigner(wallet: JWKInterface) {
@@ -139,7 +141,7 @@ export class AOManager {
       process: this.processId,
       tags: [{ name: "Action", value: action }],
       signer: this.signer,
-      data: JSON.stringify(data),
+      data: data,
     });
 
     const messageResult = await result({
@@ -167,63 +169,52 @@ export class AOManager {
     return result.Messages?.[0]?.Data;
   }
 
-  async renameUploadConfig(oldPath: string, newPath: string): Promise<void> {
-    await this.sendMessage("RenameUploadConfig", { oldPath, newPath });
+  private encryptUploadConfig(
+    uploadConfig: UploadConfig,
+    password: string,
+  ): string {
+    const jsonString = JSON.stringify(uploadConfig);
+    return encrypt(jsonString, password, false);
+  }
+
+  private decryptUploadConfig(
+    encryptedData: string,
+    password: string,
+  ): UploadConfig {
+    const decryptedData = decrypt(encryptedData, password);
+    if (typeof decryptedData !== "string") {
+      throw new Error("Decrypted data is not a string");
+    }
+    return JSON.parse(decryptedData);
   }
 
   async updateUploadConfig(uploadConfig: UploadConfig): Promise<void> {
-    try {
-      const uploadConfigArray = Object.entries(uploadConfig).map(
-        ([key, value]) => ({ key, value }),
-      );
-      console.log(
-        "Sending upload config to AO:",
-        JSON.stringify(uploadConfigArray, null, 2),
-      );
-      const result = await this.sendMessage("UpdateUploadConfig", {
-        uploadConfig: uploadConfigArray,
-      });
-      console.log("Raw AO response for UpdateUploadConfig:", result);
-
-      // Check if the result is already an object
-      const parsedResult =
-        typeof result === "object" ? result : JSON.parse(result);
-      console.log("Parsed AO response for UpdateUploadConfig:", parsedResult);
-
-      // Check if the update was successful based on the response structure
-      if (parsedResult.uploadConfig) {
-        console.log("AO upload config updated successfully");
-        return;
-      } else {
-        console.warn("Unexpected AO response format:", parsedResult);
-      }
-    } catch (error) {
-      console.error("Error during AO upload config update:", error);
-    }
+    const encryptedConfig = this.encryptUploadConfig(
+      uploadConfig,
+      this.plugin.settings.encryptionPassword,
+    );
+    await this.sendMessage("UpdateEncryptedUploadConfig", encryptedConfig);
+    await this.plugin.vaultSyncManager.updateRemoteConfig();
+    this.plugin.updateSyncUI();
   }
 
   async getUploadConfig(): Promise<UploadConfig | null> {
-    const result = await this.dryRun("GetUploadConfig");
-    if (result) {
-      const parsedResult = JSON.parse(result) as Array<{
-        key: string;
-        value: FileUploadInfo;
-      }>;
-      console.log("Parsed AO response for GetUploadConfig:", parsedResult);
-      return parsedResult.reduce((acc: UploadConfig, { key, value }) => {
-        acc[key] = value;
-        return acc;
-      }, {});
+    try {
+      const encryptedConfig = await this.dryRun("GetEncryptedUploadConfig");
+      if (encryptedConfig) {
+        return this.decryptUploadConfig(
+          encryptedConfig,
+          this.plugin.settings.encryptionPassword,
+        );
+      }
+    } catch (error) {
+      console.error("Error fetching remote upload config:", error);
     }
     return null;
   }
 
-  async deleteUploadConfig(filePath: string): Promise<void> {
-    await this.sendMessage("DeleteUploadConfig", { Key: filePath });
-  }
-
   async getState(): Promise<any> {
-    const result = await this.sendMessage("GetState");
+    const result = await this.dryRun("GetState");
     return result ? JSON.parse(result) : null;
   }
 
@@ -266,182 +257,52 @@ local json = require("json")
 
 -- Initialize state
 State = State or {}
-State.uploadConfig = State.uploadConfig or {}
+State.encryptedUploadConfig = State.encryptedUploadConfig or ""
 
-
--- CRUD Handlers for upload config
+-- Handler for updating the encrypted upload config
 Handlers.add(
-    "CreateUploadConfig",
-    Handlers.utils.hasMatchingTag("Action", "CreateUploadConfig"),
+    "UpdateEncryptedUploadConfig",
+    Handlers.utils.hasMatchingTag("Action", "UpdateEncryptedUploadConfig"),
     function(msg)
-        local data = json.decode(msg.Data)
-        if data and type(data) == "table" then
-            for key, value in pairs(data) do
-                if value.txId and value.txId ~= "" then
-                    State.uploadConfig[key] = value
-                    print("Added/Updated upload config for: " .. key)
-                end
-            end
+        local encryptedData = msg.Data
+        if encryptedData and encryptedData ~= "" then
+            State.encryptedUploadConfig = encryptedData
+            print("Updated encrypted upload config")
             ao.send({
                 Target = msg.From,
-                Action = "CreateUploadConfigResponse",
-                Data = json.encode({ success = true, message = "Upload config created/updated" })
+                Action = "UpdateEncryptedUploadConfigResponse",
+                Data = json.encode({ success = true, message = "Encrypted upload config updated" })
             })
         else
-            print("Error: Invalid data format in CreateUploadConfig")
+            print("Error: Invalid encrypted data")
             ao.send({
                 Target = msg.From,
-                Action = "CreateUploadConfigResponse",
-                Data = json.encode({ success = false, message = "Error: Invalid data format" })
+                Action = "UpdateEncryptedUploadConfigResponse",
+                Data = json.encode({ success = false, message = "Error: Invalid encrypted data" })
             })
         end
     end
 )
 
+-- Handler for retrieving the encrypted upload config
 Handlers.add(
-    "RenameUploadConfig",
-    Handlers.utils.hasMatchingTag("Action", "RenameUploadConfig"),
+    "GetEncryptedUploadConfig",
+    Handlers.utils.hasMatchingTag("Action", "GetEncryptedUploadConfig"),
     function(msg)
-        local data = json.decode(msg.Data)
-        if data and type(data) == "table" and data.oldPath and data.newPath then
-            if State.uploadConfig[data.oldPath] then
-                State.uploadConfig[data.newPath] = State.uploadConfig[data.oldPath]
-                State.uploadConfig[data.newPath].filePath = data.newPath
-                State.uploadConfig[data.oldPath] = nil
-                print("Renamed upload config from " .. data.oldPath .. " to " .. data.newPath)
-
-                ao.send({
-                    Target = msg.From,
-                    Action = "RenameUploadConfigResponse",
-                    Data = json.encode({ success = true, message = "Upload config renamed" })
-                })
-            else
-                print("Error: Old path not found in upload config - " .. data.oldPath)
-                ao.send({
-                    Target = msg.From,
-                    Action = "RenameUploadConfigResponse",
-                    Data = json.encode({ success = false, message = "Error: Old path not found in upload config" })
-                })
-            end
-        else
-            print("Error: Invalid data format in RenameUploadConfig")
-            ao.send({
-                Target = msg.From,
-                Action = "RenameUploadConfigResponse",
-                Data = json.encode({ success = false, message = "Error: Invalid data format" })
-            })
+        print("Sending encrypted upload config")
+        local configData = State.encryptedUploadConfig
+        if configData:sub(1, 1) == '"' and configData:sub(-1) == '"' then
+            configData = configData:sub(2, -2)
         end
+        ao.send({
+            Target = msg.From,
+            Action = "GetEncryptedUploadConfigResponse",
+            Data = configData
+        })
     end
 )
 
-Handlers.add(
-    "GetUploadConfig",
-    Handlers.utils.hasMatchingTag("Action", "GetUploadConfig"),
-    function(msg)
-        local key = msg.Tags.Key
-        if key then
-            local value = State.uploadConfig[key]
-            if value then
-                print("Retrieved upload config for: " .. key)
-                ao.send({
-                    Target = msg.From,
-                    Action = "GetUploadConfigResponse",
-                    Data = json.encode(value)
-                })
-            else
-                print("Error: Upload config not found for key - " .. key)
-                ao.send({
-                    Target = msg.From,
-                    Action = "GetUploadConfigResponse",
-                    Data = json.encode({ success = false, message = "Error: Upload config not found" })
-                })
-            end
-        else
-            print("Sending full upload config")
-            local result = {}
-            for key, value in pairs(State.uploadConfig) do
-                table.insert(result, { key = key, value = value })
-            end
-            ao.send({
-                Target = msg.From,
-                Action = "GetUploadConfigResponse",
-                Data = json.encode(result)
-            })
-        end
-    end
-)
-
-Handlers.add(
-    "UpdateUploadConfig",
-    Handlers.utils.hasMatchingTag("Action", "UpdateUploadConfig"),
-    function(msg)
-        local data = json.decode(msg.Data)
-        if data and type(data) == "table" and data.uploadConfig then
-            for _, item in ipairs(data.uploadConfig) do
-                local key = item.key
-                local value = item.value
-                if value.txId and value.txId ~= "" then
-                    State.uploadConfig[key] = value
-                    print("Updated upload config for: " .. key)
-                else
-                    State.uploadConfig[key] = nil
-                    print("Removed upload config for: " .. key)
-                end
-            end
-            ao.send({
-                Target = msg.From,
-                Action = "UpdateUploadConfigResponse",
-                Data = json.encode({ success = true, message = "Upload config updated" })
-            })
-        else
-            print("Error: Invalid data format in UpdateUploadConfig")
-            ao.send({
-                Target = msg.From,
-                Action = "UpdateUploadConfigResponse",
-                Data = json.encode({ success = false, message = "Error: Invalid data format" })
-            })
-        end
-    end
-)
-
-Handlers.add(
-    "DeleteUploadConfig",
-    Handlers.utils.hasMatchingTag("Action", "DeleteUploadConfig"),
-    function(msg)
-        local data = json.decode(msg.Data)
-        local key = data.Key
-        if key then
-            if State.uploadConfig[key] then
-                State.uploadConfig[key] = nil
-                print("Deleted upload config for: " .. key)
-                ao.send({
-                    Target = msg.From,
-                    Action = "DeleteUploadConfigResponse",
-                    Data = json.encode({ success = true, message = "Upload config deleted" })
-                })
-            else
-                print("Warning: Upload config not found for deletion - " .. key)
-                ao.send({
-                    Target = msg.From,
-                    Action = "DeleteUploadConfigResponse",
-                    Data = json.encode({
-                        success = true,
-                        message =
-                        "Warning: Upload config not found, but operation completed"
-                    })
-                })
-            end
-        else
-            print("Error: Missing key in DeleteUploadConfig")
-            ao.send({
-                Target = msg.From,
-                Action = "DeleteUploadConfigResponse",
-                Data = json.encode({ success = false, message = "Error: Missing key" })
-            })
-        end
-    end
-)
-
+-- Handler for getting the full state (for debugging purposes)
 Handlers.add(
     "GetState",
     Handlers.utils.hasMatchingTag("Action", "GetState"),
