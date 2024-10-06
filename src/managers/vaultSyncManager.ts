@@ -243,6 +243,10 @@ export class VaultSyncManager {
   async exportFilesToArweave(filePaths: string[]): Promise<void> {
     const updatedFiles: FileUploadInfo[] = [];
 
+    // Get the current remote config
+    const currentRemoteConfig =
+      (await this.plugin.aoManager.getUploadConfig()) || {};
+
     for (const filePath of filePaths) {
       const file = this.vault.getAbstractFileByPath(filePath);
       if (file instanceof TFile) {
@@ -252,17 +256,15 @@ export class VaultSyncManager {
           updatedFiles.push(newFileInfo);
           // Update local config for this file
           this.localUploadConfig[file.path] = newFileInfo;
+          // Update the current remote config with the new file info
+          currentRemoteConfig[file.path] = newFileInfo;
         }
       }
     }
 
-    // Update the AO process with only the changes
+    // Update the AO process with the updated remote config
     if (updatedFiles.length > 0) {
-      const updatedConfig: UploadConfig = {};
-      updatedFiles.forEach((fileInfo) => {
-        updatedConfig[fileInfo.filePath] = fileInfo;
-      });
-      await this.plugin.aoManager.updateUploadConfig(updatedConfig);
+      await this.plugin.aoManager.updateUploadConfig(currentRemoteConfig);
     }
 
     // Save the updated local config
