@@ -47,3619 +47,6 @@ var __privateWrapper = (obj, member, setter, getter) => ({
   }
 });
 
-// node_modules/ar-gql/dist/queries/tx.js
-var require_tx = __commonJS({
-  "node_modules/ar-gql/dist/queries/tx.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.default = `
-query($id: ID!) {
-  transaction(id: $id) {
-    id
-    anchor
-    signature
-    recipient
-    owner {
-      address
-      key
-    }
-    fee {
-      winston
-      ar
-    }
-    quantity {
-      winston
-      ar
-    }
-    data {
-      size
-      type
-    }
-    tags {
-      name
-      value
-    }
-    block {
-      id
-      timestamp
-      height
-      previous
-    }
-    parent {
-      id
-    }
-  }
-}
-`;
-  }
-});
-
-// node_modules/ar-gql/dist/utils/fetchRetry.js
-var require_fetchRetry = __commonJS({
-  "node_modules/ar-gql/dist/utils/fetchRetry.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.fetchRetry = void 0;
-    var fetchRetry = async (input, init, opts) => {
-      const { retry, retryMs } = opts;
-      let tries = 0;
-      while (true) {
-        try {
-          return await fetch(input, init);
-        } catch (e) {
-          if (tries++ < retry) {
-            console.warn(`[ar-gql] waiting ${retryMs}ms before retrying ${tries} of ${retry}`);
-            await new Promise((resolve) => setTimeout(resolve, retryMs));
-            continue;
-          }
-          throw new TypeError(`Failed to fetch from ${input} after ${retry} retries`, { cause: e });
-        }
-      }
-    };
-    exports.fetchRetry = fetchRetry;
-  }
-});
-
-// node_modules/ar-gql/dist/index.js
-var require_dist = __commonJS({
-  "node_modules/ar-gql/dist/index.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.GQLUrls = exports.arGql = void 0;
-    var tx_1 = require_tx();
-    var fetchRetry_1 = require_fetchRetry();
-    function arGql3(options) {
-      const defaultOpts = {
-        endpointUrl: "https://arweave.net/graphql",
-        retries: 0,
-        retryMs: 1e4
-      };
-      const opts = { ...defaultOpts, ...options };
-      if (!opts.endpointUrl.match(/^https?:\/\/.*\/graphql*/)) {
-        throw new Error(`string doesn't appear to be a URL of the form <http(s)://some-domain/graphql>'. You entered "${opts.endpointUrl}"`);
-      }
-      const run = async (query, variables) => {
-        const graphql = JSON.stringify({
-          query,
-          variables
-        });
-        const res = await (0, fetchRetry_1.fetchRetry)(opts.endpointUrl, {
-          method: "POST",
-          headers: {
-            "Accept": "application/json",
-            "Content-Type": "application/json"
-          },
-          body: graphql
-        }, {
-          retry: opts.retries,
-          retryMs: opts.retryMs
-        });
-        if (!res.ok) {
-          throw new Error(res.statusText, { cause: res.status });
-        }
-        return await res.json();
-      };
-      const all = async (query, variables, pageCallback) => {
-        let hasNextPage = true;
-        let edges = [];
-        let cursor = "";
-        let pageCallbacks = [];
-        while (hasNextPage) {
-          const res = (await run(query, { ...variables, cursor })).data.transactions;
-          if (res.edges && res.edges.length) {
-            if (typeof pageCallback === "function") {
-              pageCallbacks.push(pageCallback(res.edges));
-            } else {
-              edges = edges.concat(res.edges);
-            }
-            cursor = res.edges[res.edges.length - 1].cursor;
-          }
-          hasNextPage = res.pageInfo.hasNextPage;
-        }
-        await Promise.all(pageCallbacks);
-        return edges;
-      };
-      const tx = async (id) => {
-        const res = await run(tx_1.default, { id });
-        return res.data.transaction;
-      };
-      const fetchTxTag = async (id, name) => {
-        const res = await tx(id);
-        const tag = res.tags.find((tag2) => tag2.name === name);
-        if (tag)
-          return tag.value;
-      };
-      return {
-        run,
-        all,
-        tx,
-        fetchTxTag,
-        endpointUrl: opts.endpointUrl
-      };
-    }
-    exports.arGql = arGql3;
-    exports.GQLUrls = {
-      goldsky: "https://arweave-search.goldsky.com/graphql",
-      arweave: "https://arweave.net/graphql"
-    };
-  }
-});
-
-// node_modules/bignumber.js/bignumber.js
-var require_bignumber = __commonJS({
-  "node_modules/bignumber.js/bignumber.js"(exports, module2) {
-    (function(globalObject) {
-      "use strict";
-      var BigNumber, isNumeric = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i, mathceil = Math.ceil, mathfloor = Math.floor, bignumberError = "[BigNumber Error] ", tooManyDigits = bignumberError + "Number primitive has more than 15 significant digits: ", BASE = 1e14, LOG_BASE = 14, MAX_SAFE_INTEGER = 9007199254740991, POWS_TEN = [1, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13], SQRT_BASE = 1e7, MAX = 1e9;
-      function clone(configObject) {
-        var div, convertBase, parseNumeric, P4 = BigNumber2.prototype = { constructor: BigNumber2, toString: null, valueOf: null }, ONE = new BigNumber2(1), DECIMAL_PLACES = 20, ROUNDING_MODE = 4, TO_EXP_NEG = -7, TO_EXP_POS = 21, MIN_EXP = -1e7, MAX_EXP = 1e7, CRYPTO = false, MODULO_MODE = 1, POW_PRECISION = 0, FORMAT = {
-          prefix: "",
-          groupSize: 3,
-          secondaryGroupSize: 0,
-          groupSeparator: ",",
-          decimalSeparator: ".",
-          fractionGroupSize: 0,
-          fractionGroupSeparator: "\xA0",
-          // non-breaking space
-          suffix: ""
-        }, ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz", alphabetHasNormalDecimalDigits = true;
-        function BigNumber2(v3, b2) {
-          var alphabet, c2, caseChanged, e, i, isNum, len, str, x4 = this;
-          if (!(x4 instanceof BigNumber2)) return new BigNumber2(v3, b2);
-          if (b2 == null) {
-            if (v3 && v3._isBigNumber === true) {
-              x4.s = v3.s;
-              if (!v3.c || v3.e > MAX_EXP) {
-                x4.c = x4.e = null;
-              } else if (v3.e < MIN_EXP) {
-                x4.c = [x4.e = 0];
-              } else {
-                x4.e = v3.e;
-                x4.c = v3.c.slice();
-              }
-              return;
-            }
-            if ((isNum = typeof v3 == "number") && v3 * 0 == 0) {
-              x4.s = 1 / v3 < 0 ? (v3 = -v3, -1) : 1;
-              if (v3 === ~~v3) {
-                for (e = 0, i = v3; i >= 10; i /= 10, e++) ;
-                if (e > MAX_EXP) {
-                  x4.c = x4.e = null;
-                } else {
-                  x4.e = e;
-                  x4.c = [v3];
-                }
-                return;
-              }
-              str = String(v3);
-            } else {
-              if (!isNumeric.test(str = String(v3))) return parseNumeric(x4, str, isNum);
-              x4.s = str.charCodeAt(0) == 45 ? (str = str.slice(1), -1) : 1;
-            }
-            if ((e = str.indexOf(".")) > -1) str = str.replace(".", "");
-            if ((i = str.search(/e/i)) > 0) {
-              if (e < 0) e = i;
-              e += +str.slice(i + 1);
-              str = str.substring(0, i);
-            } else if (e < 0) {
-              e = str.length;
-            }
-          } else {
-            intCheck(b2, 2, ALPHABET.length, "Base");
-            if (b2 == 10 && alphabetHasNormalDecimalDigits) {
-              x4 = new BigNumber2(v3);
-              return round(x4, DECIMAL_PLACES + x4.e + 1, ROUNDING_MODE);
-            }
-            str = String(v3);
-            if (isNum = typeof v3 == "number") {
-              if (v3 * 0 != 0) return parseNumeric(x4, str, isNum, b2);
-              x4.s = 1 / v3 < 0 ? (str = str.slice(1), -1) : 1;
-              if (BigNumber2.DEBUG && str.replace(/^0\.0*|\./, "").length > 15) {
-                throw Error(tooManyDigits + v3);
-              }
-            } else {
-              x4.s = str.charCodeAt(0) === 45 ? (str = str.slice(1), -1) : 1;
-            }
-            alphabet = ALPHABET.slice(0, b2);
-            e = i = 0;
-            for (len = str.length; i < len; i++) {
-              if (alphabet.indexOf(c2 = str.charAt(i)) < 0) {
-                if (c2 == ".") {
-                  if (i > e) {
-                    e = len;
-                    continue;
-                  }
-                } else if (!caseChanged) {
-                  if (str == str.toUpperCase() && (str = str.toLowerCase()) || str == str.toLowerCase() && (str = str.toUpperCase())) {
-                    caseChanged = true;
-                    i = -1;
-                    e = 0;
-                    continue;
-                  }
-                }
-                return parseNumeric(x4, String(v3), isNum, b2);
-              }
-            }
-            isNum = false;
-            str = convertBase(str, b2, 10, x4.s);
-            if ((e = str.indexOf(".")) > -1) str = str.replace(".", "");
-            else e = str.length;
-          }
-          for (i = 0; str.charCodeAt(i) === 48; i++) ;
-          for (len = str.length; str.charCodeAt(--len) === 48; ) ;
-          if (str = str.slice(i, ++len)) {
-            len -= i;
-            if (isNum && BigNumber2.DEBUG && len > 15 && (v3 > MAX_SAFE_INTEGER || v3 !== mathfloor(v3))) {
-              throw Error(tooManyDigits + x4.s * v3);
-            }
-            if ((e = e - i - 1) > MAX_EXP) {
-              x4.c = x4.e = null;
-            } else if (e < MIN_EXP) {
-              x4.c = [x4.e = 0];
-            } else {
-              x4.e = e;
-              x4.c = [];
-              i = (e + 1) % LOG_BASE;
-              if (e < 0) i += LOG_BASE;
-              if (i < len) {
-                if (i) x4.c.push(+str.slice(0, i));
-                for (len -= LOG_BASE; i < len; ) {
-                  x4.c.push(+str.slice(i, i += LOG_BASE));
-                }
-                i = LOG_BASE - (str = str.slice(i)).length;
-              } else {
-                i -= len;
-              }
-              for (; i--; str += "0") ;
-              x4.c.push(+str);
-            }
-          } else {
-            x4.c = [x4.e = 0];
-          }
-        }
-        BigNumber2.clone = clone;
-        BigNumber2.ROUND_UP = 0;
-        BigNumber2.ROUND_DOWN = 1;
-        BigNumber2.ROUND_CEIL = 2;
-        BigNumber2.ROUND_FLOOR = 3;
-        BigNumber2.ROUND_HALF_UP = 4;
-        BigNumber2.ROUND_HALF_DOWN = 5;
-        BigNumber2.ROUND_HALF_EVEN = 6;
-        BigNumber2.ROUND_HALF_CEIL = 7;
-        BigNumber2.ROUND_HALF_FLOOR = 8;
-        BigNumber2.EUCLID = 9;
-        BigNumber2.config = BigNumber2.set = function(obj) {
-          var p2, v3;
-          if (obj != null) {
-            if (typeof obj == "object") {
-              if (obj.hasOwnProperty(p2 = "DECIMAL_PLACES")) {
-                v3 = obj[p2];
-                intCheck(v3, 0, MAX, p2);
-                DECIMAL_PLACES = v3;
-              }
-              if (obj.hasOwnProperty(p2 = "ROUNDING_MODE")) {
-                v3 = obj[p2];
-                intCheck(v3, 0, 8, p2);
-                ROUNDING_MODE = v3;
-              }
-              if (obj.hasOwnProperty(p2 = "EXPONENTIAL_AT")) {
-                v3 = obj[p2];
-                if (v3 && v3.pop) {
-                  intCheck(v3[0], -MAX, 0, p2);
-                  intCheck(v3[1], 0, MAX, p2);
-                  TO_EXP_NEG = v3[0];
-                  TO_EXP_POS = v3[1];
-                } else {
-                  intCheck(v3, -MAX, MAX, p2);
-                  TO_EXP_NEG = -(TO_EXP_POS = v3 < 0 ? -v3 : v3);
-                }
-              }
-              if (obj.hasOwnProperty(p2 = "RANGE")) {
-                v3 = obj[p2];
-                if (v3 && v3.pop) {
-                  intCheck(v3[0], -MAX, -1, p2);
-                  intCheck(v3[1], 1, MAX, p2);
-                  MIN_EXP = v3[0];
-                  MAX_EXP = v3[1];
-                } else {
-                  intCheck(v3, -MAX, MAX, p2);
-                  if (v3) {
-                    MIN_EXP = -(MAX_EXP = v3 < 0 ? -v3 : v3);
-                  } else {
-                    throw Error(bignumberError + p2 + " cannot be zero: " + v3);
-                  }
-                }
-              }
-              if (obj.hasOwnProperty(p2 = "CRYPTO")) {
-                v3 = obj[p2];
-                if (v3 === !!v3) {
-                  if (v3) {
-                    if (typeof crypto != "undefined" && crypto && (crypto.getRandomValues || crypto.randomBytes)) {
-                      CRYPTO = v3;
-                    } else {
-                      CRYPTO = !v3;
-                      throw Error(bignumberError + "crypto unavailable");
-                    }
-                  } else {
-                    CRYPTO = v3;
-                  }
-                } else {
-                  throw Error(bignumberError + p2 + " not true or false: " + v3);
-                }
-              }
-              if (obj.hasOwnProperty(p2 = "MODULO_MODE")) {
-                v3 = obj[p2];
-                intCheck(v3, 0, 9, p2);
-                MODULO_MODE = v3;
-              }
-              if (obj.hasOwnProperty(p2 = "POW_PRECISION")) {
-                v3 = obj[p2];
-                intCheck(v3, 0, MAX, p2);
-                POW_PRECISION = v3;
-              }
-              if (obj.hasOwnProperty(p2 = "FORMAT")) {
-                v3 = obj[p2];
-                if (typeof v3 == "object") FORMAT = v3;
-                else throw Error(bignumberError + p2 + " not an object: " + v3);
-              }
-              if (obj.hasOwnProperty(p2 = "ALPHABET")) {
-                v3 = obj[p2];
-                if (typeof v3 == "string" && !/^.?$|[+\-.\s]|(.).*\1/.test(v3)) {
-                  alphabetHasNormalDecimalDigits = v3.slice(0, 10) == "0123456789";
-                  ALPHABET = v3;
-                } else {
-                  throw Error(bignumberError + p2 + " invalid: " + v3);
-                }
-              }
-            } else {
-              throw Error(bignumberError + "Object expected: " + obj);
-            }
-          }
-          return {
-            DECIMAL_PLACES,
-            ROUNDING_MODE,
-            EXPONENTIAL_AT: [TO_EXP_NEG, TO_EXP_POS],
-            RANGE: [MIN_EXP, MAX_EXP],
-            CRYPTO,
-            MODULO_MODE,
-            POW_PRECISION,
-            FORMAT,
-            ALPHABET
-          };
-        };
-        BigNumber2.isBigNumber = function(v3) {
-          if (!v3 || v3._isBigNumber !== true) return false;
-          if (!BigNumber2.DEBUG) return true;
-          var i, n, c2 = v3.c, e = v3.e, s = v3.s;
-          out: if ({}.toString.call(c2) == "[object Array]") {
-            if ((s === 1 || s === -1) && e >= -MAX && e <= MAX && e === mathfloor(e)) {
-              if (c2[0] === 0) {
-                if (e === 0 && c2.length === 1) return true;
-                break out;
-              }
-              i = (e + 1) % LOG_BASE;
-              if (i < 1) i += LOG_BASE;
-              if (String(c2[0]).length == i) {
-                for (i = 0; i < c2.length; i++) {
-                  n = c2[i];
-                  if (n < 0 || n >= BASE || n !== mathfloor(n)) break out;
-                }
-                if (n !== 0) return true;
-              }
-            }
-          } else if (c2 === null && e === null && (s === null || s === 1 || s === -1)) {
-            return true;
-          }
-          throw Error(bignumberError + "Invalid BigNumber: " + v3);
-        };
-        BigNumber2.maximum = BigNumber2.max = function() {
-          return maxOrMin(arguments, -1);
-        };
-        BigNumber2.minimum = BigNumber2.min = function() {
-          return maxOrMin(arguments, 1);
-        };
-        BigNumber2.random = function() {
-          var pow2_53 = 9007199254740992;
-          var random53bitInt = Math.random() * pow2_53 & 2097151 ? function() {
-            return mathfloor(Math.random() * pow2_53);
-          } : function() {
-            return (Math.random() * 1073741824 | 0) * 8388608 + (Math.random() * 8388608 | 0);
-          };
-          return function(dp) {
-            var a, b2, e, k2, v3, i = 0, c2 = [], rand = new BigNumber2(ONE);
-            if (dp == null) dp = DECIMAL_PLACES;
-            else intCheck(dp, 0, MAX);
-            k2 = mathceil(dp / LOG_BASE);
-            if (CRYPTO) {
-              if (crypto.getRandomValues) {
-                a = crypto.getRandomValues(new Uint32Array(k2 *= 2));
-                for (; i < k2; ) {
-                  v3 = a[i] * 131072 + (a[i + 1] >>> 11);
-                  if (v3 >= 9e15) {
-                    b2 = crypto.getRandomValues(new Uint32Array(2));
-                    a[i] = b2[0];
-                    a[i + 1] = b2[1];
-                  } else {
-                    c2.push(v3 % 1e14);
-                    i += 2;
-                  }
-                }
-                i = k2 / 2;
-              } else if (crypto.randomBytes) {
-                a = crypto.randomBytes(k2 *= 7);
-                for (; i < k2; ) {
-                  v3 = (a[i] & 31) * 281474976710656 + a[i + 1] * 1099511627776 + a[i + 2] * 4294967296 + a[i + 3] * 16777216 + (a[i + 4] << 16) + (a[i + 5] << 8) + a[i + 6];
-                  if (v3 >= 9e15) {
-                    crypto.randomBytes(7).copy(a, i);
-                  } else {
-                    c2.push(v3 % 1e14);
-                    i += 7;
-                  }
-                }
-                i = k2 / 7;
-              } else {
-                CRYPTO = false;
-                throw Error(bignumberError + "crypto unavailable");
-              }
-            }
-            if (!CRYPTO) {
-              for (; i < k2; ) {
-                v3 = random53bitInt();
-                if (v3 < 9e15) c2[i++] = v3 % 1e14;
-              }
-            }
-            k2 = c2[--i];
-            dp %= LOG_BASE;
-            if (k2 && dp) {
-              v3 = POWS_TEN[LOG_BASE - dp];
-              c2[i] = mathfloor(k2 / v3) * v3;
-            }
-            for (; c2[i] === 0; c2.pop(), i--) ;
-            if (i < 0) {
-              c2 = [e = 0];
-            } else {
-              for (e = -1; c2[0] === 0; c2.splice(0, 1), e -= LOG_BASE) ;
-              for (i = 1, v3 = c2[0]; v3 >= 10; v3 /= 10, i++) ;
-              if (i < LOG_BASE) e -= LOG_BASE - i;
-            }
-            rand.e = e;
-            rand.c = c2;
-            return rand;
-          };
-        }();
-        BigNumber2.sum = function() {
-          var i = 1, args = arguments, sum = new BigNumber2(args[0]);
-          for (; i < args.length; ) sum = sum.plus(args[i++]);
-          return sum;
-        };
-        convertBase = /* @__PURE__ */ function() {
-          var decimal = "0123456789";
-          function toBaseOut(str, baseIn, baseOut, alphabet) {
-            var j2, arr = [0], arrL, i = 0, len = str.length;
-            for (; i < len; ) {
-              for (arrL = arr.length; arrL--; arr[arrL] *= baseIn) ;
-              arr[0] += alphabet.indexOf(str.charAt(i++));
-              for (j2 = 0; j2 < arr.length; j2++) {
-                if (arr[j2] > baseOut - 1) {
-                  if (arr[j2 + 1] == null) arr[j2 + 1] = 0;
-                  arr[j2 + 1] += arr[j2] / baseOut | 0;
-                  arr[j2] %= baseOut;
-                }
-              }
-            }
-            return arr.reverse();
-          }
-          return function(str, baseIn, baseOut, sign, callerIsToString) {
-            var alphabet, d2, e, k2, r, x4, xc, y2, i = str.indexOf("."), dp = DECIMAL_PLACES, rm = ROUNDING_MODE;
-            if (i >= 0) {
-              k2 = POW_PRECISION;
-              POW_PRECISION = 0;
-              str = str.replace(".", "");
-              y2 = new BigNumber2(baseIn);
-              x4 = y2.pow(str.length - i);
-              POW_PRECISION = k2;
-              y2.c = toBaseOut(
-                toFixedPoint(coeffToString(x4.c), x4.e, "0"),
-                10,
-                baseOut,
-                decimal
-              );
-              y2.e = y2.c.length;
-            }
-            xc = toBaseOut(str, baseIn, baseOut, callerIsToString ? (alphabet = ALPHABET, decimal) : (alphabet = decimal, ALPHABET));
-            e = k2 = xc.length;
-            for (; xc[--k2] == 0; xc.pop()) ;
-            if (!xc[0]) return alphabet.charAt(0);
-            if (i < 0) {
-              --e;
-            } else {
-              x4.c = xc;
-              x4.e = e;
-              x4.s = sign;
-              x4 = div(x4, y2, dp, rm, baseOut);
-              xc = x4.c;
-              r = x4.r;
-              e = x4.e;
-            }
-            d2 = e + dp + 1;
-            i = xc[d2];
-            k2 = baseOut / 2;
-            r = r || d2 < 0 || xc[d2 + 1] != null;
-            r = rm < 4 ? (i != null || r) && (rm == 0 || rm == (x4.s < 0 ? 3 : 2)) : i > k2 || i == k2 && (rm == 4 || r || rm == 6 && xc[d2 - 1] & 1 || rm == (x4.s < 0 ? 8 : 7));
-            if (d2 < 1 || !xc[0]) {
-              str = r ? toFixedPoint(alphabet.charAt(1), -dp, alphabet.charAt(0)) : alphabet.charAt(0);
-            } else {
-              xc.length = d2;
-              if (r) {
-                for (--baseOut; ++xc[--d2] > baseOut; ) {
-                  xc[d2] = 0;
-                  if (!d2) {
-                    ++e;
-                    xc = [1].concat(xc);
-                  }
-                }
-              }
-              for (k2 = xc.length; !xc[--k2]; ) ;
-              for (i = 0, str = ""; i <= k2; str += alphabet.charAt(xc[i++])) ;
-              str = toFixedPoint(str, e, alphabet.charAt(0));
-            }
-            return str;
-          };
-        }();
-        div = /* @__PURE__ */ function() {
-          function multiply(x4, k2, base) {
-            var m2, temp, xlo, xhi, carry = 0, i = x4.length, klo = k2 % SQRT_BASE, khi = k2 / SQRT_BASE | 0;
-            for (x4 = x4.slice(); i--; ) {
-              xlo = x4[i] % SQRT_BASE;
-              xhi = x4[i] / SQRT_BASE | 0;
-              m2 = khi * xlo + xhi * klo;
-              temp = klo * xlo + m2 % SQRT_BASE * SQRT_BASE + carry;
-              carry = (temp / base | 0) + (m2 / SQRT_BASE | 0) + khi * xhi;
-              x4[i] = temp % base;
-            }
-            if (carry) x4 = [carry].concat(x4);
-            return x4;
-          }
-          function compare2(a, b2, aL, bL) {
-            var i, cmp;
-            if (aL != bL) {
-              cmp = aL > bL ? 1 : -1;
-            } else {
-              for (i = cmp = 0; i < aL; i++) {
-                if (a[i] != b2[i]) {
-                  cmp = a[i] > b2[i] ? 1 : -1;
-                  break;
-                }
-              }
-            }
-            return cmp;
-          }
-          function subtract(a, b2, aL, base) {
-            var i = 0;
-            for (; aL--; ) {
-              a[aL] -= i;
-              i = a[aL] < b2[aL] ? 1 : 0;
-              a[aL] = i * base + a[aL] - b2[aL];
-            }
-            for (; !a[0] && a.length > 1; a.splice(0, 1)) ;
-          }
-          return function(x4, y2, dp, rm, base) {
-            var cmp, e, i, more, n, prod, prodL, q2, qc, rem, remL, rem0, xi, xL, yc0, yL, yz, s = x4.s == y2.s ? 1 : -1, xc = x4.c, yc = y2.c;
-            if (!xc || !xc[0] || !yc || !yc[0]) {
-              return new BigNumber2(
-                // Return NaN if either NaN, or both Infinity or 0.
-                !x4.s || !y2.s || (xc ? yc && xc[0] == yc[0] : !yc) ? NaN : (
-                  // Return ±0 if x is ±0 or y is ±Infinity, or return ±Infinity as y is ±0.
-                  xc && xc[0] == 0 || !yc ? s * 0 : s / 0
-                )
-              );
-            }
-            q2 = new BigNumber2(s);
-            qc = q2.c = [];
-            e = x4.e - y2.e;
-            s = dp + e + 1;
-            if (!base) {
-              base = BASE;
-              e = bitFloor(x4.e / LOG_BASE) - bitFloor(y2.e / LOG_BASE);
-              s = s / LOG_BASE | 0;
-            }
-            for (i = 0; yc[i] == (xc[i] || 0); i++) ;
-            if (yc[i] > (xc[i] || 0)) e--;
-            if (s < 0) {
-              qc.push(1);
-              more = true;
-            } else {
-              xL = xc.length;
-              yL = yc.length;
-              i = 0;
-              s += 2;
-              n = mathfloor(base / (yc[0] + 1));
-              if (n > 1) {
-                yc = multiply(yc, n, base);
-                xc = multiply(xc, n, base);
-                yL = yc.length;
-                xL = xc.length;
-              }
-              xi = yL;
-              rem = xc.slice(0, yL);
-              remL = rem.length;
-              for (; remL < yL; rem[remL++] = 0) ;
-              yz = yc.slice();
-              yz = [0].concat(yz);
-              yc0 = yc[0];
-              if (yc[1] >= base / 2) yc0++;
-              do {
-                n = 0;
-                cmp = compare2(yc, rem, yL, remL);
-                if (cmp < 0) {
-                  rem0 = rem[0];
-                  if (yL != remL) rem0 = rem0 * base + (rem[1] || 0);
-                  n = mathfloor(rem0 / yc0);
-                  if (n > 1) {
-                    if (n >= base) n = base - 1;
-                    prod = multiply(yc, n, base);
-                    prodL = prod.length;
-                    remL = rem.length;
-                    while (compare2(prod, rem, prodL, remL) == 1) {
-                      n--;
-                      subtract(prod, yL < prodL ? yz : yc, prodL, base);
-                      prodL = prod.length;
-                      cmp = 1;
-                    }
-                  } else {
-                    if (n == 0) {
-                      cmp = n = 1;
-                    }
-                    prod = yc.slice();
-                    prodL = prod.length;
-                  }
-                  if (prodL < remL) prod = [0].concat(prod);
-                  subtract(rem, prod, remL, base);
-                  remL = rem.length;
-                  if (cmp == -1) {
-                    while (compare2(yc, rem, yL, remL) < 1) {
-                      n++;
-                      subtract(rem, yL < remL ? yz : yc, remL, base);
-                      remL = rem.length;
-                    }
-                  }
-                } else if (cmp === 0) {
-                  n++;
-                  rem = [0];
-                }
-                qc[i++] = n;
-                if (rem[0]) {
-                  rem[remL++] = xc[xi] || 0;
-                } else {
-                  rem = [xc[xi]];
-                  remL = 1;
-                }
-              } while ((xi++ < xL || rem[0] != null) && s--);
-              more = rem[0] != null;
-              if (!qc[0]) qc.splice(0, 1);
-            }
-            if (base == BASE) {
-              for (i = 1, s = qc[0]; s >= 10; s /= 10, i++) ;
-              round(q2, dp + (q2.e = i + e * LOG_BASE - 1) + 1, rm, more);
-            } else {
-              q2.e = e;
-              q2.r = +more;
-            }
-            return q2;
-          };
-        }();
-        function format(n, i, rm, id) {
-          var c0, e, ne2, len, str;
-          if (rm == null) rm = ROUNDING_MODE;
-          else intCheck(rm, 0, 8);
-          if (!n.c) return n.toString();
-          c0 = n.c[0];
-          ne2 = n.e;
-          if (i == null) {
-            str = coeffToString(n.c);
-            str = id == 1 || id == 2 && (ne2 <= TO_EXP_NEG || ne2 >= TO_EXP_POS) ? toExponential(str, ne2) : toFixedPoint(str, ne2, "0");
-          } else {
-            n = round(new BigNumber2(n), i, rm);
-            e = n.e;
-            str = coeffToString(n.c);
-            len = str.length;
-            if (id == 1 || id == 2 && (i <= e || e <= TO_EXP_NEG)) {
-              for (; len < i; str += "0", len++) ;
-              str = toExponential(str, e);
-            } else {
-              i -= ne2;
-              str = toFixedPoint(str, e, "0");
-              if (e + 1 > len) {
-                if (--i > 0) for (str += "."; i--; str += "0") ;
-              } else {
-                i += e - len;
-                if (i > 0) {
-                  if (e + 1 == len) str += ".";
-                  for (; i--; str += "0") ;
-                }
-              }
-            }
-          }
-          return n.s < 0 && c0 ? "-" + str : str;
-        }
-        function maxOrMin(args, n) {
-          var k2, y2, i = 1, x4 = new BigNumber2(args[0]);
-          for (; i < args.length; i++) {
-            y2 = new BigNumber2(args[i]);
-            if (!y2.s || (k2 = compare(x4, y2)) === n || k2 === 0 && x4.s === n) {
-              x4 = y2;
-            }
-          }
-          return x4;
-        }
-        function normalise(n, c2, e) {
-          var i = 1, j2 = c2.length;
-          for (; !c2[--j2]; c2.pop()) ;
-          for (j2 = c2[0]; j2 >= 10; j2 /= 10, i++) ;
-          if ((e = i + e * LOG_BASE - 1) > MAX_EXP) {
-            n.c = n.e = null;
-          } else if (e < MIN_EXP) {
-            n.c = [n.e = 0];
-          } else {
-            n.e = e;
-            n.c = c2;
-          }
-          return n;
-        }
-        parseNumeric = /* @__PURE__ */ function() {
-          var basePrefix = /^(-?)0([xbo])(?=\w[\w.]*$)/i, dotAfter = /^([^.]+)\.$/, dotBefore = /^\.([^.]+)$/, isInfinityOrNaN = /^-?(Infinity|NaN)$/, whitespaceOrPlus = /^\s*\+(?=[\w.])|^\s+|\s+$/g;
-          return function(x4, str, isNum, b2) {
-            var base, s = isNum ? str : str.replace(whitespaceOrPlus, "");
-            if (isInfinityOrNaN.test(s)) {
-              x4.s = isNaN(s) ? null : s < 0 ? -1 : 1;
-            } else {
-              if (!isNum) {
-                s = s.replace(basePrefix, function(m2, p1, p2) {
-                  base = (p2 = p2.toLowerCase()) == "x" ? 16 : p2 == "b" ? 2 : 8;
-                  return !b2 || b2 == base ? p1 : m2;
-                });
-                if (b2) {
-                  base = b2;
-                  s = s.replace(dotAfter, "$1").replace(dotBefore, "0.$1");
-                }
-                if (str != s) return new BigNumber2(s, base);
-              }
-              if (BigNumber2.DEBUG) {
-                throw Error(bignumberError + "Not a" + (b2 ? " base " + b2 : "") + " number: " + str);
-              }
-              x4.s = null;
-            }
-            x4.c = x4.e = null;
-          };
-        }();
-        function round(x4, sd, rm, r) {
-          var d2, i, j2, k2, n, ni, rd, xc = x4.c, pows10 = POWS_TEN;
-          if (xc) {
-            out: {
-              for (d2 = 1, k2 = xc[0]; k2 >= 10; k2 /= 10, d2++) ;
-              i = sd - d2;
-              if (i < 0) {
-                i += LOG_BASE;
-                j2 = sd;
-                n = xc[ni = 0];
-                rd = mathfloor(n / pows10[d2 - j2 - 1] % 10);
-              } else {
-                ni = mathceil((i + 1) / LOG_BASE);
-                if (ni >= xc.length) {
-                  if (r) {
-                    for (; xc.length <= ni; xc.push(0)) ;
-                    n = rd = 0;
-                    d2 = 1;
-                    i %= LOG_BASE;
-                    j2 = i - LOG_BASE + 1;
-                  } else {
-                    break out;
-                  }
-                } else {
-                  n = k2 = xc[ni];
-                  for (d2 = 1; k2 >= 10; k2 /= 10, d2++) ;
-                  i %= LOG_BASE;
-                  j2 = i - LOG_BASE + d2;
-                  rd = j2 < 0 ? 0 : mathfloor(n / pows10[d2 - j2 - 1] % 10);
-                }
-              }
-              r = r || sd < 0 || // Are there any non-zero digits after the rounding digit?
-              // The expression  n % pows10[d - j - 1]  returns all digits of n to the right
-              // of the digit at j, e.g. if n is 908714 and j is 2, the expression gives 714.
-              xc[ni + 1] != null || (j2 < 0 ? n : n % pows10[d2 - j2 - 1]);
-              r = rm < 4 ? (rd || r) && (rm == 0 || rm == (x4.s < 0 ? 3 : 2)) : rd > 5 || rd == 5 && (rm == 4 || r || rm == 6 && // Check whether the digit to the left of the rounding digit is odd.
-              (i > 0 ? j2 > 0 ? n / pows10[d2 - j2] : 0 : xc[ni - 1]) % 10 & 1 || rm == (x4.s < 0 ? 8 : 7));
-              if (sd < 1 || !xc[0]) {
-                xc.length = 0;
-                if (r) {
-                  sd -= x4.e + 1;
-                  xc[0] = pows10[(LOG_BASE - sd % LOG_BASE) % LOG_BASE];
-                  x4.e = -sd || 0;
-                } else {
-                  xc[0] = x4.e = 0;
-                }
-                return x4;
-              }
-              if (i == 0) {
-                xc.length = ni;
-                k2 = 1;
-                ni--;
-              } else {
-                xc.length = ni + 1;
-                k2 = pows10[LOG_BASE - i];
-                xc[ni] = j2 > 0 ? mathfloor(n / pows10[d2 - j2] % pows10[j2]) * k2 : 0;
-              }
-              if (r) {
-                for (; ; ) {
-                  if (ni == 0) {
-                    for (i = 1, j2 = xc[0]; j2 >= 10; j2 /= 10, i++) ;
-                    j2 = xc[0] += k2;
-                    for (k2 = 1; j2 >= 10; j2 /= 10, k2++) ;
-                    if (i != k2) {
-                      x4.e++;
-                      if (xc[0] == BASE) xc[0] = 1;
-                    }
-                    break;
-                  } else {
-                    xc[ni] += k2;
-                    if (xc[ni] != BASE) break;
-                    xc[ni--] = 0;
-                    k2 = 1;
-                  }
-                }
-              }
-              for (i = xc.length; xc[--i] === 0; xc.pop()) ;
-            }
-            if (x4.e > MAX_EXP) {
-              x4.c = x4.e = null;
-            } else if (x4.e < MIN_EXP) {
-              x4.c = [x4.e = 0];
-            }
-          }
-          return x4;
-        }
-        function valueOf(n) {
-          var str, e = n.e;
-          if (e === null) return n.toString();
-          str = coeffToString(n.c);
-          str = e <= TO_EXP_NEG || e >= TO_EXP_POS ? toExponential(str, e) : toFixedPoint(str, e, "0");
-          return n.s < 0 ? "-" + str : str;
-        }
-        P4.absoluteValue = P4.abs = function() {
-          var x4 = new BigNumber2(this);
-          if (x4.s < 0) x4.s = 1;
-          return x4;
-        };
-        P4.comparedTo = function(y2, b2) {
-          return compare(this, new BigNumber2(y2, b2));
-        };
-        P4.decimalPlaces = P4.dp = function(dp, rm) {
-          var c2, n, v3, x4 = this;
-          if (dp != null) {
-            intCheck(dp, 0, MAX);
-            if (rm == null) rm = ROUNDING_MODE;
-            else intCheck(rm, 0, 8);
-            return round(new BigNumber2(x4), dp + x4.e + 1, rm);
-          }
-          if (!(c2 = x4.c)) return null;
-          n = ((v3 = c2.length - 1) - bitFloor(this.e / LOG_BASE)) * LOG_BASE;
-          if (v3 = c2[v3]) for (; v3 % 10 == 0; v3 /= 10, n--) ;
-          if (n < 0) n = 0;
-          return n;
-        };
-        P4.dividedBy = P4.div = function(y2, b2) {
-          return div(this, new BigNumber2(y2, b2), DECIMAL_PLACES, ROUNDING_MODE);
-        };
-        P4.dividedToIntegerBy = P4.idiv = function(y2, b2) {
-          return div(this, new BigNumber2(y2, b2), 0, 1);
-        };
-        P4.exponentiatedBy = P4.pow = function(n, m2) {
-          var half, isModExp, i, k2, more, nIsBig, nIsNeg, nIsOdd, y2, x4 = this;
-          n = new BigNumber2(n);
-          if (n.c && !n.isInteger()) {
-            throw Error(bignumberError + "Exponent not an integer: " + valueOf(n));
-          }
-          if (m2 != null) m2 = new BigNumber2(m2);
-          nIsBig = n.e > 14;
-          if (!x4.c || !x4.c[0] || x4.c[0] == 1 && !x4.e && x4.c.length == 1 || !n.c || !n.c[0]) {
-            y2 = new BigNumber2(Math.pow(+valueOf(x4), nIsBig ? n.s * (2 - isOdd(n)) : +valueOf(n)));
-            return m2 ? y2.mod(m2) : y2;
-          }
-          nIsNeg = n.s < 0;
-          if (m2) {
-            if (m2.c ? !m2.c[0] : !m2.s) return new BigNumber2(NaN);
-            isModExp = !nIsNeg && x4.isInteger() && m2.isInteger();
-            if (isModExp) x4 = x4.mod(m2);
-          } else if (n.e > 9 && (x4.e > 0 || x4.e < -1 || (x4.e == 0 ? x4.c[0] > 1 || nIsBig && x4.c[1] >= 24e7 : x4.c[0] < 8e13 || nIsBig && x4.c[0] <= 9999975e7))) {
-            k2 = x4.s < 0 && isOdd(n) ? -0 : 0;
-            if (x4.e > -1) k2 = 1 / k2;
-            return new BigNumber2(nIsNeg ? 1 / k2 : k2);
-          } else if (POW_PRECISION) {
-            k2 = mathceil(POW_PRECISION / LOG_BASE + 2);
-          }
-          if (nIsBig) {
-            half = new BigNumber2(0.5);
-            if (nIsNeg) n.s = 1;
-            nIsOdd = isOdd(n);
-          } else {
-            i = Math.abs(+valueOf(n));
-            nIsOdd = i % 2;
-          }
-          y2 = new BigNumber2(ONE);
-          for (; ; ) {
-            if (nIsOdd) {
-              y2 = y2.times(x4);
-              if (!y2.c) break;
-              if (k2) {
-                if (y2.c.length > k2) y2.c.length = k2;
-              } else if (isModExp) {
-                y2 = y2.mod(m2);
-              }
-            }
-            if (i) {
-              i = mathfloor(i / 2);
-              if (i === 0) break;
-              nIsOdd = i % 2;
-            } else {
-              n = n.times(half);
-              round(n, n.e + 1, 1);
-              if (n.e > 14) {
-                nIsOdd = isOdd(n);
-              } else {
-                i = +valueOf(n);
-                if (i === 0) break;
-                nIsOdd = i % 2;
-              }
-            }
-            x4 = x4.times(x4);
-            if (k2) {
-              if (x4.c && x4.c.length > k2) x4.c.length = k2;
-            } else if (isModExp) {
-              x4 = x4.mod(m2);
-            }
-          }
-          if (isModExp) return y2;
-          if (nIsNeg) y2 = ONE.div(y2);
-          return m2 ? y2.mod(m2) : k2 ? round(y2, POW_PRECISION, ROUNDING_MODE, more) : y2;
-        };
-        P4.integerValue = function(rm) {
-          var n = new BigNumber2(this);
-          if (rm == null) rm = ROUNDING_MODE;
-          else intCheck(rm, 0, 8);
-          return round(n, n.e + 1, rm);
-        };
-        P4.isEqualTo = P4.eq = function(y2, b2) {
-          return compare(this, new BigNumber2(y2, b2)) === 0;
-        };
-        P4.isFinite = function() {
-          return !!this.c;
-        };
-        P4.isGreaterThan = P4.gt = function(y2, b2) {
-          return compare(this, new BigNumber2(y2, b2)) > 0;
-        };
-        P4.isGreaterThanOrEqualTo = P4.gte = function(y2, b2) {
-          return (b2 = compare(this, new BigNumber2(y2, b2))) === 1 || b2 === 0;
-        };
-        P4.isInteger = function() {
-          return !!this.c && bitFloor(this.e / LOG_BASE) > this.c.length - 2;
-        };
-        P4.isLessThan = P4.lt = function(y2, b2) {
-          return compare(this, new BigNumber2(y2, b2)) < 0;
-        };
-        P4.isLessThanOrEqualTo = P4.lte = function(y2, b2) {
-          return (b2 = compare(this, new BigNumber2(y2, b2))) === -1 || b2 === 0;
-        };
-        P4.isNaN = function() {
-          return !this.s;
-        };
-        P4.isNegative = function() {
-          return this.s < 0;
-        };
-        P4.isPositive = function() {
-          return this.s > 0;
-        };
-        P4.isZero = function() {
-          return !!this.c && this.c[0] == 0;
-        };
-        P4.minus = function(y2, b2) {
-          var i, j2, t, xLTy, x4 = this, a = x4.s;
-          y2 = new BigNumber2(y2, b2);
-          b2 = y2.s;
-          if (!a || !b2) return new BigNumber2(NaN);
-          if (a != b2) {
-            y2.s = -b2;
-            return x4.plus(y2);
-          }
-          var xe2 = x4.e / LOG_BASE, ye2 = y2.e / LOG_BASE, xc = x4.c, yc = y2.c;
-          if (!xe2 || !ye2) {
-            if (!xc || !yc) return xc ? (y2.s = -b2, y2) : new BigNumber2(yc ? x4 : NaN);
-            if (!xc[0] || !yc[0]) {
-              return yc[0] ? (y2.s = -b2, y2) : new BigNumber2(xc[0] ? x4 : (
-                // IEEE 754 (2008) 6.3: n - n = -0 when rounding to -Infinity
-                ROUNDING_MODE == 3 ? -0 : 0
-              ));
-            }
-          }
-          xe2 = bitFloor(xe2);
-          ye2 = bitFloor(ye2);
-          xc = xc.slice();
-          if (a = xe2 - ye2) {
-            if (xLTy = a < 0) {
-              a = -a;
-              t = xc;
-            } else {
-              ye2 = xe2;
-              t = yc;
-            }
-            t.reverse();
-            for (b2 = a; b2--; t.push(0)) ;
-            t.reverse();
-          } else {
-            j2 = (xLTy = (a = xc.length) < (b2 = yc.length)) ? a : b2;
-            for (a = b2 = 0; b2 < j2; b2++) {
-              if (xc[b2] != yc[b2]) {
-                xLTy = xc[b2] < yc[b2];
-                break;
-              }
-            }
-          }
-          if (xLTy) {
-            t = xc;
-            xc = yc;
-            yc = t;
-            y2.s = -y2.s;
-          }
-          b2 = (j2 = yc.length) - (i = xc.length);
-          if (b2 > 0) for (; b2--; xc[i++] = 0) ;
-          b2 = BASE - 1;
-          for (; j2 > a; ) {
-            if (xc[--j2] < yc[j2]) {
-              for (i = j2; i && !xc[--i]; xc[i] = b2) ;
-              --xc[i];
-              xc[j2] += BASE;
-            }
-            xc[j2] -= yc[j2];
-          }
-          for (; xc[0] == 0; xc.splice(0, 1), --ye2) ;
-          if (!xc[0]) {
-            y2.s = ROUNDING_MODE == 3 ? -1 : 1;
-            y2.c = [y2.e = 0];
-            return y2;
-          }
-          return normalise(y2, xc, ye2);
-        };
-        P4.modulo = P4.mod = function(y2, b2) {
-          var q2, s, x4 = this;
-          y2 = new BigNumber2(y2, b2);
-          if (!x4.c || !y2.s || y2.c && !y2.c[0]) {
-            return new BigNumber2(NaN);
-          } else if (!y2.c || x4.c && !x4.c[0]) {
-            return new BigNumber2(x4);
-          }
-          if (MODULO_MODE == 9) {
-            s = y2.s;
-            y2.s = 1;
-            q2 = div(x4, y2, 0, 3);
-            y2.s = s;
-            q2.s *= s;
-          } else {
-            q2 = div(x4, y2, 0, MODULO_MODE);
-          }
-          y2 = x4.minus(q2.times(y2));
-          if (!y2.c[0] && MODULO_MODE == 1) y2.s = x4.s;
-          return y2;
-        };
-        P4.multipliedBy = P4.times = function(y2, b2) {
-          var c2, e, i, j2, k2, m2, xcL, xlo, xhi, ycL, ylo, yhi, zc, base, sqrtBase, x4 = this, xc = x4.c, yc = (y2 = new BigNumber2(y2, b2)).c;
-          if (!xc || !yc || !xc[0] || !yc[0]) {
-            if (!x4.s || !y2.s || xc && !xc[0] && !yc || yc && !yc[0] && !xc) {
-              y2.c = y2.e = y2.s = null;
-            } else {
-              y2.s *= x4.s;
-              if (!xc || !yc) {
-                y2.c = y2.e = null;
-              } else {
-                y2.c = [0];
-                y2.e = 0;
-              }
-            }
-            return y2;
-          }
-          e = bitFloor(x4.e / LOG_BASE) + bitFloor(y2.e / LOG_BASE);
-          y2.s *= x4.s;
-          xcL = xc.length;
-          ycL = yc.length;
-          if (xcL < ycL) {
-            zc = xc;
-            xc = yc;
-            yc = zc;
-            i = xcL;
-            xcL = ycL;
-            ycL = i;
-          }
-          for (i = xcL + ycL, zc = []; i--; zc.push(0)) ;
-          base = BASE;
-          sqrtBase = SQRT_BASE;
-          for (i = ycL; --i >= 0; ) {
-            c2 = 0;
-            ylo = yc[i] % sqrtBase;
-            yhi = yc[i] / sqrtBase | 0;
-            for (k2 = xcL, j2 = i + k2; j2 > i; ) {
-              xlo = xc[--k2] % sqrtBase;
-              xhi = xc[k2] / sqrtBase | 0;
-              m2 = yhi * xlo + xhi * ylo;
-              xlo = ylo * xlo + m2 % sqrtBase * sqrtBase + zc[j2] + c2;
-              c2 = (xlo / base | 0) + (m2 / sqrtBase | 0) + yhi * xhi;
-              zc[j2--] = xlo % base;
-            }
-            zc[j2] = c2;
-          }
-          if (c2) {
-            ++e;
-          } else {
-            zc.splice(0, 1);
-          }
-          return normalise(y2, zc, e);
-        };
-        P4.negated = function() {
-          var x4 = new BigNumber2(this);
-          x4.s = -x4.s || null;
-          return x4;
-        };
-        P4.plus = function(y2, b2) {
-          var t, x4 = this, a = x4.s;
-          y2 = new BigNumber2(y2, b2);
-          b2 = y2.s;
-          if (!a || !b2) return new BigNumber2(NaN);
-          if (a != b2) {
-            y2.s = -b2;
-            return x4.minus(y2);
-          }
-          var xe2 = x4.e / LOG_BASE, ye2 = y2.e / LOG_BASE, xc = x4.c, yc = y2.c;
-          if (!xe2 || !ye2) {
-            if (!xc || !yc) return new BigNumber2(a / 0);
-            if (!xc[0] || !yc[0]) return yc[0] ? y2 : new BigNumber2(xc[0] ? x4 : a * 0);
-          }
-          xe2 = bitFloor(xe2);
-          ye2 = bitFloor(ye2);
-          xc = xc.slice();
-          if (a = xe2 - ye2) {
-            if (a > 0) {
-              ye2 = xe2;
-              t = yc;
-            } else {
-              a = -a;
-              t = xc;
-            }
-            t.reverse();
-            for (; a--; t.push(0)) ;
-            t.reverse();
-          }
-          a = xc.length;
-          b2 = yc.length;
-          if (a - b2 < 0) {
-            t = yc;
-            yc = xc;
-            xc = t;
-            b2 = a;
-          }
-          for (a = 0; b2; ) {
-            a = (xc[--b2] = xc[b2] + yc[b2] + a) / BASE | 0;
-            xc[b2] = BASE === xc[b2] ? 0 : xc[b2] % BASE;
-          }
-          if (a) {
-            xc = [a].concat(xc);
-            ++ye2;
-          }
-          return normalise(y2, xc, ye2);
-        };
-        P4.precision = P4.sd = function(sd, rm) {
-          var c2, n, v3, x4 = this;
-          if (sd != null && sd !== !!sd) {
-            intCheck(sd, 1, MAX);
-            if (rm == null) rm = ROUNDING_MODE;
-            else intCheck(rm, 0, 8);
-            return round(new BigNumber2(x4), sd, rm);
-          }
-          if (!(c2 = x4.c)) return null;
-          v3 = c2.length - 1;
-          n = v3 * LOG_BASE + 1;
-          if (v3 = c2[v3]) {
-            for (; v3 % 10 == 0; v3 /= 10, n--) ;
-            for (v3 = c2[0]; v3 >= 10; v3 /= 10, n++) ;
-          }
-          if (sd && x4.e + 1 > n) n = x4.e + 1;
-          return n;
-        };
-        P4.shiftedBy = function(k2) {
-          intCheck(k2, -MAX_SAFE_INTEGER, MAX_SAFE_INTEGER);
-          return this.times("1e" + k2);
-        };
-        P4.squareRoot = P4.sqrt = function() {
-          var m2, n, r, rep, t, x4 = this, c2 = x4.c, s = x4.s, e = x4.e, dp = DECIMAL_PLACES + 4, half = new BigNumber2("0.5");
-          if (s !== 1 || !c2 || !c2[0]) {
-            return new BigNumber2(!s || s < 0 && (!c2 || c2[0]) ? NaN : c2 ? x4 : 1 / 0);
-          }
-          s = Math.sqrt(+valueOf(x4));
-          if (s == 0 || s == 1 / 0) {
-            n = coeffToString(c2);
-            if ((n.length + e) % 2 == 0) n += "0";
-            s = Math.sqrt(+n);
-            e = bitFloor((e + 1) / 2) - (e < 0 || e % 2);
-            if (s == 1 / 0) {
-              n = "5e" + e;
-            } else {
-              n = s.toExponential();
-              n = n.slice(0, n.indexOf("e") + 1) + e;
-            }
-            r = new BigNumber2(n);
-          } else {
-            r = new BigNumber2(s + "");
-          }
-          if (r.c[0]) {
-            e = r.e;
-            s = e + dp;
-            if (s < 3) s = 0;
-            for (; ; ) {
-              t = r;
-              r = half.times(t.plus(div(x4, t, dp, 1)));
-              if (coeffToString(t.c).slice(0, s) === (n = coeffToString(r.c)).slice(0, s)) {
-                if (r.e < e) --s;
-                n = n.slice(s - 3, s + 1);
-                if (n == "9999" || !rep && n == "4999") {
-                  if (!rep) {
-                    round(t, t.e + DECIMAL_PLACES + 2, 0);
-                    if (t.times(t).eq(x4)) {
-                      r = t;
-                      break;
-                    }
-                  }
-                  dp += 4;
-                  s += 4;
-                  rep = 1;
-                } else {
-                  if (!+n || !+n.slice(1) && n.charAt(0) == "5") {
-                    round(r, r.e + DECIMAL_PLACES + 2, 1);
-                    m2 = !r.times(r).eq(x4);
-                  }
-                  break;
-                }
-              }
-            }
-          }
-          return round(r, r.e + DECIMAL_PLACES + 1, ROUNDING_MODE, m2);
-        };
-        P4.toExponential = function(dp, rm) {
-          if (dp != null) {
-            intCheck(dp, 0, MAX);
-            dp++;
-          }
-          return format(this, dp, rm, 1);
-        };
-        P4.toFixed = function(dp, rm) {
-          if (dp != null) {
-            intCheck(dp, 0, MAX);
-            dp = dp + this.e + 1;
-          }
-          return format(this, dp, rm);
-        };
-        P4.toFormat = function(dp, rm, format2) {
-          var str, x4 = this;
-          if (format2 == null) {
-            if (dp != null && rm && typeof rm == "object") {
-              format2 = rm;
-              rm = null;
-            } else if (dp && typeof dp == "object") {
-              format2 = dp;
-              dp = rm = null;
-            } else {
-              format2 = FORMAT;
-            }
-          } else if (typeof format2 != "object") {
-            throw Error(bignumberError + "Argument not an object: " + format2);
-          }
-          str = x4.toFixed(dp, rm);
-          if (x4.c) {
-            var i, arr = str.split("."), g1 = +format2.groupSize, g2 = +format2.secondaryGroupSize, groupSeparator = format2.groupSeparator || "", intPart = arr[0], fractionPart = arr[1], isNeg = x4.s < 0, intDigits = isNeg ? intPart.slice(1) : intPart, len = intDigits.length;
-            if (g2) {
-              i = g1;
-              g1 = g2;
-              g2 = i;
-              len -= i;
-            }
-            if (g1 > 0 && len > 0) {
-              i = len % g1 || g1;
-              intPart = intDigits.substr(0, i);
-              for (; i < len; i += g1) intPart += groupSeparator + intDigits.substr(i, g1);
-              if (g2 > 0) intPart += groupSeparator + intDigits.slice(i);
-              if (isNeg) intPart = "-" + intPart;
-            }
-            str = fractionPart ? intPart + (format2.decimalSeparator || "") + ((g2 = +format2.fractionGroupSize) ? fractionPart.replace(
-              new RegExp("\\d{" + g2 + "}\\B", "g"),
-              "$&" + (format2.fractionGroupSeparator || "")
-            ) : fractionPart) : intPart;
-          }
-          return (format2.prefix || "") + str + (format2.suffix || "");
-        };
-        P4.toFraction = function(md) {
-          var d2, d0, d1, d22, e, exp, n, n0, n1, q2, r, s, x4 = this, xc = x4.c;
-          if (md != null) {
-            n = new BigNumber2(md);
-            if (!n.isInteger() && (n.c || n.s !== 1) || n.lt(ONE)) {
-              throw Error(bignumberError + "Argument " + (n.isInteger() ? "out of range: " : "not an integer: ") + valueOf(n));
-            }
-          }
-          if (!xc) return new BigNumber2(x4);
-          d2 = new BigNumber2(ONE);
-          n1 = d0 = new BigNumber2(ONE);
-          d1 = n0 = new BigNumber2(ONE);
-          s = coeffToString(xc);
-          e = d2.e = s.length - x4.e - 1;
-          d2.c[0] = POWS_TEN[(exp = e % LOG_BASE) < 0 ? LOG_BASE + exp : exp];
-          md = !md || n.comparedTo(d2) > 0 ? e > 0 ? d2 : n1 : n;
-          exp = MAX_EXP;
-          MAX_EXP = 1 / 0;
-          n = new BigNumber2(s);
-          n0.c[0] = 0;
-          for (; ; ) {
-            q2 = div(n, d2, 0, 1);
-            d22 = d0.plus(q2.times(d1));
-            if (d22.comparedTo(md) == 1) break;
-            d0 = d1;
-            d1 = d22;
-            n1 = n0.plus(q2.times(d22 = n1));
-            n0 = d22;
-            d2 = n.minus(q2.times(d22 = d2));
-            n = d22;
-          }
-          d22 = div(md.minus(d0), d1, 0, 1);
-          n0 = n0.plus(d22.times(n1));
-          d0 = d0.plus(d22.times(d1));
-          n0.s = n1.s = x4.s;
-          e = e * 2;
-          r = div(n1, d1, e, ROUNDING_MODE).minus(x4).abs().comparedTo(
-            div(n0, d0, e, ROUNDING_MODE).minus(x4).abs()
-          ) < 1 ? [n1, d1] : [n0, d0];
-          MAX_EXP = exp;
-          return r;
-        };
-        P4.toNumber = function() {
-          return +valueOf(this);
-        };
-        P4.toPrecision = function(sd, rm) {
-          if (sd != null) intCheck(sd, 1, MAX);
-          return format(this, sd, rm, 2);
-        };
-        P4.toString = function(b2) {
-          var str, n = this, s = n.s, e = n.e;
-          if (e === null) {
-            if (s) {
-              str = "Infinity";
-              if (s < 0) str = "-" + str;
-            } else {
-              str = "NaN";
-            }
-          } else {
-            if (b2 == null) {
-              str = e <= TO_EXP_NEG || e >= TO_EXP_POS ? toExponential(coeffToString(n.c), e) : toFixedPoint(coeffToString(n.c), e, "0");
-            } else if (b2 === 10 && alphabetHasNormalDecimalDigits) {
-              n = round(new BigNumber2(n), DECIMAL_PLACES + e + 1, ROUNDING_MODE);
-              str = toFixedPoint(coeffToString(n.c), n.e, "0");
-            } else {
-              intCheck(b2, 2, ALPHABET.length, "Base");
-              str = convertBase(toFixedPoint(coeffToString(n.c), e, "0"), 10, b2, s, true);
-            }
-            if (s < 0 && n.c[0]) str = "-" + str;
-          }
-          return str;
-        };
-        P4.valueOf = P4.toJSON = function() {
-          return valueOf(this);
-        };
-        P4._isBigNumber = true;
-        if (configObject != null) BigNumber2.set(configObject);
-        return BigNumber2;
-      }
-      function bitFloor(n) {
-        var i = n | 0;
-        return n > 0 || n === i ? i : i - 1;
-      }
-      function coeffToString(a) {
-        var s, z5, i = 1, j2 = a.length, r = a[0] + "";
-        for (; i < j2; ) {
-          s = a[i++] + "";
-          z5 = LOG_BASE - s.length;
-          for (; z5--; s = "0" + s) ;
-          r += s;
-        }
-        for (j2 = r.length; r.charCodeAt(--j2) === 48; ) ;
-        return r.slice(0, j2 + 1 || 1);
-      }
-      function compare(x4, y2) {
-        var a, b2, xc = x4.c, yc = y2.c, i = x4.s, j2 = y2.s, k2 = x4.e, l = y2.e;
-        if (!i || !j2) return null;
-        a = xc && !xc[0];
-        b2 = yc && !yc[0];
-        if (a || b2) return a ? b2 ? 0 : -j2 : i;
-        if (i != j2) return i;
-        a = i < 0;
-        b2 = k2 == l;
-        if (!xc || !yc) return b2 ? 0 : !xc ^ a ? 1 : -1;
-        if (!b2) return k2 > l ^ a ? 1 : -1;
-        j2 = (k2 = xc.length) < (l = yc.length) ? k2 : l;
-        for (i = 0; i < j2; i++) if (xc[i] != yc[i]) return xc[i] > yc[i] ^ a ? 1 : -1;
-        return k2 == l ? 0 : k2 > l ^ a ? 1 : -1;
-      }
-      function intCheck(n, min, max3, name) {
-        if (n < min || n > max3 || n !== mathfloor(n)) {
-          throw Error(bignumberError + (name || "Argument") + (typeof n == "number" ? n < min || n > max3 ? " out of range: " : " not an integer: " : " not a primitive number: ") + String(n));
-        }
-      }
-      function isOdd(n) {
-        var k2 = n.c.length - 1;
-        return bitFloor(n.e / LOG_BASE) == k2 && n.c[k2] % 2 != 0;
-      }
-      function toExponential(str, e) {
-        return (str.length > 1 ? str.charAt(0) + "." + str.slice(1) : str) + (e < 0 ? "e" : "e+") + e;
-      }
-      function toFixedPoint(str, e, z5) {
-        var len, zs2;
-        if (e < 0) {
-          for (zs2 = z5 + "."; ++e; zs2 += z5) ;
-          str = zs2 + str;
-        } else {
-          len = str.length;
-          if (++e > len) {
-            for (zs2 = z5, e -= len; --e; zs2 += z5) ;
-            str += zs2;
-          } else if (e < len) {
-            str = str.slice(0, e) + "." + str.slice(e);
-          }
-        }
-        return str;
-      }
-      BigNumber = clone();
-      BigNumber["default"] = BigNumber.BigNumber = BigNumber;
-      if (typeof define == "function" && define.amd) {
-        define(function() {
-          return BigNumber;
-        });
-      } else if (typeof module2 != "undefined" && module2.exports) {
-        module2.exports = BigNumber;
-      } else {
-        if (!globalObject) {
-          globalObject = typeof self != "undefined" && self ? self : window;
-        }
-        globalObject.BigNumber = BigNumber;
-      }
-    })(exports);
-  }
-});
-
-// node_modules/arweave/web/ar.js
-var require_ar = __commonJS({
-  "node_modules/arweave/web/ar.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var bignumber_js_1 = require_bignumber();
-    var Ar4 = class {
-      constructor() {
-        /**
-         * Method to take a string value and return a bignumber object.
-         *
-         * @protected
-         * @type {Function}
-         * @memberof Arweave
-         */
-        __publicField(this, "BigNum");
-        this.BigNum = (value, decimals) => {
-          let instance = bignumber_js_1.BigNumber.clone({ DECIMAL_PLACES: decimals });
-          return new instance(value);
-        };
-      }
-      winstonToAr(winstonString, { formatted = false, decimals = 12, trim = true } = {}) {
-        let number = this.stringToBigNum(winstonString, decimals).shiftedBy(-12);
-        return formatted ? number.toFormat(decimals) : number.toFixed(decimals);
-      }
-      arToWinston(arString, { formatted = false } = {}) {
-        let number = this.stringToBigNum(arString).shiftedBy(12);
-        return formatted ? number.toFormat() : number.toFixed(0);
-      }
-      compare(winstonStringA, winstonStringB) {
-        let a = this.stringToBigNum(winstonStringA);
-        let b2 = this.stringToBigNum(winstonStringB);
-        return a.comparedTo(b2);
-      }
-      isEqual(winstonStringA, winstonStringB) {
-        return this.compare(winstonStringA, winstonStringB) === 0;
-      }
-      isLessThan(winstonStringA, winstonStringB) {
-        let a = this.stringToBigNum(winstonStringA);
-        let b2 = this.stringToBigNum(winstonStringB);
-        return a.isLessThan(b2);
-      }
-      isGreaterThan(winstonStringA, winstonStringB) {
-        let a = this.stringToBigNum(winstonStringA);
-        let b2 = this.stringToBigNum(winstonStringB);
-        return a.isGreaterThan(b2);
-      }
-      add(winstonStringA, winstonStringB) {
-        let a = this.stringToBigNum(winstonStringA);
-        let b2 = this.stringToBigNum(winstonStringB);
-        return a.plus(winstonStringB).toFixed(0);
-      }
-      sub(winstonStringA, winstonStringB) {
-        let a = this.stringToBigNum(winstonStringA);
-        let b2 = this.stringToBigNum(winstonStringB);
-        return a.minus(winstonStringB).toFixed(0);
-      }
-      stringToBigNum(stringValue, decimalPlaces = 12) {
-        return this.BigNum(stringValue, decimalPlaces);
-      }
-    };
-    exports.default = Ar4;
-  }
-});
-
-// node_modules/arweave/web/lib/api.js
-var require_api = __commonJS({
-  "node_modules/arweave/web/lib/api.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var Api = class {
-      constructor(config) {
-        __publicField(this, "METHOD_GET", "GET");
-        __publicField(this, "METHOD_POST", "POST");
-        __publicField(this, "config");
-        this.applyConfig(config);
-      }
-      applyConfig(config) {
-        this.config = this.mergeDefaults(config);
-      }
-      getConfig() {
-        return this.config;
-      }
-      mergeDefaults(config) {
-        const protocol = config.protocol || "http";
-        const port = config.port || (protocol === "https" ? 443 : 80);
-        return {
-          host: config.host || "127.0.0.1",
-          protocol,
-          port,
-          timeout: config.timeout || 2e4,
-          logging: config.logging || false,
-          logger: config.logger || console.log,
-          network: config.network
-        };
-      }
-      async get(endpoint, config) {
-        return await this.request(endpoint, { ...config, method: this.METHOD_GET });
-      }
-      async post(endpoint, body, config) {
-        var _a7;
-        const headers = new Headers((config == null ? void 0 : config.headers) || {});
-        if (!((_a7 = headers.get("content-type")) == null ? void 0 : _a7.includes("application/json"))) {
-          headers.append("content-type", "application/json");
-        }
-        headers.append("accept", "application/json, text/plain, */*");
-        return await this.request(endpoint, {
-          ...config,
-          method: this.METHOD_POST,
-          body: typeof body !== "string" ? JSON.stringify(body) : body,
-          headers
-        });
-      }
-      async request(endpoint, init) {
-        var _a7;
-        const headers = new Headers((init == null ? void 0 : init.headers) || {});
-        const baseURL = `${this.config.protocol}://${this.config.host}:${this.config.port}`;
-        const responseType = init == null ? void 0 : init.responseType;
-        init == null ? true : delete init.responseType;
-        if (endpoint.startsWith("/")) {
-          endpoint = endpoint.slice(1);
-        }
-        if (this.config.network) {
-          headers.append("x-network", this.config.network);
-        }
-        if (this.config.logging) {
-          this.config.logger(`Requesting: ${baseURL}/${endpoint}`);
-        }
-        let res = await fetch(`${baseURL}/${endpoint}`, {
-          ...init || {},
-          headers
-        });
-        if (this.config.logging) {
-          this.config.logger(`Response:   ${res.url} - ${res.status}`);
-        }
-        const contentType = res.headers.get("content-type");
-        const charset = (_a7 = contentType == null ? void 0 : contentType.match(/charset=([^()<>@,;:\"/[\]?.=\s]*)/i)) == null ? void 0 : _a7[1];
-        const response = res;
-        const decodeText = async () => {
-          if (charset) {
-            try {
-              response.data = new TextDecoder(charset).decode(await res.arrayBuffer());
-            } catch (e) {
-              response.data = await res.text();
-            }
-          } else {
-            response.data = await res.text();
-          }
-        };
-        if (responseType === "arraybuffer") {
-          response.data = await res.arrayBuffer();
-        } else if (responseType === "text") {
-          await decodeText();
-        } else if (responseType === "webstream") {
-          response.data = addAsyncIterator(res.body);
-        } else {
-          try {
-            let test = await res.clone().json();
-            if (typeof test !== "object") {
-              await decodeText();
-            } else {
-              response.data = await res.json();
-            }
-            test = null;
-          } catch (e) {
-            await decodeText();
-          }
-        }
-        return response;
-      }
-    };
-    exports.default = Api;
-    var addAsyncIterator = (body) => {
-      const bodyWithIter = body;
-      if (typeof bodyWithIter[Symbol.asyncIterator] === "undefined") {
-        bodyWithIter[Symbol.asyncIterator] = webIiterator(body);
-      }
-      return bodyWithIter;
-    };
-    var webIiterator = function(stream) {
-      return async function* iteratorGenerator() {
-        const reader = stream.getReader();
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done)
-              return;
-            yield value;
-          }
-        } finally {
-          reader.releaseLock();
-        }
-      };
-    };
-  }
-});
-
-// node_modules/base64-js/index.js
-var require_base64_js2 = __commonJS({
-  "node_modules/base64-js/index.js"(exports) {
-    "use strict";
-    exports.byteLength = byteLength;
-    exports.toByteArray = toByteArray;
-    exports.fromByteArray = fromByteArray;
-    var lookup = [];
-    var revLookup = [];
-    var Arr = typeof Uint8Array !== "undefined" ? Uint8Array : Array;
-    var code = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    for (i = 0, len = code.length; i < len; ++i) {
-      lookup[i] = code[i];
-      revLookup[code.charCodeAt(i)] = i;
-    }
-    var i;
-    var len;
-    revLookup["-".charCodeAt(0)] = 62;
-    revLookup["_".charCodeAt(0)] = 63;
-    function getLens(b64) {
-      var len2 = b64.length;
-      if (len2 % 4 > 0) {
-        throw new Error("Invalid string. Length must be a multiple of 4");
-      }
-      var validLen = b64.indexOf("=");
-      if (validLen === -1) validLen = len2;
-      var placeHoldersLen = validLen === len2 ? 0 : 4 - validLen % 4;
-      return [validLen, placeHoldersLen];
-    }
-    function byteLength(b64) {
-      var lens = getLens(b64);
-      var validLen = lens[0];
-      var placeHoldersLen = lens[1];
-      return (validLen + placeHoldersLen) * 3 / 4 - placeHoldersLen;
-    }
-    function _byteLength(b64, validLen, placeHoldersLen) {
-      return (validLen + placeHoldersLen) * 3 / 4 - placeHoldersLen;
-    }
-    function toByteArray(b64) {
-      var tmp;
-      var lens = getLens(b64);
-      var validLen = lens[0];
-      var placeHoldersLen = lens[1];
-      var arr = new Arr(_byteLength(b64, validLen, placeHoldersLen));
-      var curByte = 0;
-      var len2 = placeHoldersLen > 0 ? validLen - 4 : validLen;
-      var i2;
-      for (i2 = 0; i2 < len2; i2 += 4) {
-        tmp = revLookup[b64.charCodeAt(i2)] << 18 | revLookup[b64.charCodeAt(i2 + 1)] << 12 | revLookup[b64.charCodeAt(i2 + 2)] << 6 | revLookup[b64.charCodeAt(i2 + 3)];
-        arr[curByte++] = tmp >> 16 & 255;
-        arr[curByte++] = tmp >> 8 & 255;
-        arr[curByte++] = tmp & 255;
-      }
-      if (placeHoldersLen === 2) {
-        tmp = revLookup[b64.charCodeAt(i2)] << 2 | revLookup[b64.charCodeAt(i2 + 1)] >> 4;
-        arr[curByte++] = tmp & 255;
-      }
-      if (placeHoldersLen === 1) {
-        tmp = revLookup[b64.charCodeAt(i2)] << 10 | revLookup[b64.charCodeAt(i2 + 1)] << 4 | revLookup[b64.charCodeAt(i2 + 2)] >> 2;
-        arr[curByte++] = tmp >> 8 & 255;
-        arr[curByte++] = tmp & 255;
-      }
-      return arr;
-    }
-    function tripletToBase64(num) {
-      return lookup[num >> 18 & 63] + lookup[num >> 12 & 63] + lookup[num >> 6 & 63] + lookup[num & 63];
-    }
-    function encodeChunk(uint8, start, end) {
-      var tmp;
-      var output = [];
-      for (var i2 = start; i2 < end; i2 += 3) {
-        tmp = (uint8[i2] << 16 & 16711680) + (uint8[i2 + 1] << 8 & 65280) + (uint8[i2 + 2] & 255);
-        output.push(tripletToBase64(tmp));
-      }
-      return output.join("");
-    }
-    function fromByteArray(uint8) {
-      var tmp;
-      var len2 = uint8.length;
-      var extraBytes = len2 % 3;
-      var parts = [];
-      var maxChunkLength = 16383;
-      for (var i2 = 0, len22 = len2 - extraBytes; i2 < len22; i2 += maxChunkLength) {
-        parts.push(encodeChunk(uint8, i2, i2 + maxChunkLength > len22 ? len22 : i2 + maxChunkLength));
-      }
-      if (extraBytes === 1) {
-        tmp = uint8[len2 - 1];
-        parts.push(
-          lookup[tmp >> 2] + lookup[tmp << 4 & 63] + "=="
-        );
-      } else if (extraBytes === 2) {
-        tmp = (uint8[len2 - 2] << 8) + uint8[len2 - 1];
-        parts.push(
-          lookup[tmp >> 10] + lookup[tmp >> 4 & 63] + lookup[tmp << 2 & 63] + "="
-        );
-      }
-      return parts.join("");
-    }
-  }
-});
-
-// node_modules/arweave/web/lib/utils.js
-var require_utils = __commonJS({
-  "node_modules/arweave/web/lib/utils.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.concatBuffers = concatBuffers;
-    exports.b64UrlToString = b64UrlToString;
-    exports.bufferToString = bufferToString;
-    exports.stringToBuffer = stringToBuffer;
-    exports.stringToB64Url = stringToB64Url;
-    exports.b64UrlToBuffer = b64UrlToBuffer;
-    exports.bufferTob64 = bufferTob64;
-    exports.bufferTob64Url = bufferTob64Url;
-    exports.b64UrlEncode = b64UrlEncode;
-    exports.b64UrlDecode = b64UrlDecode;
-    var B64js = require_base64_js2();
-    function concatBuffers(buffers) {
-      let total_length = 0;
-      for (let i = 0; i < buffers.length; i++) {
-        total_length += buffers[i].byteLength;
-      }
-      let temp = new Uint8Array(total_length);
-      let offset = 0;
-      temp.set(new Uint8Array(buffers[0]), offset);
-      offset += buffers[0].byteLength;
-      for (let i = 1; i < buffers.length; i++) {
-        temp.set(new Uint8Array(buffers[i]), offset);
-        offset += buffers[i].byteLength;
-      }
-      return temp;
-    }
-    function b64UrlToString(b64UrlString) {
-      let buffer = b64UrlToBuffer(b64UrlString);
-      return bufferToString(buffer);
-    }
-    function bufferToString(buffer) {
-      return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
-    }
-    function stringToBuffer(string) {
-      return new TextEncoder().encode(string);
-    }
-    function stringToB64Url(string) {
-      return bufferTob64Url(stringToBuffer(string));
-    }
-    function b64UrlToBuffer(b64UrlString) {
-      return new Uint8Array(B64js.toByteArray(b64UrlDecode(b64UrlString)));
-    }
-    function bufferTob64(buffer) {
-      return B64js.fromByteArray(new Uint8Array(buffer));
-    }
-    function bufferTob64Url(buffer) {
-      return b64UrlEncode(bufferTob64(buffer));
-    }
-    function b64UrlEncode(b64UrlString) {
-      try {
-        return b64UrlString.replace(/\+/g, "-").replace(/\//g, "_").replace(/\=/g, "");
-      } catch (error) {
-        throw new Error("Failed to encode string", { cause: error });
-      }
-    }
-    function b64UrlDecode(b64UrlString) {
-      try {
-        b64UrlString = b64UrlString.replace(/\-/g, "+").replace(/\_/g, "/");
-        let padding;
-        b64UrlString.length % 4 == 0 ? padding = 0 : padding = 4 - b64UrlString.length % 4;
-        return b64UrlString.concat("=".repeat(padding));
-      } catch (error) {
-        throw new Error("Failed to decode string", { cause: error });
-      }
-    }
-  }
-});
-
-// node_modules/arweave/web/lib/crypto/webcrypto-driver.js
-var require_webcrypto_driver = __commonJS({
-  "node_modules/arweave/web/lib/crypto/webcrypto-driver.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var ArweaveUtils = require_utils();
-    var WebCryptoDriver = class {
-      constructor() {
-        __publicField(this, "keyLength", 4096);
-        __publicField(this, "publicExponent", 65537);
-        __publicField(this, "hashAlgorithm", "sha256");
-        __publicField(this, "driver");
-        if (!this.detectWebCrypto()) {
-          throw new Error("SubtleCrypto not available!");
-        }
-        this.driver = crypto.subtle;
-      }
-      async generateJWK() {
-        let cryptoKey = await this.driver.generateKey({
-          name: "RSA-PSS",
-          modulusLength: 4096,
-          publicExponent: new Uint8Array([1, 0, 1]),
-          hash: {
-            name: "SHA-256"
-          }
-        }, true, ["sign"]);
-        let jwk = await this.driver.exportKey("jwk", cryptoKey.privateKey);
-        return {
-          kty: jwk.kty,
-          e: jwk.e,
-          n: jwk.n,
-          d: jwk.d,
-          p: jwk.p,
-          q: jwk.q,
-          dp: jwk.dp,
-          dq: jwk.dq,
-          qi: jwk.qi
-        };
-      }
-      async sign(jwk, data, { saltLength } = {}) {
-        let signature = await this.driver.sign({
-          name: "RSA-PSS",
-          saltLength: 32
-        }, await this.jwkToCryptoKey(jwk), data);
-        return new Uint8Array(signature);
-      }
-      async hash(data, algorithm = "SHA-256") {
-        let digest = await this.driver.digest(algorithm, data);
-        return new Uint8Array(digest);
-      }
-      async verify(publicModulus, data, signature) {
-        const publicKey = {
-          kty: "RSA",
-          e: "AQAB",
-          n: publicModulus
-        };
-        const key = await this.jwkToPublicCryptoKey(publicKey);
-        const digest = await this.driver.digest("SHA-256", data);
-        const salt0 = await this.driver.verify({
-          name: "RSA-PSS",
-          saltLength: 0
-        }, key, signature, data);
-        const salt32 = await this.driver.verify({
-          name: "RSA-PSS",
-          saltLength: 32
-        }, key, signature, data);
-        const saltLengthN = Math.ceil((key.algorithm.modulusLength - 1) / 8) - digest.byteLength - 2;
-        const saltN = await this.driver.verify({
-          name: "RSA-PSS",
-          saltLength: saltLengthN
-        }, key, signature, data);
-        const result2 = salt0 || salt32 || saltN;
-        if (!result2) {
-          const details = {
-            algorithm: key.algorithm.name,
-            modulusLength: key.algorithm.modulusLength,
-            keyUsages: key.usages,
-            saltLengthsAttempted: `0, 32, ${saltLengthN}`
-          };
-          console.warn("Transaction Verification Failed! \n", `Details: ${JSON.stringify(details, null, 2)} 
-`, "N.B. ArweaveJS is only guaranteed to verify txs created using ArweaveJS.");
-        }
-        return result2;
-      }
-      async jwkToCryptoKey(jwk) {
-        return this.driver.importKey("jwk", jwk, {
-          name: "RSA-PSS",
-          hash: {
-            name: "SHA-256"
-          }
-        }, false, ["sign"]);
-      }
-      async jwkToPublicCryptoKey(publicJwk) {
-        return this.driver.importKey("jwk", publicJwk, {
-          name: "RSA-PSS",
-          hash: {
-            name: "SHA-256"
-          }
-        }, false, ["verify"]);
-      }
-      detectWebCrypto() {
-        if (typeof crypto === "undefined") {
-          return false;
-        }
-        const subtle = crypto == null ? void 0 : crypto.subtle;
-        if (subtle === void 0) {
-          return false;
-        }
-        const names = [
-          "generateKey",
-          "importKey",
-          "exportKey",
-          "digest",
-          "sign"
-        ];
-        return names.every((name) => typeof subtle[name] === "function");
-      }
-      async encrypt(data, key, salt) {
-        const initialKey = await this.driver.importKey("raw", typeof key == "string" ? ArweaveUtils.stringToBuffer(key) : key, {
-          name: "PBKDF2",
-          length: 32
-        }, false, ["deriveKey"]);
-        const derivedkey = await this.driver.deriveKey({
-          name: "PBKDF2",
-          salt: salt ? ArweaveUtils.stringToBuffer(salt) : ArweaveUtils.stringToBuffer("salt"),
-          iterations: 1e5,
-          hash: "SHA-256"
-        }, initialKey, {
-          name: "AES-CBC",
-          length: 256
-        }, false, ["encrypt", "decrypt"]);
-        const iv = new Uint8Array(16);
-        crypto.getRandomValues(iv);
-        const encryptedData = await this.driver.encrypt({
-          name: "AES-CBC",
-          iv
-        }, derivedkey, data);
-        return ArweaveUtils.concatBuffers([iv, encryptedData]);
-      }
-      async decrypt(encrypted, key, salt) {
-        const initialKey = await this.driver.importKey("raw", typeof key == "string" ? ArweaveUtils.stringToBuffer(key) : key, {
-          name: "PBKDF2",
-          length: 32
-        }, false, ["deriveKey"]);
-        const derivedkey = await this.driver.deriveKey({
-          name: "PBKDF2",
-          salt: salt ? ArweaveUtils.stringToBuffer(salt) : ArweaveUtils.stringToBuffer("salt"),
-          iterations: 1e5,
-          hash: "SHA-256"
-        }, initialKey, {
-          name: "AES-CBC",
-          length: 256
-        }, false, ["encrypt", "decrypt"]);
-        const iv = encrypted.slice(0, 16);
-        const data = await this.driver.decrypt({
-          name: "AES-CBC",
-          iv
-        }, derivedkey, encrypted.slice(16));
-        return ArweaveUtils.concatBuffers([data]);
-      }
-    };
-    exports.default = WebCryptoDriver;
-  }
-});
-
-// node_modules/arweave/web/network.js
-var require_network = __commonJS({
-  "node_modules/arweave/web/network.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var Network = class {
-      constructor(api) {
-        __publicField(this, "api");
-        this.api = api;
-      }
-      getInfo() {
-        return this.api.get(`info`).then((response) => {
-          return response.data;
-        });
-      }
-      getPeers() {
-        return this.api.get(`peers`).then((response) => {
-          return response.data;
-        });
-      }
-    };
-    exports.default = Network;
-  }
-});
-
-// node_modules/arweave/web/lib/error.js
-var require_error = __commonJS({
-  "node_modules/arweave/web/lib/error.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.getError = getError;
-    var ArweaveError = class extends Error {
-      constructor(type3, optional = {}) {
-        var __super = (...args) => {
-          super(...args);
-          __publicField(this, "type");
-          __publicField(this, "response");
-          return this;
-        };
-        if (optional.message) {
-          __super(optional.message);
-        } else {
-          __super();
-        }
-        this.type = type3;
-        this.response = optional.response;
-      }
-      getType() {
-        return this.type;
-      }
-    };
-    exports.default = ArweaveError;
-    function getError(resp) {
-      let data = resp.data;
-      if (typeof resp.data === "string") {
-        try {
-          data = JSON.parse(resp.data);
-        } catch (e) {
-        }
-      }
-      if (resp.data instanceof ArrayBuffer || resp.data instanceof Uint8Array) {
-        try {
-          data = JSON.parse(data.toString());
-        } catch (e) {
-        }
-      }
-      return data ? data.error || data : resp.statusText || "unknown";
-    }
-  }
-});
-
-// node_modules/arweave/web/lib/deepHash.js
-var require_deepHash = __commonJS({
-  "node_modules/arweave/web/lib/deepHash.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.default = deepHash;
-    var common_1 = require_common2();
-    async function deepHash(data) {
-      if (Array.isArray(data)) {
-        const tag2 = common_1.default.utils.concatBuffers([
-          common_1.default.utils.stringToBuffer("list"),
-          common_1.default.utils.stringToBuffer(data.length.toString())
-        ]);
-        return await deepHashChunks(data, await common_1.default.crypto.hash(tag2, "SHA-384"));
-      }
-      const tag = common_1.default.utils.concatBuffers([
-        common_1.default.utils.stringToBuffer("blob"),
-        common_1.default.utils.stringToBuffer(data.byteLength.toString())
-      ]);
-      const taggedHash = common_1.default.utils.concatBuffers([
-        await common_1.default.crypto.hash(tag, "SHA-384"),
-        await common_1.default.crypto.hash(data, "SHA-384")
-      ]);
-      return await common_1.default.crypto.hash(taggedHash, "SHA-384");
-    }
-    async function deepHashChunks(chunks, acc) {
-      if (chunks.length < 1) {
-        return acc;
-      }
-      const hashPair = common_1.default.utils.concatBuffers([
-        acc,
-        await deepHash(chunks[0])
-      ]);
-      const newAcc = await common_1.default.crypto.hash(hashPair, "SHA-384");
-      return await deepHashChunks(chunks.slice(1), newAcc);
-    }
-  }
-});
-
-// node_modules/arweave/web/lib/merkle.js
-var require_merkle = __commonJS({
-  "node_modules/arweave/web/lib/merkle.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.arrayCompare = exports.MIN_CHUNK_SIZE = exports.MAX_CHUNK_SIZE = void 0;
-    exports.chunkData = chunkData;
-    exports.generateLeaves = generateLeaves;
-    exports.computeRootHash = computeRootHash;
-    exports.generateTree = generateTree;
-    exports.generateTransactionChunks = generateTransactionChunks;
-    exports.buildLayers = buildLayers;
-    exports.generateProofs = generateProofs;
-    exports.arrayFlatten = arrayFlatten;
-    exports.intToBuffer = intToBuffer;
-    exports.bufferToInt = bufferToInt;
-    exports.validatePath = validatePath;
-    exports.debug = debug;
-    var common_1 = require_common2();
-    var utils_1 = require_utils();
-    exports.MAX_CHUNK_SIZE = 256 * 1024;
-    exports.MIN_CHUNK_SIZE = 32 * 1024;
-    var NOTE_SIZE = 32;
-    var HASH_SIZE = 32;
-    async function chunkData(data) {
-      let chunks = [];
-      let rest = data;
-      let cursor = 0;
-      while (rest.byteLength >= exports.MAX_CHUNK_SIZE) {
-        let chunkSize = exports.MAX_CHUNK_SIZE;
-        let nextChunkSize = rest.byteLength - exports.MAX_CHUNK_SIZE;
-        if (nextChunkSize > 0 && nextChunkSize < exports.MIN_CHUNK_SIZE) {
-          chunkSize = Math.ceil(rest.byteLength / 2);
-        }
-        const chunk = rest.slice(0, chunkSize);
-        const dataHash = await common_1.default.crypto.hash(chunk);
-        cursor += chunk.byteLength;
-        chunks.push({
-          dataHash,
-          minByteRange: cursor - chunk.byteLength,
-          maxByteRange: cursor
-        });
-        rest = rest.slice(chunkSize);
-      }
-      chunks.push({
-        dataHash: await common_1.default.crypto.hash(rest),
-        minByteRange: cursor,
-        maxByteRange: cursor + rest.byteLength
-      });
-      return chunks;
-    }
-    async function generateLeaves(chunks) {
-      return Promise.all(chunks.map(async ({ dataHash, minByteRange, maxByteRange }) => {
-        return {
-          type: "leaf",
-          id: await hash(await Promise.all([hash(dataHash), hash(intToBuffer(maxByteRange))])),
-          dataHash,
-          minByteRange,
-          maxByteRange
-        };
-      }));
-    }
-    async function computeRootHash(data) {
-      const rootNode = await generateTree(data);
-      return rootNode.id;
-    }
-    async function generateTree(data) {
-      const rootNode = await buildLayers(await generateLeaves(await chunkData(data)));
-      return rootNode;
-    }
-    async function generateTransactionChunks(data) {
-      const chunks = await chunkData(data);
-      const leaves = await generateLeaves(chunks);
-      const root = await buildLayers(leaves);
-      const proofs = await generateProofs(root);
-      const lastChunk = chunks.slice(-1)[0];
-      if (lastChunk.maxByteRange - lastChunk.minByteRange === 0) {
-        chunks.splice(chunks.length - 1, 1);
-        proofs.splice(proofs.length - 1, 1);
-      }
-      return {
-        data_root: root.id,
-        chunks,
-        proofs
-      };
-    }
-    async function buildLayers(nodes, level = 0) {
-      if (nodes.length < 2) {
-        const root = nodes[0];
-        return root;
-      }
-      const nextLayer = [];
-      for (let i = 0; i < nodes.length; i += 2) {
-        nextLayer.push(await hashBranch(nodes[i], nodes[i + 1]));
-      }
-      return buildLayers(nextLayer, level + 1);
-    }
-    function generateProofs(root) {
-      const proofs = resolveBranchProofs(root);
-      if (!Array.isArray(proofs)) {
-        return [proofs];
-      }
-      return arrayFlatten(proofs);
-    }
-    function resolveBranchProofs(node, proof = new Uint8Array(), depth = 0) {
-      if (node.type == "leaf") {
-        return {
-          offset: node.maxByteRange - 1,
-          proof: (0, utils_1.concatBuffers)([
-            proof,
-            node.dataHash,
-            intToBuffer(node.maxByteRange)
-          ])
-        };
-      }
-      if (node.type == "branch") {
-        const partialProof = (0, utils_1.concatBuffers)([
-          proof,
-          node.leftChild.id,
-          node.rightChild.id,
-          intToBuffer(node.byteRange)
-        ]);
-        return [
-          resolveBranchProofs(node.leftChild, partialProof, depth + 1),
-          resolveBranchProofs(node.rightChild, partialProof, depth + 1)
-        ];
-      }
-      throw new Error(`Unexpected node type`);
-    }
-    function arrayFlatten(input) {
-      const flat = [];
-      input.forEach((item) => {
-        if (Array.isArray(item)) {
-          flat.push(...arrayFlatten(item));
-        } else {
-          flat.push(item);
-        }
-      });
-      return flat;
-    }
-    async function hashBranch(left, right) {
-      if (!right) {
-        return left;
-      }
-      let branch = {
-        type: "branch",
-        id: await hash([
-          await hash(left.id),
-          await hash(right.id),
-          await hash(intToBuffer(left.maxByteRange))
-        ]),
-        byteRange: left.maxByteRange,
-        maxByteRange: right.maxByteRange,
-        leftChild: left,
-        rightChild: right
-      };
-      return branch;
-    }
-    async function hash(data) {
-      if (Array.isArray(data)) {
-        data = common_1.default.utils.concatBuffers(data);
-      }
-      return new Uint8Array(await common_1.default.crypto.hash(data));
-    }
-    function intToBuffer(note) {
-      const buffer = new Uint8Array(NOTE_SIZE);
-      for (var i = buffer.length - 1; i >= 0; i--) {
-        var byte = note % 256;
-        buffer[i] = byte;
-        note = (note - byte) / 256;
-      }
-      return buffer;
-    }
-    function bufferToInt(buffer) {
-      let value = 0;
-      for (var i = 0; i < buffer.length; i++) {
-        value *= 256;
-        value += buffer[i];
-      }
-      return value;
-    }
-    var arrayCompare = (a, b2) => a.every((value, index) => b2[index] === value);
-    exports.arrayCompare = arrayCompare;
-    async function validatePath(id, dest, leftBound, rightBound, path2) {
-      if (rightBound <= 0) {
-        return false;
-      }
-      if (dest >= rightBound) {
-        return validatePath(id, 0, rightBound - 1, rightBound, path2);
-      }
-      if (dest < 0) {
-        return validatePath(id, 0, 0, rightBound, path2);
-      }
-      if (path2.length == HASH_SIZE + NOTE_SIZE) {
-        const pathData = path2.slice(0, HASH_SIZE);
-        const endOffsetBuffer = path2.slice(pathData.length, pathData.length + NOTE_SIZE);
-        const pathDataHash = await hash([
-          await hash(pathData),
-          await hash(endOffsetBuffer)
-        ]);
-        let result2 = (0, exports.arrayCompare)(id, pathDataHash);
-        if (result2) {
-          return {
-            offset: rightBound - 1,
-            leftBound,
-            rightBound,
-            chunkSize: rightBound - leftBound
-          };
-        }
-        return false;
-      }
-      const left = path2.slice(0, HASH_SIZE);
-      const right = path2.slice(left.length, left.length + HASH_SIZE);
-      const offsetBuffer = path2.slice(left.length + right.length, left.length + right.length + NOTE_SIZE);
-      const offset = bufferToInt(offsetBuffer);
-      const remainder = path2.slice(left.length + right.length + offsetBuffer.length);
-      const pathHash = await hash([
-        await hash(left),
-        await hash(right),
-        await hash(offsetBuffer)
-      ]);
-      if ((0, exports.arrayCompare)(id, pathHash)) {
-        if (dest < offset) {
-          return await validatePath(left, dest, leftBound, Math.min(rightBound, offset), remainder);
-        }
-        return await validatePath(right, dest, Math.max(leftBound, offset), rightBound, remainder);
-      }
-      return false;
-    }
-    async function debug(proof, output = "") {
-      if (proof.byteLength < 1) {
-        return output;
-      }
-      const left = proof.slice(0, HASH_SIZE);
-      const right = proof.slice(left.length, left.length + HASH_SIZE);
-      const offsetBuffer = proof.slice(left.length + right.length, left.length + right.length + NOTE_SIZE);
-      const offset = bufferToInt(offsetBuffer);
-      const remainder = proof.slice(left.length + right.length + offsetBuffer.length);
-      const pathHash = await hash([
-        await hash(left),
-        await hash(right),
-        await hash(offsetBuffer)
-      ]);
-      const updatedOutput = `${output}
-${JSON.stringify(Buffer.from(left))},${JSON.stringify(Buffer.from(right))},${offset} => ${JSON.stringify(pathHash)}`;
-      return debug(remainder, updatedOutput);
-    }
-  }
-});
-
-// node_modules/arweave/web/lib/transaction.js
-var require_transaction = __commonJS({
-  "node_modules/arweave/web/lib/transaction.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.Tag = void 0;
-    var ArweaveUtils = require_utils();
-    var deepHash_1 = require_deepHash();
-    var merkle_1 = require_merkle();
-    var BaseObject = class {
-      get(field, options) {
-        if (!Object.getOwnPropertyNames(this).includes(field)) {
-          throw new Error(`Field "${field}" is not a property of the Arweave Transaction class.`);
-        }
-        if (this[field] instanceof Uint8Array) {
-          if (options && options.decode && options.string) {
-            return ArweaveUtils.bufferToString(this[field]);
-          }
-          if (options && options.decode && !options.string) {
-            return this[field];
-          }
-          return ArweaveUtils.bufferTob64Url(this[field]);
-        }
-        if (this[field] instanceof Array) {
-          if ((options == null ? void 0 : options.decode) !== void 0 || (options == null ? void 0 : options.string) !== void 0) {
-            if (field === "tags") {
-              console.warn(`Did you mean to use 'transaction["tags"]' ?`);
-            }
-            throw new Error(`Cannot decode or stringify an array.`);
-          }
-          return this[field];
-        }
-        if (options && options.decode == true) {
-          if (options && options.string) {
-            return ArweaveUtils.b64UrlToString(this[field]);
-          }
-          return ArweaveUtils.b64UrlToBuffer(this[field]);
-        }
-        return this[field];
-      }
-    };
-    var Tag = class extends BaseObject {
-      constructor(name, value, decode = false) {
-        super();
-        __publicField(this, "name");
-        __publicField(this, "value");
-        this.name = name;
-        this.value = value;
-      }
-    };
-    exports.Tag = Tag;
-    var Transaction = class extends BaseObject {
-      constructor(attributes = {}) {
-        super();
-        __publicField(this, "format", 2);
-        __publicField(this, "id", "");
-        __publicField(this, "last_tx", "");
-        __publicField(this, "owner", "");
-        __publicField(this, "tags", []);
-        __publicField(this, "target", "");
-        __publicField(this, "quantity", "0");
-        __publicField(this, "data_size", "0");
-        __publicField(this, "data", new Uint8Array());
-        __publicField(this, "data_root", "");
-        __publicField(this, "reward", "0");
-        __publicField(this, "signature", "");
-        // Computed when needed.
-        __publicField(this, "chunks");
-        Object.assign(this, attributes);
-        if (typeof this.data === "string") {
-          this.data = ArweaveUtils.b64UrlToBuffer(this.data);
-        }
-        if (attributes.tags) {
-          this.tags = attributes.tags.map((tag) => {
-            return new Tag(tag.name, tag.value);
-          });
-        }
-      }
-      addTag(name, value) {
-        this.tags.push(new Tag(ArweaveUtils.stringToB64Url(name), ArweaveUtils.stringToB64Url(value)));
-      }
-      toJSON() {
-        return {
-          format: this.format,
-          id: this.id,
-          last_tx: this.last_tx,
-          owner: this.owner,
-          tags: this.tags,
-          target: this.target,
-          quantity: this.quantity,
-          data: ArweaveUtils.bufferTob64Url(this.data),
-          data_size: this.data_size,
-          data_root: this.data_root,
-          data_tree: this.data_tree,
-          reward: this.reward,
-          signature: this.signature
-        };
-      }
-      setOwner(owner) {
-        this.owner = owner;
-      }
-      setSignature({ id, owner, reward, tags, signature }) {
-        this.id = id;
-        this.owner = owner;
-        if (reward)
-          this.reward = reward;
-        if (tags)
-          this.tags = tags;
-        this.signature = signature;
-      }
-      async prepareChunks(data) {
-        if (!this.chunks && data.byteLength > 0) {
-          this.chunks = await (0, merkle_1.generateTransactionChunks)(data);
-          this.data_root = ArweaveUtils.bufferTob64Url(this.chunks.data_root);
-        }
-        if (!this.chunks && data.byteLength === 0) {
-          this.chunks = {
-            chunks: [],
-            data_root: new Uint8Array(),
-            proofs: []
-          };
-          this.data_root = "";
-        }
-      }
-      // Returns a chunk in a format suitable for posting to /chunk.
-      // Similar to `prepareChunks()` this does not operate `this.data`,
-      // instead using the data passed in.
-      getChunk(idx, data) {
-        if (!this.chunks) {
-          throw new Error(`Chunks have not been prepared`);
-        }
-        const proof = this.chunks.proofs[idx];
-        const chunk = this.chunks.chunks[idx];
-        return {
-          data_root: this.data_root,
-          data_size: this.data_size,
-          data_path: ArweaveUtils.bufferTob64Url(proof.proof),
-          offset: proof.offset.toString(),
-          chunk: ArweaveUtils.bufferTob64Url(data.slice(chunk.minByteRange, chunk.maxByteRange))
-        };
-      }
-      async getSignatureData() {
-        switch (this.format) {
-          case 1:
-            let tags = this.tags.reduce((accumulator, tag) => {
-              return ArweaveUtils.concatBuffers([
-                accumulator,
-                tag.get("name", { decode: true, string: false }),
-                tag.get("value", { decode: true, string: false })
-              ]);
-            }, new Uint8Array());
-            return ArweaveUtils.concatBuffers([
-              this.get("owner", { decode: true, string: false }),
-              this.get("target", { decode: true, string: false }),
-              this.get("data", { decode: true, string: false }),
-              ArweaveUtils.stringToBuffer(this.quantity),
-              ArweaveUtils.stringToBuffer(this.reward),
-              this.get("last_tx", { decode: true, string: false }),
-              tags
-            ]);
-          case 2:
-            if (!this.data_root) {
-              await this.prepareChunks(this.data);
-            }
-            const tagList = this.tags.map((tag) => [
-              tag.get("name", { decode: true, string: false }),
-              tag.get("value", { decode: true, string: false })
-            ]);
-            return await (0, deepHash_1.default)([
-              ArweaveUtils.stringToBuffer(this.format.toString()),
-              this.get("owner", { decode: true, string: false }),
-              this.get("target", { decode: true, string: false }),
-              ArweaveUtils.stringToBuffer(this.quantity),
-              ArweaveUtils.stringToBuffer(this.reward),
-              this.get("last_tx", { decode: true, string: false }),
-              tagList,
-              ArweaveUtils.stringToBuffer(this.data_size),
-              this.get("data_root", { decode: true, string: false })
-            ]);
-          default:
-            throw new Error(`Unexpected transaction format: ${this.format}`);
-        }
-      }
-    };
-    exports.default = Transaction;
-  }
-});
-
-// node_modules/arweave/web/lib/transaction-uploader.js
-var require_transaction_uploader = __commonJS({
-  "node_modules/arweave/web/lib/transaction-uploader.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.TransactionUploader = void 0;
-    var transaction_1 = require_transaction();
-    var ArweaveUtils = require_utils();
-    var error_1 = require_error();
-    var merkle_1 = require_merkle();
-    var MAX_CHUNKS_IN_BODY = 1;
-    var FATAL_CHUNK_UPLOAD_ERRORS = [
-      "invalid_json",
-      "chunk_too_big",
-      "data_path_too_big",
-      "offset_too_big",
-      "data_size_too_big",
-      "chunk_proof_ratio_not_attractive",
-      "invalid_proof"
-    ];
-    var ERROR_DELAY = 1e3 * 40;
-    var TransactionUploader = class _TransactionUploader {
-      constructor(api, transaction) {
-        __publicField(this, "api");
-        __publicField(this, "chunkIndex", 0);
-        __publicField(this, "txPosted", false);
-        __publicField(this, "transaction");
-        __publicField(this, "lastRequestTimeEnd", 0);
-        __publicField(this, "totalErrors", 0);
-        // Not serialized.
-        __publicField(this, "data");
-        __publicField(this, "lastResponseStatus", 0);
-        __publicField(this, "lastResponseError", "");
-        this.api = api;
-        if (!transaction.id) {
-          throw new Error(`Transaction is not signed`);
-        }
-        if (!transaction.chunks) {
-          throw new Error(`Transaction chunks not prepared`);
-        }
-        this.data = transaction.data;
-        this.transaction = new transaction_1.default(Object.assign({}, transaction, { data: new Uint8Array(0) }));
-      }
-      get isComplete() {
-        return this.txPosted && this.chunkIndex === this.transaction.chunks.chunks.length;
-      }
-      get totalChunks() {
-        return this.transaction.chunks.chunks.length;
-      }
-      get uploadedChunks() {
-        return this.chunkIndex;
-      }
-      get pctComplete() {
-        return Math.trunc(this.uploadedChunks / this.totalChunks * 100);
-      }
-      /**
-       * Uploads the next part of the transaction.
-       * On the first call this posts the transaction
-       * itself and on any subsequent calls uploads the
-       * next chunk until it completes.
-       */
-      async uploadChunk(chunkIndex_) {
-        if (this.isComplete) {
-          throw new Error(`Upload is already complete`);
-        }
-        if (this.lastResponseError !== "") {
-          this.totalErrors++;
-        } else {
-          this.totalErrors = 0;
-        }
-        if (this.totalErrors === 100) {
-          throw new Error(`Unable to complete upload: ${this.lastResponseStatus}: ${this.lastResponseError}`);
-        }
-        let delay = this.lastResponseError === "" ? 0 : Math.max(this.lastRequestTimeEnd + ERROR_DELAY - Date.now(), ERROR_DELAY);
-        if (delay > 0) {
-          delay = delay - delay * Math.random() * 0.3;
-          await new Promise((res) => setTimeout(res, delay));
-        }
-        this.lastResponseError = "";
-        if (!this.txPosted) {
-          await this.postTransaction();
-          return;
-        }
-        if (chunkIndex_) {
-          this.chunkIndex = chunkIndex_;
-        }
-        const chunk = this.transaction.getChunk(chunkIndex_ || this.chunkIndex, this.data);
-        const chunkOk = await (0, merkle_1.validatePath)(this.transaction.chunks.data_root, parseInt(chunk.offset), 0, parseInt(chunk.data_size), ArweaveUtils.b64UrlToBuffer(chunk.data_path));
-        if (!chunkOk) {
-          throw new Error(`Unable to validate chunk ${this.chunkIndex}`);
-        }
-        const resp = await this.api.post(`chunk`, this.transaction.getChunk(this.chunkIndex, this.data)).catch((e) => {
-          console.error(e.message);
-          return { status: -1, data: { error: e.message } };
-        });
-        this.lastRequestTimeEnd = Date.now();
-        this.lastResponseStatus = resp.status;
-        if (this.lastResponseStatus == 200) {
-          this.chunkIndex++;
-        } else {
-          this.lastResponseError = (0, error_1.getError)(resp);
-          if (FATAL_CHUNK_UPLOAD_ERRORS.includes(this.lastResponseError)) {
-            throw new Error(`Fatal error uploading chunk ${this.chunkIndex}: ${this.lastResponseError}`);
-          }
-        }
-      }
-      /**
-       * Reconstructs an upload from its serialized state and data.
-       * Checks if data matches the expected data_root.
-       *
-       * @param serialized
-       * @param data
-       */
-      static async fromSerialized(api, serialized, data) {
-        if (!serialized || typeof serialized.chunkIndex !== "number" || typeof serialized.transaction !== "object") {
-          throw new Error(`Serialized object does not match expected format.`);
-        }
-        var transaction = new transaction_1.default(serialized.transaction);
-        if (!transaction.chunks) {
-          await transaction.prepareChunks(data);
-        }
-        const upload = new _TransactionUploader(api, transaction);
-        upload.chunkIndex = serialized.chunkIndex;
-        upload.lastRequestTimeEnd = serialized.lastRequestTimeEnd;
-        upload.lastResponseError = serialized.lastResponseError;
-        upload.lastResponseStatus = serialized.lastResponseStatus;
-        upload.txPosted = serialized.txPosted;
-        upload.data = data;
-        if (upload.transaction.data_root !== serialized.transaction.data_root) {
-          throw new Error(`Data mismatch: Uploader doesn't match provided data.`);
-        }
-        return upload;
-      }
-      /**
-       * Reconstruct an upload from the tx metadata, ie /tx/<id>.
-       *
-       * @param api
-       * @param id
-       * @param data
-       */
-      static async fromTransactionId(api, id) {
-        const resp = await api.get(`tx/${id}`);
-        if (resp.status !== 200) {
-          throw new Error(`Tx ${id} not found: ${resp.status}`);
-        }
-        const transaction = resp.data;
-        transaction.data = new Uint8Array(0);
-        const serialized = {
-          txPosted: true,
-          chunkIndex: 0,
-          lastResponseError: "",
-          lastRequestTimeEnd: 0,
-          lastResponseStatus: 0,
-          transaction
-        };
-        return serialized;
-      }
-      toJSON() {
-        return {
-          chunkIndex: this.chunkIndex,
-          transaction: this.transaction,
-          lastRequestTimeEnd: this.lastRequestTimeEnd,
-          lastResponseStatus: this.lastResponseStatus,
-          lastResponseError: this.lastResponseError,
-          txPosted: this.txPosted
-        };
-      }
-      // POST to /tx
-      async postTransaction() {
-        const uploadInBody = this.totalChunks <= MAX_CHUNKS_IN_BODY;
-        if (uploadInBody) {
-          this.transaction.data = this.data;
-          const resp2 = await this.api.post(`tx`, this.transaction).catch((e) => {
-            console.error(e);
-            return { status: -1, data: { error: e.message } };
-          });
-          this.lastRequestTimeEnd = Date.now();
-          this.lastResponseStatus = resp2.status;
-          this.transaction.data = new Uint8Array(0);
-          if (resp2.status >= 200 && resp2.status < 300) {
-            this.txPosted = true;
-            this.chunkIndex = MAX_CHUNKS_IN_BODY;
-            return;
-          }
-          this.lastResponseError = (0, error_1.getError)(resp2);
-          throw new Error(`Unable to upload transaction: ${resp2.status}, ${this.lastResponseError}`);
-        }
-        const resp = await this.api.post(`tx`, this.transaction);
-        this.lastRequestTimeEnd = Date.now();
-        this.lastResponseStatus = resp.status;
-        if (!(resp.status >= 200 && resp.status < 300)) {
-          this.lastResponseError = (0, error_1.getError)(resp);
-          throw new Error(`Unable to upload transaction: ${resp.status}, ${this.lastResponseError}`);
-        }
-        this.txPosted = true;
-      }
-    };
-    exports.TransactionUploader = TransactionUploader;
-  }
-});
-
-// node_modules/arconnect/index.js
-var require_arconnect = __commonJS({
-  "node_modules/arconnect/index.js"(exports, module2) {
-    module2.exports = {};
-  }
-});
-
-// node_modules/arweave/web/transactions.js
-var require_transactions = __commonJS({
-  "node_modules/arweave/web/transactions.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var error_1 = require_error();
-    var transaction_1 = require_transaction();
-    var ArweaveUtils = require_utils();
-    var transaction_uploader_1 = require_transaction_uploader();
-    require_arconnect();
-    var Transactions = class {
-      constructor(api, crypto2, chunks) {
-        __publicField(this, "api");
-        __publicField(this, "crypto");
-        __publicField(this, "chunks");
-        this.api = api;
-        this.crypto = crypto2;
-        this.chunks = chunks;
-      }
-      async getTransactionAnchor() {
-        const res = await this.api.get(`tx_anchor`);
-        if (!res.data.match(/^[a-z0-9_-]{43,}/i) || !res.ok) {
-          throw new Error(`Could not getTransactionAnchor. Received: ${res.data}. Status: ${res.status}, ${res.statusText}`);
-        }
-        return res.data;
-      }
-      async getPrice(byteSize, targetAddress) {
-        let endpoint = targetAddress ? `price/${byteSize}/${targetAddress}` : `price/${byteSize}`;
-        const res = await this.api.get(endpoint);
-        if (!/^\d+$/.test(res.data) || !res.ok) {
-          throw new Error(`Could not getPrice. Received: ${res.data}. Status: ${res.status}, ${res.statusText}`);
-        }
-        return res.data;
-      }
-      async get(id) {
-        const response = await this.api.get(`tx/${id}`);
-        if (response.status == 200) {
-          const data_size = parseInt(response.data.data_size);
-          if (response.data.format >= 2 && data_size > 0 && data_size <= 1024 * 1024 * 12) {
-            const data = await this.getData(id);
-            return new transaction_1.default({
-              ...response.data,
-              data
-            });
-          }
-          return new transaction_1.default({
-            ...response.data,
-            format: response.data.format || 1
-          });
-        }
-        if (response.status == 404) {
-          throw new error_1.default(
-            "TX_NOT_FOUND"
-            /* ArweaveErrorType.TX_NOT_FOUND */
-          );
-        }
-        if (response.status == 410) {
-          throw new error_1.default(
-            "TX_FAILED"
-            /* ArweaveErrorType.TX_FAILED */
-          );
-        }
-        throw new error_1.default(
-          "TX_INVALID"
-          /* ArweaveErrorType.TX_INVALID */
-        );
-      }
-      fromRaw(attributes) {
-        return new transaction_1.default(attributes);
-      }
-      /** @deprecated use GQL https://gql-guide.arweave.net */
-      async search(tagName, tagValue) {
-        return this.api.post(`arql`, {
-          op: "equals",
-          expr1: tagName,
-          expr2: tagValue
-        }).then((response) => {
-          if (!response.data) {
-            return [];
-          }
-          return response.data;
-        });
-      }
-      getStatus(id) {
-        return this.api.get(`tx/${id}/status`).then((response) => {
-          if (response.status == 200) {
-            return {
-              status: 200,
-              confirmed: response.data
-            };
-          }
-          return {
-            status: response.status,
-            confirmed: null
-          };
-        });
-      }
-      async getData(id, options) {
-        let data = void 0;
-        try {
-          data = await this.chunks.downloadChunkedData(id);
-        } catch (error) {
-          console.error(`Error while trying to download chunked data for ${id}`);
-          console.error(error);
-        }
-        if (!data) {
-          console.warn(`Falling back to gateway cache for ${id}`);
-          try {
-            const { data: resData, ok, status, statusText } = await this.api.get(`/${id}`, { responseType: "arraybuffer" });
-            if (!ok) {
-              throw new Error(`Bad http status code`, {
-                cause: { status, statusText }
-              });
-            }
-            data = resData;
-          } catch (error) {
-            console.error(`Error while trying to download contiguous data from gateway cache for ${id}`);
-            console.error(error);
-          }
-        }
-        if (!data) {
-          throw new Error(`${id} data was not found!`);
-        }
-        if (options && options.decode && !options.string) {
-          return data;
-        }
-        if (options && options.decode && options.string) {
-          return ArweaveUtils.bufferToString(data);
-        }
-        return ArweaveUtils.bufferTob64Url(data);
-      }
-      async sign(transaction, jwk, options) {
-        const isJwk = (obj) => {
-          let valid = true;
-          ["n", "e", "d", "p", "q", "dp", "dq", "qi"].map((key) => !(key in obj) && (valid = false));
-          return valid;
-        };
-        const validJwk = typeof jwk === "object" && isJwk(jwk);
-        const externalWallet = typeof arweaveWallet === "object";
-        if (!validJwk && !externalWallet) {
-          throw new Error(`No valid JWK or external wallet found to sign transaction.`);
-        } else if (validJwk) {
-          transaction.setOwner(jwk.n);
-          let dataToSign = await transaction.getSignatureData();
-          let rawSignature = await this.crypto.sign(jwk, dataToSign, options);
-          let id = await this.crypto.hash(rawSignature);
-          transaction.setSignature({
-            id: ArweaveUtils.bufferTob64Url(id),
-            owner: jwk.n,
-            signature: ArweaveUtils.bufferTob64Url(rawSignature)
-          });
-        } else if (externalWallet) {
-          try {
-            const existingPermissions = await arweaveWallet.getPermissions();
-            if (!existingPermissions.includes("SIGN_TRANSACTION"))
-              await arweaveWallet.connect(["SIGN_TRANSACTION"]);
-          } catch (e) {
-          }
-          const signedTransaction = await arweaveWallet.sign(transaction, options);
-          transaction.setSignature({
-            id: signedTransaction.id,
-            owner: signedTransaction.owner,
-            reward: signedTransaction.reward,
-            tags: signedTransaction.tags,
-            signature: signedTransaction.signature
-          });
-        } else {
-          throw new Error(`An error occurred while signing. Check wallet is valid`);
-        }
-      }
-      async verify(transaction) {
-        const signaturePayload = await transaction.getSignatureData();
-        const rawSignature = transaction.get("signature", {
-          decode: true,
-          string: false
-        });
-        const expectedId = ArweaveUtils.bufferTob64Url(await this.crypto.hash(rawSignature));
-        if (transaction.id !== expectedId) {
-          throw new Error(`Invalid transaction signature or ID! The transaction ID doesn't match the expected SHA-256 hash of the signature.`);
-        }
-        return this.crypto.verify(transaction.owner, signaturePayload, rawSignature);
-      }
-      async post(transaction) {
-        if (typeof transaction === "string") {
-          transaction = new transaction_1.default(JSON.parse(transaction));
-        } else if (typeof transaction.readInt32BE === "function") {
-          transaction = new transaction_1.default(JSON.parse(transaction.toString()));
-        } else if (typeof transaction === "object" && !(transaction instanceof transaction_1.default)) {
-          transaction = new transaction_1.default(transaction);
-        }
-        if (!(transaction instanceof transaction_1.default)) {
-          throw new Error(`Must be Transaction object`);
-        }
-        if (!transaction.chunks) {
-          await transaction.prepareChunks(transaction.data);
-        }
-        const uploader = await this.getUploader(transaction, transaction.data);
-        try {
-          while (!uploader.isComplete) {
-            await uploader.uploadChunk();
-          }
-        } catch (e) {
-          if (uploader.lastResponseStatus > 0) {
-            return {
-              status: uploader.lastResponseStatus,
-              statusText: uploader.lastResponseError,
-              data: {
-                error: uploader.lastResponseError
-              }
-            };
-          }
-          throw e;
-        }
-        return {
-          status: 200,
-          statusText: "OK",
-          data: {}
-        };
-      }
-      /**
-       * Gets an uploader than can be used to upload a transaction chunk by chunk, giving progress
-       * and the ability to resume.
-       *
-       * Usage example:
-       *
-       * ```
-       * const uploader = arweave.transactions.getUploader(transaction);
-       * while (!uploader.isComplete) {
-       *   await uploader.uploadChunk();
-       *   console.log(`${uploader.pctComplete}%`);
-       * }
-       * ```
-       *
-       * @param upload a Transaction object, a previously save progress object, or a transaction id.
-       * @param data the data of the transaction. Required when resuming an upload.
-       */
-      async getUploader(upload, data) {
-        let uploader;
-        if (data instanceof ArrayBuffer) {
-          data = new Uint8Array(data);
-        }
-        if (upload instanceof transaction_1.default) {
-          if (!data) {
-            data = upload.data;
-          }
-          if (!(data instanceof Uint8Array)) {
-            throw new Error("Data format is invalid");
-          }
-          if (!upload.chunks) {
-            await upload.prepareChunks(data);
-          }
-          uploader = new transaction_uploader_1.TransactionUploader(this.api, upload);
-          if (!uploader.data || uploader.data.length === 0) {
-            uploader.data = data;
-          }
-        } else {
-          if (typeof upload === "string") {
-            upload = await transaction_uploader_1.TransactionUploader.fromTransactionId(this.api, upload);
-          }
-          if (!data || !(data instanceof Uint8Array)) {
-            throw new Error(`Must provide data when resuming upload`);
-          }
-          uploader = await transaction_uploader_1.TransactionUploader.fromSerialized(this.api, upload, data);
-        }
-        return uploader;
-      }
-      /**
-       * Async generator version of uploader
-       *
-       * Usage example:
-       *
-       * ```
-       * for await (const uploader of arweave.transactions.upload(tx)) {
-       *  console.log(`${uploader.pctComplete}%`);
-       * }
-       * ```
-       *
-       * @param upload a Transaction object, a previously save uploader, or a transaction id.
-       * @param data the data of the transaction. Required when resuming an upload.
-       */
-      async *upload(upload, data) {
-        const uploader = await this.getUploader(upload, data);
-        while (!uploader.isComplete) {
-          await uploader.uploadChunk();
-          yield uploader;
-        }
-        return uploader;
-      }
-    };
-    exports.default = Transactions;
-  }
-});
-
-// node_modules/arweave/web/wallets.js
-var require_wallets = __commonJS({
-  "node_modules/arweave/web/wallets.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var ArweaveUtils = require_utils();
-    require_arconnect();
-    var Wallets = class {
-      constructor(api, crypto2) {
-        __publicField(this, "api");
-        __publicField(this, "crypto");
-        this.api = api;
-        this.crypto = crypto2;
-      }
-      /**
-       * Get the wallet balance for the given address.
-       *
-       * @param {string} address - The arweave address to get the balance for.
-       *
-       * @returns {Promise<string>} - Promise which resolves with a winston string balance.
-       */
-      getBalance(address) {
-        return this.api.get(`wallet/${address}/balance`).then((response) => {
-          return response.data;
-        });
-      }
-      /**
-       * Get the last transaction ID for the given wallet address.
-       *
-       * @param {string} address - The arweave address to get the transaction for.
-       *
-       * @returns {Promise<string>} - Promise which resolves with a transaction ID.
-       */
-      getLastTransactionID(address) {
-        return this.api.get(`wallet/${address}/last_tx`).then((response) => {
-          return response.data;
-        });
-      }
-      generate() {
-        return this.crypto.generateJWK();
-      }
-      async jwkToAddress(jwk) {
-        if (!jwk || jwk === "use_wallet") {
-          return this.getAddress();
-        } else {
-          return this.getAddress(jwk);
-        }
-      }
-      async getAddress(jwk) {
-        if (!jwk || jwk === "use_wallet") {
-          try {
-            await arweaveWallet.connect(["ACCESS_ADDRESS"]);
-          } catch (e) {
-          }
-          return arweaveWallet.getActiveAddress();
-        } else {
-          return this.ownerToAddress(jwk.n);
-        }
-      }
-      async ownerToAddress(owner) {
-        return ArweaveUtils.bufferTob64Url(await this.crypto.hash(ArweaveUtils.b64UrlToBuffer(owner)));
-      }
-    };
-    exports.default = Wallets;
-  }
-});
-
-// node_modules/arweave/web/silo.js
-var require_silo = __commonJS({
-  "node_modules/arweave/web/silo.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.SiloResource = void 0;
-    var ArweaveUtils = require_utils();
-    var Silo = class {
-      constructor(api, crypto2, transactions) {
-        __publicField(this, "api");
-        __publicField(this, "crypto");
-        __publicField(this, "transactions");
-        this.api = api;
-        this.crypto = crypto2;
-        this.transactions = transactions;
-      }
-      async get(siloURI) {
-        if (!siloURI) {
-          throw new Error(`No Silo URI specified`);
-        }
-        const resource = await this.parseUri(siloURI);
-        const ids = await this.transactions.search("Silo-Name", resource.getAccessKey());
-        if (ids.length == 0) {
-          throw new Error(`No data could be found for the Silo URI: ${siloURI}`);
-        }
-        const transaction = await this.transactions.get(ids[0]);
-        if (!transaction) {
-          throw new Error(`No data could be found for the Silo URI: ${siloURI}`);
-        }
-        const encrypted = transaction.get("data", { decode: true, string: false });
-        return this.crypto.decrypt(encrypted, resource.getEncryptionKey());
-      }
-      async readTransactionData(transaction, siloURI) {
-        if (!siloURI) {
-          throw new Error(`No Silo URI specified`);
-        }
-        const resource = await this.parseUri(siloURI);
-        const encrypted = transaction.get("data", { decode: true, string: false });
-        return this.crypto.decrypt(encrypted, resource.getEncryptionKey());
-      }
-      async parseUri(siloURI) {
-        const parsed = siloURI.match(/^([a-z0-9-_]+)\.([0-9]+)/i);
-        if (!parsed) {
-          throw new Error(`Invalid Silo name, must be a name in the format of [a-z0-9]+.[0-9]+, e.g. 'bubble.7'`);
-        }
-        const siloName = parsed[1];
-        const hashIterations = Math.pow(2, parseInt(parsed[2]));
-        const digest = await this.hash(ArweaveUtils.stringToBuffer(siloName), hashIterations);
-        const accessKey = ArweaveUtils.bufferTob64(digest.slice(0, 15));
-        const encryptionkey = await this.hash(digest.slice(16, 31), 1);
-        return new SiloResource(siloURI, accessKey, encryptionkey);
-      }
-      async hash(input, iterations) {
-        let digest = await this.crypto.hash(input);
-        for (let count = 0; count < iterations - 1; count++) {
-          digest = await this.crypto.hash(digest);
-        }
-        return digest;
-      }
-    };
-    exports.default = Silo;
-    var SiloResource = class {
-      constructor(uri, accessKey, encryptionKey) {
-        __publicField(this, "uri");
-        __publicField(this, "accessKey");
-        __publicField(this, "encryptionKey");
-        this.uri = uri;
-        this.accessKey = accessKey;
-        this.encryptionKey = encryptionKey;
-      }
-      getUri() {
-        return this.uri;
-      }
-      getAccessKey() {
-        return this.accessKey;
-      }
-      getEncryptionKey() {
-        return this.encryptionKey;
-      }
-    };
-    exports.SiloResource = SiloResource;
-  }
-});
-
-// node_modules/arweave/web/chunks.js
-var require_chunks = __commonJS({
-  "node_modules/arweave/web/chunks.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var error_1 = require_error();
-    var ArweaveUtils = require_utils();
-    var Chunks = class {
-      constructor(api) {
-        __publicField(this, "api");
-        this.api = api;
-      }
-      async getTransactionOffset(id) {
-        const resp = await this.api.get(`tx/${id}/offset`);
-        if (resp.status === 200) {
-          return resp.data;
-        }
-        throw new Error(`Unable to get transaction offset: ${(0, error_1.getError)(resp)}`);
-      }
-      async getChunk(offset) {
-        const resp = await this.api.get(`chunk/${offset}`);
-        if (resp.status === 200) {
-          return resp.data;
-        }
-        throw new Error(`Unable to get chunk: ${(0, error_1.getError)(resp)}`);
-      }
-      async getChunkData(offset) {
-        const chunk = await this.getChunk(offset);
-        const buf = ArweaveUtils.b64UrlToBuffer(chunk.chunk);
-        return buf;
-      }
-      firstChunkOffset(offsetResponse) {
-        return parseInt(offsetResponse.offset) - parseInt(offsetResponse.size) + 1;
-      }
-      async downloadChunkedData(id) {
-        const offsetResponse = await this.getTransactionOffset(id);
-        const size = parseInt(offsetResponse.size);
-        const endOffset = parseInt(offsetResponse.offset);
-        const startOffset = endOffset - size + 1;
-        const data = new Uint8Array(size);
-        let byte = 0;
-        while (byte < size) {
-          if (this.api.config.logging) {
-            console.log(`[chunk] ${byte}/${size}`);
-          }
-          let chunkData;
-          try {
-            chunkData = await this.getChunkData(startOffset + byte);
-          } catch (error) {
-            console.error(`[chunk] Failed to fetch chunk at offset ${startOffset + byte}`);
-            console.error(`[chunk] This could indicate that the chunk wasn't uploaded or hasn't yet seeded properly to a particular gateway/node`);
-          }
-          if (chunkData) {
-            data.set(chunkData, byte);
-            byte += chunkData.length;
-          } else {
-            throw new Error(`Couldn't complete data download at ${byte}/${size}`);
-          }
-        }
-        return data;
-      }
-    };
-    exports.default = Chunks;
-  }
-});
-
-// node_modules/arweave/web/blocks.js
-var require_blocks = __commonJS({
-  "node_modules/arweave/web/blocks.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var error_1 = require_error();
-    require_arconnect();
-    var _Blocks = class _Blocks {
-      constructor(api, network) {
-        __publicField(this, "api");
-        __publicField(this, "network");
-        this.api = api;
-        this.network = network;
-      }
-      /**
-       * Gets a block by its "indep_hash"
-       */
-      async get(indepHash) {
-        const response = await this.api.get(`${_Blocks.HASH_ENDPOINT}${indepHash}`);
-        if (response.status === 200) {
-          return response.data;
-        } else {
-          if (response.status === 404) {
-            throw new error_1.default(
-              "BLOCK_NOT_FOUND"
-              /* ArweaveErrorType.BLOCK_NOT_FOUND */
-            );
-          } else {
-            throw new Error(`Error while loading block data: ${response}`);
-          }
-        }
-      }
-      /**
-       * Gets a block by its "height"
-       */
-      async getByHeight(height) {
-        const response = await this.api.get(`${_Blocks.HEIGHT_ENDPOINT}${height}`);
-        if (response.status === 200) {
-          return response.data;
-        } else {
-          if (response.status === 404) {
-            throw new error_1.default(
-              "BLOCK_NOT_FOUND"
-              /* ArweaveErrorType.BLOCK_NOT_FOUND */
-            );
-          } else {
-            throw new Error(`Error while loading block data: ${response}`);
-          }
-        }
-      }
-      /**
-       * Gets current block data (ie. block with indep_hash = Network.getInfo().current)
-       */
-      async getCurrent() {
-        const { current } = await this.network.getInfo();
-        return await this.get(current);
-      }
-    };
-    __publicField(_Blocks, "HASH_ENDPOINT", "block/hash/");
-    __publicField(_Blocks, "HEIGHT_ENDPOINT", "block/height/");
-    var Blocks = _Blocks;
-    exports.default = Blocks;
-  }
-});
-
-// node_modules/arweave/web/common.js
-var require_common2 = __commonJS({
-  "node_modules/arweave/web/common.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var ar_1 = require_ar();
-    var api_1 = require_api();
-    var node_driver_1 = require_webcrypto_driver();
-    var network_1 = require_network();
-    var transactions_1 = require_transactions();
-    var wallets_1 = require_wallets();
-    var transaction_1 = require_transaction();
-    var ArweaveUtils = require_utils();
-    var silo_1 = require_silo();
-    var chunks_1 = require_chunks();
-    var blocks_1 = require_blocks();
-    var _Arweave = class _Arweave {
-      constructor(apiConfig) {
-        __publicField(this, "api");
-        __publicField(this, "wallets");
-        __publicField(this, "transactions");
-        __publicField(this, "network");
-        __publicField(this, "blocks");
-        __publicField(this, "ar");
-        __publicField(this, "silo");
-        __publicField(this, "chunks");
-        this.api = new api_1.default(apiConfig);
-        this.wallets = new wallets_1.default(this.api, _Arweave.crypto);
-        this.chunks = new chunks_1.default(this.api);
-        this.transactions = new transactions_1.default(this.api, _Arweave.crypto, this.chunks);
-        this.silo = new silo_1.default(this.api, this.crypto, this.transactions);
-        this.network = new network_1.default(this.api);
-        this.blocks = new blocks_1.default(this.api, this.network);
-        this.ar = new ar_1.default();
-      }
-      /** @deprecated */
-      get crypto() {
-        return _Arweave.crypto;
-      }
-      /** @deprecated */
-      get utils() {
-        return _Arweave.utils;
-      }
-      getConfig() {
-        return {
-          api: this.api.getConfig(),
-          crypto: null
-        };
-      }
-      async createTransaction(attributes, jwk) {
-        const transaction = {};
-        Object.assign(transaction, attributes);
-        if (!attributes.data && !(attributes.target && attributes.quantity)) {
-          throw new Error(`A new Arweave transaction must have a 'data' value, or 'target' and 'quantity' values.`);
-        }
-        if (attributes.owner == void 0) {
-          if (jwk && jwk !== "use_wallet") {
-            transaction.owner = jwk.n;
-          }
-        }
-        if (attributes.last_tx == void 0) {
-          transaction.last_tx = await this.transactions.getTransactionAnchor();
-        }
-        if (typeof attributes.data === "string") {
-          attributes.data = ArweaveUtils.stringToBuffer(attributes.data);
-        }
-        if (attributes.data instanceof ArrayBuffer) {
-          attributes.data = new Uint8Array(attributes.data);
-        }
-        if (attributes.data && !(attributes.data instanceof Uint8Array)) {
-          throw new Error("Expected data to be a string, Uint8Array or ArrayBuffer");
-        }
-        if (attributes.reward == void 0) {
-          const length = attributes.data ? attributes.data.byteLength : 0;
-          transaction.reward = await this.transactions.getPrice(length, transaction.target);
-        }
-        transaction.data_root = "";
-        transaction.data_size = attributes.data ? attributes.data.byteLength.toString() : "0";
-        transaction.data = attributes.data || new Uint8Array(0);
-        const createdTransaction = new transaction_1.default(transaction);
-        await createdTransaction.getSignatureData();
-        return createdTransaction;
-      }
-      async createSiloTransaction(attributes, jwk, siloUri) {
-        const transaction = {};
-        Object.assign(transaction, attributes);
-        if (!attributes.data) {
-          throw new Error(`Silo transactions must have a 'data' value`);
-        }
-        if (!siloUri) {
-          throw new Error(`No Silo URI specified.`);
-        }
-        if (attributes.target || attributes.quantity) {
-          throw new Error(`Silo transactions can only be used for storing data, sending AR to other wallets isn't supported.`);
-        }
-        if (attributes.owner == void 0) {
-          if (!jwk || !jwk.n) {
-            throw new Error(`A new Arweave transaction must either have an 'owner' attribute, or you must provide the jwk parameter.`);
-          }
-          transaction.owner = jwk.n;
-        }
-        if (attributes.last_tx == void 0) {
-          transaction.last_tx = await this.transactions.getTransactionAnchor();
-        }
-        const siloResource = await this.silo.parseUri(siloUri);
-        if (typeof attributes.data == "string") {
-          const encrypted = await this.crypto.encrypt(ArweaveUtils.stringToBuffer(attributes.data), siloResource.getEncryptionKey());
-          transaction.reward = await this.transactions.getPrice(encrypted.byteLength);
-          transaction.data = ArweaveUtils.bufferTob64Url(encrypted);
-        }
-        if (attributes.data instanceof Uint8Array) {
-          const encrypted = await this.crypto.encrypt(attributes.data, siloResource.getEncryptionKey());
-          transaction.reward = await this.transactions.getPrice(encrypted.byteLength);
-          transaction.data = ArweaveUtils.bufferTob64Url(encrypted);
-        }
-        const siloTransaction = new transaction_1.default(transaction);
-        siloTransaction.addTag("Silo-Name", siloResource.getAccessKey());
-        siloTransaction.addTag("Silo-Version", `0.1.0`);
-        return siloTransaction;
-      }
-      arql(query) {
-        return this.api.post("/arql", query).then((response) => response.data || []);
-      }
-    };
-    __publicField(_Arweave, "init");
-    __publicField(_Arweave, "crypto", new node_driver_1.default());
-    __publicField(_Arweave, "utils", ArweaveUtils);
-    var Arweave4 = _Arweave;
-    exports.default = Arweave4;
-  }
-});
-
-// node_modules/arweave/web/net-config.js
-var require_net_config = __commonJS({
-  "node_modules/arweave/web/net-config.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.getDefaultConfig = void 0;
-    var isLocal = (protocol, hostname) => {
-      const regexLocalIp = /^127(?:\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$/;
-      const split = hostname.split(".");
-      const tld = split[split.length - 1];
-      const localStrings = ["localhost", "[::1]"];
-      return localStrings.includes(hostname) || protocol == "file" || localStrings.includes(tld) || !!hostname.match(regexLocalIp) || !!tld.match(regexLocalIp);
-    };
-    var isIpAdress = (host) => {
-      const isIpv6 = host.charAt(0) === "[";
-      const regexMatchIpv4 = /^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/;
-      return !!host.match(regexMatchIpv4) || isIpv6;
-    };
-    var getDefaultConfig = (protocol, host) => {
-      if (isLocal(protocol, host)) {
-        return {
-          protocol: "https",
-          host: "arweave.net",
-          port: 443
-        };
-      }
-      if (!isIpAdress(host)) {
-        let split = host.split(".");
-        if (split.length >= 3) {
-          split.shift();
-          const parentDomain = split.join(".");
-          return {
-            protocol,
-            host: parentDomain
-          };
-        }
-      }
-      return {
-        protocol,
-        host
-      };
-    };
-    exports.getDefaultConfig = getDefaultConfig;
-  }
-});
-
-// node_modules/arweave/web/index.js
-var require_web = __commonJS({
-  "node_modules/arweave/web/index.js"(exports) {
-    "use strict";
-    var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m2, k2, k22) {
-      if (k22 === void 0) k22 = k2;
-      var desc = Object.getOwnPropertyDescriptor(m2, k2);
-      if (!desc || ("get" in desc ? !m2.__esModule : desc.writable || desc.configurable)) {
-        desc = { enumerable: true, get: function() {
-          return m2[k2];
-        } };
-      }
-      Object.defineProperty(o, k22, desc);
-    } : function(o, m2, k2, k22) {
-      if (k22 === void 0) k22 = k2;
-      o[k22] = m2[k2];
-    });
-    var __exportStar = exports && exports.__exportStar || function(m2, exports2) {
-      for (var p2 in m2) if (p2 !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p2)) __createBinding(exports2, m2, p2);
-    };
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var common_1 = require_common2();
-    var net_config_1 = require_net_config();
-    common_1.default.init = function(apiConfig = {}) {
-      const defaults = {
-        host: "arweave.net",
-        port: 443,
-        protocol: "https"
-      };
-      if (typeof location !== "object" || !location.protocol || !location.hostname) {
-        return new common_1.default({
-          ...apiConfig,
-          ...defaults
-        });
-      }
-      const locationProtocol = location.protocol.replace(":", "");
-      const locationHost = location.hostname;
-      const locationPort = location.port ? parseInt(location.port) : locationProtocol == "https" ? 443 : 80;
-      const defaultConfig = (0, net_config_1.getDefaultConfig)(locationProtocol, locationHost);
-      const protocol = apiConfig.protocol || defaultConfig.protocol;
-      const host = apiConfig.host || defaultConfig.host;
-      const port = apiConfig.port || defaultConfig.port || locationPort;
-      return new common_1.default({
-        ...apiConfig,
-        host,
-        protocol,
-        port
-      });
-    };
-    if (typeof globalThis === "object") {
-      globalThis.Arweave = common_1.default;
-    } else if (typeof self === "object") {
-      self.Arweave = common_1.default;
-    }
-    __exportStar(require_common2(), exports);
-    exports.default = common_1.default;
-  }
-});
-
 // (disabled):crypto
 var require_crypto = __commonJS({
   "(disabled):crypto"() {
@@ -10217,6 +6604,107 @@ var require_crypto_js = __commonJS({
   }
 });
 
+// node_modules/base64-js/index.js
+var require_base64_js2 = __commonJS({
+  "node_modules/base64-js/index.js"(exports) {
+    "use strict";
+    exports.byteLength = byteLength;
+    exports.toByteArray = toByteArray;
+    exports.fromByteArray = fromByteArray;
+    var lookup = [];
+    var revLookup = [];
+    var Arr = typeof Uint8Array !== "undefined" ? Uint8Array : Array;
+    var code = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    for (i = 0, len = code.length; i < len; ++i) {
+      lookup[i] = code[i];
+      revLookup[code.charCodeAt(i)] = i;
+    }
+    var i;
+    var len;
+    revLookup["-".charCodeAt(0)] = 62;
+    revLookup["_".charCodeAt(0)] = 63;
+    function getLens(b64) {
+      var len2 = b64.length;
+      if (len2 % 4 > 0) {
+        throw new Error("Invalid string. Length must be a multiple of 4");
+      }
+      var validLen = b64.indexOf("=");
+      if (validLen === -1) validLen = len2;
+      var placeHoldersLen = validLen === len2 ? 0 : 4 - validLen % 4;
+      return [validLen, placeHoldersLen];
+    }
+    function byteLength(b64) {
+      var lens = getLens(b64);
+      var validLen = lens[0];
+      var placeHoldersLen = lens[1];
+      return (validLen + placeHoldersLen) * 3 / 4 - placeHoldersLen;
+    }
+    function _byteLength(b64, validLen, placeHoldersLen) {
+      return (validLen + placeHoldersLen) * 3 / 4 - placeHoldersLen;
+    }
+    function toByteArray(b64) {
+      var tmp;
+      var lens = getLens(b64);
+      var validLen = lens[0];
+      var placeHoldersLen = lens[1];
+      var arr = new Arr(_byteLength(b64, validLen, placeHoldersLen));
+      var curByte = 0;
+      var len2 = placeHoldersLen > 0 ? validLen - 4 : validLen;
+      var i2;
+      for (i2 = 0; i2 < len2; i2 += 4) {
+        tmp = revLookup[b64.charCodeAt(i2)] << 18 | revLookup[b64.charCodeAt(i2 + 1)] << 12 | revLookup[b64.charCodeAt(i2 + 2)] << 6 | revLookup[b64.charCodeAt(i2 + 3)];
+        arr[curByte++] = tmp >> 16 & 255;
+        arr[curByte++] = tmp >> 8 & 255;
+        arr[curByte++] = tmp & 255;
+      }
+      if (placeHoldersLen === 2) {
+        tmp = revLookup[b64.charCodeAt(i2)] << 2 | revLookup[b64.charCodeAt(i2 + 1)] >> 4;
+        arr[curByte++] = tmp & 255;
+      }
+      if (placeHoldersLen === 1) {
+        tmp = revLookup[b64.charCodeAt(i2)] << 10 | revLookup[b64.charCodeAt(i2 + 1)] << 4 | revLookup[b64.charCodeAt(i2 + 2)] >> 2;
+        arr[curByte++] = tmp >> 8 & 255;
+        arr[curByte++] = tmp & 255;
+      }
+      return arr;
+    }
+    function tripletToBase64(num) {
+      return lookup[num >> 18 & 63] + lookup[num >> 12 & 63] + lookup[num >> 6 & 63] + lookup[num & 63];
+    }
+    function encodeChunk(uint8, start, end) {
+      var tmp;
+      var output = [];
+      for (var i2 = start; i2 < end; i2 += 3) {
+        tmp = (uint8[i2] << 16 & 16711680) + (uint8[i2 + 1] << 8 & 65280) + (uint8[i2 + 2] & 255);
+        output.push(tripletToBase64(tmp));
+      }
+      return output.join("");
+    }
+    function fromByteArray(uint8) {
+      var tmp;
+      var len2 = uint8.length;
+      var extraBytes = len2 % 3;
+      var parts = [];
+      var maxChunkLength = 16383;
+      for (var i2 = 0, len22 = len2 - extraBytes; i2 < len22; i2 += maxChunkLength) {
+        parts.push(encodeChunk(uint8, i2, i2 + maxChunkLength > len22 ? len22 : i2 + maxChunkLength));
+      }
+      if (extraBytes === 1) {
+        tmp = uint8[len2 - 1];
+        parts.push(
+          lookup[tmp >> 2] + lookup[tmp << 4 & 63] + "=="
+        );
+      } else if (extraBytes === 2) {
+        tmp = (uint8[len2 - 2] << 8) + uint8[len2 - 1];
+        parts.push(
+          lookup[tmp >> 10] + lookup[tmp >> 4 & 63] + lookup[tmp << 2 & 63] + "="
+        );
+      }
+      return parts.join("");
+    }
+  }
+});
+
 // node_modules/ieee754/index.js
 var require_ieee7542 = __commonJS({
   "node_modules/ieee754/index.js"(exports) {
@@ -10307,13 +6795,13 @@ var require_buffer2 = __commonJS({
     var base64 = require_base64_js2();
     var ieee754 = require_ieee7542();
     var customInspectSymbol = typeof Symbol === "function" && typeof Symbol["for"] === "function" ? Symbol["for"]("nodejs.util.inspect.custom") : null;
-    exports.Buffer = Buffer5;
+    exports.Buffer = Buffer4;
     exports.SlowBuffer = SlowBuffer;
     exports.INSPECT_MAX_BYTES = 50;
     var K_MAX_LENGTH = 2147483647;
     exports.kMaxLength = K_MAX_LENGTH;
-    Buffer5.TYPED_ARRAY_SUPPORT = typedArraySupport();
-    if (!Buffer5.TYPED_ARRAY_SUPPORT && typeof console !== "undefined" && typeof console.error === "function") {
+    Buffer4.TYPED_ARRAY_SUPPORT = typedArraySupport();
+    if (!Buffer4.TYPED_ARRAY_SUPPORT && typeof console !== "undefined" && typeof console.error === "function") {
       console.error(
         "This browser lacks typed array (Uint8Array) support which is required by `buffer` v5.x. Use `buffer` v4.x if you require old browser support."
       );
@@ -10331,17 +6819,17 @@ var require_buffer2 = __commonJS({
         return false;
       }
     }
-    Object.defineProperty(Buffer5.prototype, "parent", {
+    Object.defineProperty(Buffer4.prototype, "parent", {
       enumerable: true,
       get: function() {
-        if (!Buffer5.isBuffer(this)) return void 0;
+        if (!Buffer4.isBuffer(this)) return void 0;
         return this.buffer;
       }
     });
-    Object.defineProperty(Buffer5.prototype, "offset", {
+    Object.defineProperty(Buffer4.prototype, "offset", {
       enumerable: true,
       get: function() {
-        if (!Buffer5.isBuffer(this)) return void 0;
+        if (!Buffer4.isBuffer(this)) return void 0;
         return this.byteOffset;
       }
     });
@@ -10350,10 +6838,10 @@ var require_buffer2 = __commonJS({
         throw new RangeError('The value "' + length + '" is invalid for option "size"');
       }
       const buf = new Uint8Array(length);
-      Object.setPrototypeOf(buf, Buffer5.prototype);
+      Object.setPrototypeOf(buf, Buffer4.prototype);
       return buf;
     }
-    function Buffer5(arg, encodingOrOffset, length) {
+    function Buffer4(arg, encodingOrOffset, length) {
       if (typeof arg === "number") {
         if (typeof encodingOrOffset === "string") {
           throw new TypeError(
@@ -10364,7 +6852,7 @@ var require_buffer2 = __commonJS({
       }
       return from(arg, encodingOrOffset, length);
     }
-    Buffer5.poolSize = 8192;
+    Buffer4.poolSize = 8192;
     function from(value, encodingOrOffset, length) {
       if (typeof value === "string") {
         return fromString(value, encodingOrOffset);
@@ -10390,22 +6878,22 @@ var require_buffer2 = __commonJS({
       }
       const valueOf = value.valueOf && value.valueOf();
       if (valueOf != null && valueOf !== value) {
-        return Buffer5.from(valueOf, encodingOrOffset, length);
+        return Buffer4.from(valueOf, encodingOrOffset, length);
       }
       const b2 = fromObject(value);
       if (b2) return b2;
       if (typeof Symbol !== "undefined" && Symbol.toPrimitive != null && typeof value[Symbol.toPrimitive] === "function") {
-        return Buffer5.from(value[Symbol.toPrimitive]("string"), encodingOrOffset, length);
+        return Buffer4.from(value[Symbol.toPrimitive]("string"), encodingOrOffset, length);
       }
       throw new TypeError(
         "The first argument must be one of type string, Buffer, ArrayBuffer, Array, or Array-like Object. Received type " + typeof value
       );
     }
-    Buffer5.from = function(value, encodingOrOffset, length) {
+    Buffer4.from = function(value, encodingOrOffset, length) {
       return from(value, encodingOrOffset, length);
     };
-    Object.setPrototypeOf(Buffer5.prototype, Uint8Array.prototype);
-    Object.setPrototypeOf(Buffer5, Uint8Array);
+    Object.setPrototypeOf(Buffer4.prototype, Uint8Array.prototype);
+    Object.setPrototypeOf(Buffer4, Uint8Array);
     function assertSize(size) {
       if (typeof size !== "number") {
         throw new TypeError('"size" argument must be of type number');
@@ -10423,24 +6911,24 @@ var require_buffer2 = __commonJS({
       }
       return createBuffer(size);
     }
-    Buffer5.alloc = function(size, fill, encoding) {
+    Buffer4.alloc = function(size, fill, encoding) {
       return alloc(size, fill, encoding);
     };
     function allocUnsafe(size) {
       assertSize(size);
       return createBuffer(size < 0 ? 0 : checked(size) | 0);
     }
-    Buffer5.allocUnsafe = function(size) {
+    Buffer4.allocUnsafe = function(size) {
       return allocUnsafe(size);
     };
-    Buffer5.allocUnsafeSlow = function(size) {
+    Buffer4.allocUnsafeSlow = function(size) {
       return allocUnsafe(size);
     };
     function fromString(string, encoding) {
       if (typeof encoding !== "string" || encoding === "") {
         encoding = "utf8";
       }
-      if (!Buffer5.isEncoding(encoding)) {
+      if (!Buffer4.isEncoding(encoding)) {
         throw new TypeError("Unknown encoding: " + encoding);
       }
       const length = byteLength(string, encoding) | 0;
@@ -10481,11 +6969,11 @@ var require_buffer2 = __commonJS({
       } else {
         buf = new Uint8Array(array, byteOffset, length);
       }
-      Object.setPrototypeOf(buf, Buffer5.prototype);
+      Object.setPrototypeOf(buf, Buffer4.prototype);
       return buf;
     }
     function fromObject(obj) {
-      if (Buffer5.isBuffer(obj)) {
+      if (Buffer4.isBuffer(obj)) {
         const len = checked(obj.length) | 0;
         const buf = createBuffer(len);
         if (buf.length === 0) {
@@ -10514,15 +7002,15 @@ var require_buffer2 = __commonJS({
       if (+length != length) {
         length = 0;
       }
-      return Buffer5.alloc(+length);
+      return Buffer4.alloc(+length);
     }
-    Buffer5.isBuffer = function isBuffer(b2) {
-      return b2 != null && b2._isBuffer === true && b2 !== Buffer5.prototype;
+    Buffer4.isBuffer = function isBuffer(b2) {
+      return b2 != null && b2._isBuffer === true && b2 !== Buffer4.prototype;
     };
-    Buffer5.compare = function compare(a, b2) {
-      if (isInstance(a, Uint8Array)) a = Buffer5.from(a, a.offset, a.byteLength);
-      if (isInstance(b2, Uint8Array)) b2 = Buffer5.from(b2, b2.offset, b2.byteLength);
-      if (!Buffer5.isBuffer(a) || !Buffer5.isBuffer(b2)) {
+    Buffer4.compare = function compare(a, b2) {
+      if (isInstance(a, Uint8Array)) a = Buffer4.from(a, a.offset, a.byteLength);
+      if (isInstance(b2, Uint8Array)) b2 = Buffer4.from(b2, b2.offset, b2.byteLength);
+      if (!Buffer4.isBuffer(a) || !Buffer4.isBuffer(b2)) {
         throw new TypeError(
           'The "buf1", "buf2" arguments must be one of type Buffer or Uint8Array'
         );
@@ -10541,7 +7029,7 @@ var require_buffer2 = __commonJS({
       if (y2 < x4) return 1;
       return 0;
     };
-    Buffer5.isEncoding = function isEncoding(encoding) {
+    Buffer4.isEncoding = function isEncoding(encoding) {
       switch (String(encoding).toLowerCase()) {
         case "hex":
         case "utf8":
@@ -10559,12 +7047,12 @@ var require_buffer2 = __commonJS({
           return false;
       }
     };
-    Buffer5.concat = function concat3(list, length) {
+    Buffer4.concat = function concat3(list, length) {
       if (!Array.isArray(list)) {
         throw new TypeError('"list" argument must be an Array of Buffers');
       }
       if (list.length === 0) {
-        return Buffer5.alloc(0);
+        return Buffer4.alloc(0);
       }
       let i;
       if (length === void 0) {
@@ -10573,13 +7061,13 @@ var require_buffer2 = __commonJS({
           length += list[i].length;
         }
       }
-      const buffer = Buffer5.allocUnsafe(length);
+      const buffer = Buffer4.allocUnsafe(length);
       let pos = 0;
       for (i = 0; i < list.length; ++i) {
         let buf = list[i];
         if (isInstance(buf, Uint8Array)) {
           if (pos + buf.length > buffer.length) {
-            if (!Buffer5.isBuffer(buf)) buf = Buffer5.from(buf);
+            if (!Buffer4.isBuffer(buf)) buf = Buffer4.from(buf);
             buf.copy(buffer, pos);
           } else {
             Uint8Array.prototype.set.call(
@@ -10588,7 +7076,7 @@ var require_buffer2 = __commonJS({
               pos
             );
           }
-        } else if (!Buffer5.isBuffer(buf)) {
+        } else if (!Buffer4.isBuffer(buf)) {
           throw new TypeError('"list" argument must be an Array of Buffers');
         } else {
           buf.copy(buffer, pos);
@@ -10598,7 +7086,7 @@ var require_buffer2 = __commonJS({
       return buffer;
     };
     function byteLength(string, encoding) {
-      if (Buffer5.isBuffer(string)) {
+      if (Buffer4.isBuffer(string)) {
         return string.length;
       }
       if (ArrayBuffer.isView(string) || isInstance(string, ArrayBuffer)) {
@@ -10640,7 +7128,7 @@ var require_buffer2 = __commonJS({
         }
       }
     }
-    Buffer5.byteLength = byteLength;
+    Buffer4.byteLength = byteLength;
     function slowToString(encoding, start, end) {
       let loweredCase = false;
       if (start === void 0 || start < 0) {
@@ -10687,13 +7175,13 @@ var require_buffer2 = __commonJS({
         }
       }
     }
-    Buffer5.prototype._isBuffer = true;
+    Buffer4.prototype._isBuffer = true;
     function swap(b2, n, m2) {
       const i = b2[n];
       b2[n] = b2[m2];
       b2[m2] = i;
     }
-    Buffer5.prototype.swap16 = function swap16() {
+    Buffer4.prototype.swap16 = function swap16() {
       const len = this.length;
       if (len % 2 !== 0) {
         throw new RangeError("Buffer size must be a multiple of 16-bits");
@@ -10703,7 +7191,7 @@ var require_buffer2 = __commonJS({
       }
       return this;
     };
-    Buffer5.prototype.swap32 = function swap32() {
+    Buffer4.prototype.swap32 = function swap32() {
       const len = this.length;
       if (len % 4 !== 0) {
         throw new RangeError("Buffer size must be a multiple of 32-bits");
@@ -10714,7 +7202,7 @@ var require_buffer2 = __commonJS({
       }
       return this;
     };
-    Buffer5.prototype.swap64 = function swap64() {
+    Buffer4.prototype.swap64 = function swap64() {
       const len = this.length;
       if (len % 8 !== 0) {
         throw new RangeError("Buffer size must be a multiple of 64-bits");
@@ -10727,19 +7215,19 @@ var require_buffer2 = __commonJS({
       }
       return this;
     };
-    Buffer5.prototype.toString = function toString4() {
+    Buffer4.prototype.toString = function toString4() {
       const length = this.length;
       if (length === 0) return "";
       if (arguments.length === 0) return utf8Slice(this, 0, length);
       return slowToString.apply(this, arguments);
     };
-    Buffer5.prototype.toLocaleString = Buffer5.prototype.toString;
-    Buffer5.prototype.equals = function equals3(b2) {
-      if (!Buffer5.isBuffer(b2)) throw new TypeError("Argument must be a Buffer");
+    Buffer4.prototype.toLocaleString = Buffer4.prototype.toString;
+    Buffer4.prototype.equals = function equals3(b2) {
+      if (!Buffer4.isBuffer(b2)) throw new TypeError("Argument must be a Buffer");
       if (this === b2) return true;
-      return Buffer5.compare(this, b2) === 0;
+      return Buffer4.compare(this, b2) === 0;
     };
-    Buffer5.prototype.inspect = function inspect() {
+    Buffer4.prototype.inspect = function inspect() {
       let str = "";
       const max3 = exports.INSPECT_MAX_BYTES;
       str = this.toString("hex", 0, max3).replace(/(.{2})/g, "$1 ").trim();
@@ -10747,13 +7235,13 @@ var require_buffer2 = __commonJS({
       return "<Buffer " + str + ">";
     };
     if (customInspectSymbol) {
-      Buffer5.prototype[customInspectSymbol] = Buffer5.prototype.inspect;
+      Buffer4.prototype[customInspectSymbol] = Buffer4.prototype.inspect;
     }
-    Buffer5.prototype.compare = function compare(target, start, end, thisStart, thisEnd) {
+    Buffer4.prototype.compare = function compare(target, start, end, thisStart, thisEnd) {
       if (isInstance(target, Uint8Array)) {
-        target = Buffer5.from(target, target.offset, target.byteLength);
+        target = Buffer4.from(target, target.offset, target.byteLength);
       }
-      if (!Buffer5.isBuffer(target)) {
+      if (!Buffer4.isBuffer(target)) {
         throw new TypeError(
           'The "target" argument must be one of type Buffer or Uint8Array. Received type ' + typeof target
         );
@@ -10826,9 +7314,9 @@ var require_buffer2 = __commonJS({
         else return -1;
       }
       if (typeof val === "string") {
-        val = Buffer5.from(val, encoding);
+        val = Buffer4.from(val, encoding);
       }
-      if (Buffer5.isBuffer(val)) {
+      if (Buffer4.isBuffer(val)) {
         if (val.length === 0) {
           return -1;
         }
@@ -10896,13 +7384,13 @@ var require_buffer2 = __commonJS({
       }
       return -1;
     }
-    Buffer5.prototype.includes = function includes2(val, byteOffset, encoding) {
+    Buffer4.prototype.includes = function includes2(val, byteOffset, encoding) {
       return this.indexOf(val, byteOffset, encoding) !== -1;
     };
-    Buffer5.prototype.indexOf = function indexOf(val, byteOffset, encoding) {
+    Buffer4.prototype.indexOf = function indexOf(val, byteOffset, encoding) {
       return bidirectionalIndexOf(this, val, byteOffset, encoding, true);
     };
-    Buffer5.prototype.lastIndexOf = function lastIndexOf(val, byteOffset, encoding) {
+    Buffer4.prototype.lastIndexOf = function lastIndexOf(val, byteOffset, encoding) {
       return bidirectionalIndexOf(this, val, byteOffset, encoding, false);
     };
     function hexWrite(buf, string, offset, length) {
@@ -10940,7 +7428,7 @@ var require_buffer2 = __commonJS({
     function ucs2Write(buf, string, offset, length) {
       return blitBuffer(utf16leToBytes(string, buf.length - offset), buf, offset, length);
     }
-    Buffer5.prototype.write = function write(string, offset, length, encoding) {
+    Buffer4.prototype.write = function write(string, offset, length, encoding) {
       if (offset === void 0) {
         encoding = "utf8";
         length = this.length;
@@ -10995,7 +7483,7 @@ var require_buffer2 = __commonJS({
         }
       }
     };
-    Buffer5.prototype.toJSON = function toJSON() {
+    Buffer4.prototype.toJSON = function toJSON() {
       return {
         type: "Buffer",
         data: Array.prototype.slice.call(this._arr || this, 0)
@@ -11118,7 +7606,7 @@ var require_buffer2 = __commonJS({
       }
       return res;
     }
-    Buffer5.prototype.slice = function slice3(start, end) {
+    Buffer4.prototype.slice = function slice3(start, end) {
       const len = this.length;
       start = ~~start;
       end = end === void 0 ? len : ~~end;
@@ -11136,14 +7624,14 @@ var require_buffer2 = __commonJS({
       }
       if (end < start) end = start;
       const newBuf = this.subarray(start, end);
-      Object.setPrototypeOf(newBuf, Buffer5.prototype);
+      Object.setPrototypeOf(newBuf, Buffer4.prototype);
       return newBuf;
     };
     function checkOffset(offset, ext, length) {
       if (offset % 1 !== 0 || offset < 0) throw new RangeError("offset is not uint");
       if (offset + ext > length) throw new RangeError("Trying to access beyond buffer length");
     }
-    Buffer5.prototype.readUintLE = Buffer5.prototype.readUIntLE = function readUIntLE(offset, byteLength2, noAssert) {
+    Buffer4.prototype.readUintLE = Buffer4.prototype.readUIntLE = function readUIntLE(offset, byteLength2, noAssert) {
       offset = offset >>> 0;
       byteLength2 = byteLength2 >>> 0;
       if (!noAssert) checkOffset(offset, byteLength2, this.length);
@@ -11155,7 +7643,7 @@ var require_buffer2 = __commonJS({
       }
       return val;
     };
-    Buffer5.prototype.readUintBE = Buffer5.prototype.readUIntBE = function readUIntBE(offset, byteLength2, noAssert) {
+    Buffer4.prototype.readUintBE = Buffer4.prototype.readUIntBE = function readUIntBE(offset, byteLength2, noAssert) {
       offset = offset >>> 0;
       byteLength2 = byteLength2 >>> 0;
       if (!noAssert) {
@@ -11168,32 +7656,32 @@ var require_buffer2 = __commonJS({
       }
       return val;
     };
-    Buffer5.prototype.readUint8 = Buffer5.prototype.readUInt8 = function readUInt8(offset, noAssert) {
+    Buffer4.prototype.readUint8 = Buffer4.prototype.readUInt8 = function readUInt8(offset, noAssert) {
       offset = offset >>> 0;
       if (!noAssert) checkOffset(offset, 1, this.length);
       return this[offset];
     };
-    Buffer5.prototype.readUint16LE = Buffer5.prototype.readUInt16LE = function readUInt16LE(offset, noAssert) {
+    Buffer4.prototype.readUint16LE = Buffer4.prototype.readUInt16LE = function readUInt16LE(offset, noAssert) {
       offset = offset >>> 0;
       if (!noAssert) checkOffset(offset, 2, this.length);
       return this[offset] | this[offset + 1] << 8;
     };
-    Buffer5.prototype.readUint16BE = Buffer5.prototype.readUInt16BE = function readUInt16BE(offset, noAssert) {
+    Buffer4.prototype.readUint16BE = Buffer4.prototype.readUInt16BE = function readUInt16BE(offset, noAssert) {
       offset = offset >>> 0;
       if (!noAssert) checkOffset(offset, 2, this.length);
       return this[offset] << 8 | this[offset + 1];
     };
-    Buffer5.prototype.readUint32LE = Buffer5.prototype.readUInt32LE = function readUInt32LE(offset, noAssert) {
+    Buffer4.prototype.readUint32LE = Buffer4.prototype.readUInt32LE = function readUInt32LE(offset, noAssert) {
       offset = offset >>> 0;
       if (!noAssert) checkOffset(offset, 4, this.length);
       return (this[offset] | this[offset + 1] << 8 | this[offset + 2] << 16) + this[offset + 3] * 16777216;
     };
-    Buffer5.prototype.readUint32BE = Buffer5.prototype.readUInt32BE = function readUInt32BE(offset, noAssert) {
+    Buffer4.prototype.readUint32BE = Buffer4.prototype.readUInt32BE = function readUInt32BE(offset, noAssert) {
       offset = offset >>> 0;
       if (!noAssert) checkOffset(offset, 4, this.length);
       return this[offset] * 16777216 + (this[offset + 1] << 16 | this[offset + 2] << 8 | this[offset + 3]);
     };
-    Buffer5.prototype.readBigUInt64LE = defineBigIntMethod(function readBigUInt64LE(offset) {
+    Buffer4.prototype.readBigUInt64LE = defineBigIntMethod(function readBigUInt64LE(offset) {
       offset = offset >>> 0;
       validateNumber(offset, "offset");
       const first = this[offset];
@@ -11205,7 +7693,7 @@ var require_buffer2 = __commonJS({
       const hi = this[++offset] + this[++offset] * 2 ** 8 + this[++offset] * 2 ** 16 + last * 2 ** 24;
       return BigInt(lo) + (BigInt(hi) << BigInt(32));
     });
-    Buffer5.prototype.readBigUInt64BE = defineBigIntMethod(function readBigUInt64BE(offset) {
+    Buffer4.prototype.readBigUInt64BE = defineBigIntMethod(function readBigUInt64BE(offset) {
       offset = offset >>> 0;
       validateNumber(offset, "offset");
       const first = this[offset];
@@ -11217,7 +7705,7 @@ var require_buffer2 = __commonJS({
       const lo = this[++offset] * 2 ** 24 + this[++offset] * 2 ** 16 + this[++offset] * 2 ** 8 + last;
       return (BigInt(hi) << BigInt(32)) + BigInt(lo);
     });
-    Buffer5.prototype.readIntLE = function readIntLE(offset, byteLength2, noAssert) {
+    Buffer4.prototype.readIntLE = function readIntLE(offset, byteLength2, noAssert) {
       offset = offset >>> 0;
       byteLength2 = byteLength2 >>> 0;
       if (!noAssert) checkOffset(offset, byteLength2, this.length);
@@ -11231,7 +7719,7 @@ var require_buffer2 = __commonJS({
       if (val >= mul) val -= Math.pow(2, 8 * byteLength2);
       return val;
     };
-    Buffer5.prototype.readIntBE = function readIntBE(offset, byteLength2, noAssert) {
+    Buffer4.prototype.readIntBE = function readIntBE(offset, byteLength2, noAssert) {
       offset = offset >>> 0;
       byteLength2 = byteLength2 >>> 0;
       if (!noAssert) checkOffset(offset, byteLength2, this.length);
@@ -11245,35 +7733,35 @@ var require_buffer2 = __commonJS({
       if (val >= mul) val -= Math.pow(2, 8 * byteLength2);
       return val;
     };
-    Buffer5.prototype.readInt8 = function readInt8(offset, noAssert) {
+    Buffer4.prototype.readInt8 = function readInt8(offset, noAssert) {
       offset = offset >>> 0;
       if (!noAssert) checkOffset(offset, 1, this.length);
       if (!(this[offset] & 128)) return this[offset];
       return (255 - this[offset] + 1) * -1;
     };
-    Buffer5.prototype.readInt16LE = function readInt16LE(offset, noAssert) {
+    Buffer4.prototype.readInt16LE = function readInt16LE(offset, noAssert) {
       offset = offset >>> 0;
       if (!noAssert) checkOffset(offset, 2, this.length);
       const val = this[offset] | this[offset + 1] << 8;
       return val & 32768 ? val | 4294901760 : val;
     };
-    Buffer5.prototype.readInt16BE = function readInt16BE(offset, noAssert) {
+    Buffer4.prototype.readInt16BE = function readInt16BE(offset, noAssert) {
       offset = offset >>> 0;
       if (!noAssert) checkOffset(offset, 2, this.length);
       const val = this[offset + 1] | this[offset] << 8;
       return val & 32768 ? val | 4294901760 : val;
     };
-    Buffer5.prototype.readInt32LE = function readInt32LE(offset, noAssert) {
+    Buffer4.prototype.readInt32LE = function readInt32LE(offset, noAssert) {
       offset = offset >>> 0;
       if (!noAssert) checkOffset(offset, 4, this.length);
       return this[offset] | this[offset + 1] << 8 | this[offset + 2] << 16 | this[offset + 3] << 24;
     };
-    Buffer5.prototype.readInt32BE = function readInt32BE(offset, noAssert) {
+    Buffer4.prototype.readInt32BE = function readInt32BE(offset, noAssert) {
       offset = offset >>> 0;
       if (!noAssert) checkOffset(offset, 4, this.length);
       return this[offset] << 24 | this[offset + 1] << 16 | this[offset + 2] << 8 | this[offset + 3];
     };
-    Buffer5.prototype.readBigInt64LE = defineBigIntMethod(function readBigInt64LE(offset) {
+    Buffer4.prototype.readBigInt64LE = defineBigIntMethod(function readBigInt64LE(offset) {
       offset = offset >>> 0;
       validateNumber(offset, "offset");
       const first = this[offset];
@@ -11284,7 +7772,7 @@ var require_buffer2 = __commonJS({
       const val = this[offset + 4] + this[offset + 5] * 2 ** 8 + this[offset + 6] * 2 ** 16 + (last << 24);
       return (BigInt(val) << BigInt(32)) + BigInt(first + this[++offset] * 2 ** 8 + this[++offset] * 2 ** 16 + this[++offset] * 2 ** 24);
     });
-    Buffer5.prototype.readBigInt64BE = defineBigIntMethod(function readBigInt64BE(offset) {
+    Buffer4.prototype.readBigInt64BE = defineBigIntMethod(function readBigInt64BE(offset) {
       offset = offset >>> 0;
       validateNumber(offset, "offset");
       const first = this[offset];
@@ -11296,32 +7784,32 @@ var require_buffer2 = __commonJS({
       this[++offset] * 2 ** 16 + this[++offset] * 2 ** 8 + this[++offset];
       return (BigInt(val) << BigInt(32)) + BigInt(this[++offset] * 2 ** 24 + this[++offset] * 2 ** 16 + this[++offset] * 2 ** 8 + last);
     });
-    Buffer5.prototype.readFloatLE = function readFloatLE(offset, noAssert) {
+    Buffer4.prototype.readFloatLE = function readFloatLE(offset, noAssert) {
       offset = offset >>> 0;
       if (!noAssert) checkOffset(offset, 4, this.length);
       return ieee754.read(this, offset, true, 23, 4);
     };
-    Buffer5.prototype.readFloatBE = function readFloatBE(offset, noAssert) {
+    Buffer4.prototype.readFloatBE = function readFloatBE(offset, noAssert) {
       offset = offset >>> 0;
       if (!noAssert) checkOffset(offset, 4, this.length);
       return ieee754.read(this, offset, false, 23, 4);
     };
-    Buffer5.prototype.readDoubleLE = function readDoubleLE(offset, noAssert) {
+    Buffer4.prototype.readDoubleLE = function readDoubleLE(offset, noAssert) {
       offset = offset >>> 0;
       if (!noAssert) checkOffset(offset, 8, this.length);
       return ieee754.read(this, offset, true, 52, 8);
     };
-    Buffer5.prototype.readDoubleBE = function readDoubleBE(offset, noAssert) {
+    Buffer4.prototype.readDoubleBE = function readDoubleBE(offset, noAssert) {
       offset = offset >>> 0;
       if (!noAssert) checkOffset(offset, 8, this.length);
       return ieee754.read(this, offset, false, 52, 8);
     };
     function checkInt(buf, value, offset, ext, max3, min) {
-      if (!Buffer5.isBuffer(buf)) throw new TypeError('"buffer" argument must be a Buffer instance');
+      if (!Buffer4.isBuffer(buf)) throw new TypeError('"buffer" argument must be a Buffer instance');
       if (value > max3 || value < min) throw new RangeError('"value" argument is out of bounds');
       if (offset + ext > buf.length) throw new RangeError("Index out of range");
     }
-    Buffer5.prototype.writeUintLE = Buffer5.prototype.writeUIntLE = function writeUIntLE(value, offset, byteLength2, noAssert) {
+    Buffer4.prototype.writeUintLE = Buffer4.prototype.writeUIntLE = function writeUIntLE(value, offset, byteLength2, noAssert) {
       value = +value;
       offset = offset >>> 0;
       byteLength2 = byteLength2 >>> 0;
@@ -11337,7 +7825,7 @@ var require_buffer2 = __commonJS({
       }
       return offset + byteLength2;
     };
-    Buffer5.prototype.writeUintBE = Buffer5.prototype.writeUIntBE = function writeUIntBE(value, offset, byteLength2, noAssert) {
+    Buffer4.prototype.writeUintBE = Buffer4.prototype.writeUIntBE = function writeUIntBE(value, offset, byteLength2, noAssert) {
       value = +value;
       offset = offset >>> 0;
       byteLength2 = byteLength2 >>> 0;
@@ -11353,14 +7841,14 @@ var require_buffer2 = __commonJS({
       }
       return offset + byteLength2;
     };
-    Buffer5.prototype.writeUint8 = Buffer5.prototype.writeUInt8 = function writeUInt8(value, offset, noAssert) {
+    Buffer4.prototype.writeUint8 = Buffer4.prototype.writeUInt8 = function writeUInt8(value, offset, noAssert) {
       value = +value;
       offset = offset >>> 0;
       if (!noAssert) checkInt(this, value, offset, 1, 255, 0);
       this[offset] = value & 255;
       return offset + 1;
     };
-    Buffer5.prototype.writeUint16LE = Buffer5.prototype.writeUInt16LE = function writeUInt16LE(value, offset, noAssert) {
+    Buffer4.prototype.writeUint16LE = Buffer4.prototype.writeUInt16LE = function writeUInt16LE(value, offset, noAssert) {
       value = +value;
       offset = offset >>> 0;
       if (!noAssert) checkInt(this, value, offset, 2, 65535, 0);
@@ -11368,7 +7856,7 @@ var require_buffer2 = __commonJS({
       this[offset + 1] = value >>> 8;
       return offset + 2;
     };
-    Buffer5.prototype.writeUint16BE = Buffer5.prototype.writeUInt16BE = function writeUInt16BE(value, offset, noAssert) {
+    Buffer4.prototype.writeUint16BE = Buffer4.prototype.writeUInt16BE = function writeUInt16BE(value, offset, noAssert) {
       value = +value;
       offset = offset >>> 0;
       if (!noAssert) checkInt(this, value, offset, 2, 65535, 0);
@@ -11376,7 +7864,7 @@ var require_buffer2 = __commonJS({
       this[offset + 1] = value & 255;
       return offset + 2;
     };
-    Buffer5.prototype.writeUint32LE = Buffer5.prototype.writeUInt32LE = function writeUInt32LE(value, offset, noAssert) {
+    Buffer4.prototype.writeUint32LE = Buffer4.prototype.writeUInt32LE = function writeUInt32LE(value, offset, noAssert) {
       value = +value;
       offset = offset >>> 0;
       if (!noAssert) checkInt(this, value, offset, 4, 4294967295, 0);
@@ -11386,7 +7874,7 @@ var require_buffer2 = __commonJS({
       this[offset] = value & 255;
       return offset + 4;
     };
-    Buffer5.prototype.writeUint32BE = Buffer5.prototype.writeUInt32BE = function writeUInt32BE(value, offset, noAssert) {
+    Buffer4.prototype.writeUint32BE = Buffer4.prototype.writeUInt32BE = function writeUInt32BE(value, offset, noAssert) {
       value = +value;
       offset = offset >>> 0;
       if (!noAssert) checkInt(this, value, offset, 4, 4294967295, 0);
@@ -11436,13 +7924,13 @@ var require_buffer2 = __commonJS({
       buf[offset] = hi;
       return offset + 8;
     }
-    Buffer5.prototype.writeBigUInt64LE = defineBigIntMethod(function writeBigUInt64LE(value, offset = 0) {
+    Buffer4.prototype.writeBigUInt64LE = defineBigIntMethod(function writeBigUInt64LE(value, offset = 0) {
       return wrtBigUInt64LE(this, value, offset, BigInt(0), BigInt("0xffffffffffffffff"));
     });
-    Buffer5.prototype.writeBigUInt64BE = defineBigIntMethod(function writeBigUInt64BE(value, offset = 0) {
+    Buffer4.prototype.writeBigUInt64BE = defineBigIntMethod(function writeBigUInt64BE(value, offset = 0) {
       return wrtBigUInt64BE(this, value, offset, BigInt(0), BigInt("0xffffffffffffffff"));
     });
-    Buffer5.prototype.writeIntLE = function writeIntLE(value, offset, byteLength2, noAssert) {
+    Buffer4.prototype.writeIntLE = function writeIntLE(value, offset, byteLength2, noAssert) {
       value = +value;
       offset = offset >>> 0;
       if (!noAssert) {
@@ -11461,7 +7949,7 @@ var require_buffer2 = __commonJS({
       }
       return offset + byteLength2;
     };
-    Buffer5.prototype.writeIntBE = function writeIntBE(value, offset, byteLength2, noAssert) {
+    Buffer4.prototype.writeIntBE = function writeIntBE(value, offset, byteLength2, noAssert) {
       value = +value;
       offset = offset >>> 0;
       if (!noAssert) {
@@ -11480,7 +7968,7 @@ var require_buffer2 = __commonJS({
       }
       return offset + byteLength2;
     };
-    Buffer5.prototype.writeInt8 = function writeInt8(value, offset, noAssert) {
+    Buffer4.prototype.writeInt8 = function writeInt8(value, offset, noAssert) {
       value = +value;
       offset = offset >>> 0;
       if (!noAssert) checkInt(this, value, offset, 1, 127, -128);
@@ -11488,7 +7976,7 @@ var require_buffer2 = __commonJS({
       this[offset] = value & 255;
       return offset + 1;
     };
-    Buffer5.prototype.writeInt16LE = function writeInt16LE(value, offset, noAssert) {
+    Buffer4.prototype.writeInt16LE = function writeInt16LE(value, offset, noAssert) {
       value = +value;
       offset = offset >>> 0;
       if (!noAssert) checkInt(this, value, offset, 2, 32767, -32768);
@@ -11496,7 +7984,7 @@ var require_buffer2 = __commonJS({
       this[offset + 1] = value >>> 8;
       return offset + 2;
     };
-    Buffer5.prototype.writeInt16BE = function writeInt16BE(value, offset, noAssert) {
+    Buffer4.prototype.writeInt16BE = function writeInt16BE(value, offset, noAssert) {
       value = +value;
       offset = offset >>> 0;
       if (!noAssert) checkInt(this, value, offset, 2, 32767, -32768);
@@ -11504,7 +7992,7 @@ var require_buffer2 = __commonJS({
       this[offset + 1] = value & 255;
       return offset + 2;
     };
-    Buffer5.prototype.writeInt32LE = function writeInt32LE(value, offset, noAssert) {
+    Buffer4.prototype.writeInt32LE = function writeInt32LE(value, offset, noAssert) {
       value = +value;
       offset = offset >>> 0;
       if (!noAssert) checkInt(this, value, offset, 4, 2147483647, -2147483648);
@@ -11514,7 +8002,7 @@ var require_buffer2 = __commonJS({
       this[offset + 3] = value >>> 24;
       return offset + 4;
     };
-    Buffer5.prototype.writeInt32BE = function writeInt32BE(value, offset, noAssert) {
+    Buffer4.prototype.writeInt32BE = function writeInt32BE(value, offset, noAssert) {
       value = +value;
       offset = offset >>> 0;
       if (!noAssert) checkInt(this, value, offset, 4, 2147483647, -2147483648);
@@ -11525,10 +8013,10 @@ var require_buffer2 = __commonJS({
       this[offset + 3] = value & 255;
       return offset + 4;
     };
-    Buffer5.prototype.writeBigInt64LE = defineBigIntMethod(function writeBigInt64LE(value, offset = 0) {
+    Buffer4.prototype.writeBigInt64LE = defineBigIntMethod(function writeBigInt64LE(value, offset = 0) {
       return wrtBigUInt64LE(this, value, offset, -BigInt("0x8000000000000000"), BigInt("0x7fffffffffffffff"));
     });
-    Buffer5.prototype.writeBigInt64BE = defineBigIntMethod(function writeBigInt64BE(value, offset = 0) {
+    Buffer4.prototype.writeBigInt64BE = defineBigIntMethod(function writeBigInt64BE(value, offset = 0) {
       return wrtBigUInt64BE(this, value, offset, -BigInt("0x8000000000000000"), BigInt("0x7fffffffffffffff"));
     });
     function checkIEEE754(buf, value, offset, ext, max3, min) {
@@ -11544,10 +8032,10 @@ var require_buffer2 = __commonJS({
       ieee754.write(buf, value, offset, littleEndian, 23, 4);
       return offset + 4;
     }
-    Buffer5.prototype.writeFloatLE = function writeFloatLE(value, offset, noAssert) {
+    Buffer4.prototype.writeFloatLE = function writeFloatLE(value, offset, noAssert) {
       return writeFloat(this, value, offset, true, noAssert);
     };
-    Buffer5.prototype.writeFloatBE = function writeFloatBE(value, offset, noAssert) {
+    Buffer4.prototype.writeFloatBE = function writeFloatBE(value, offset, noAssert) {
       return writeFloat(this, value, offset, false, noAssert);
     };
     function writeDouble(buf, value, offset, littleEndian, noAssert) {
@@ -11559,14 +8047,14 @@ var require_buffer2 = __commonJS({
       ieee754.write(buf, value, offset, littleEndian, 52, 8);
       return offset + 8;
     }
-    Buffer5.prototype.writeDoubleLE = function writeDoubleLE(value, offset, noAssert) {
+    Buffer4.prototype.writeDoubleLE = function writeDoubleLE(value, offset, noAssert) {
       return writeDouble(this, value, offset, true, noAssert);
     };
-    Buffer5.prototype.writeDoubleBE = function writeDoubleBE(value, offset, noAssert) {
+    Buffer4.prototype.writeDoubleBE = function writeDoubleBE(value, offset, noAssert) {
       return writeDouble(this, value, offset, false, noAssert);
     };
-    Buffer5.prototype.copy = function copy(target, targetStart, start, end) {
-      if (!Buffer5.isBuffer(target)) throw new TypeError("argument should be a Buffer");
+    Buffer4.prototype.copy = function copy(target, targetStart, start, end) {
+      if (!Buffer4.isBuffer(target)) throw new TypeError("argument should be a Buffer");
       if (!start) start = 0;
       if (!end && end !== 0) end = this.length;
       if (targetStart >= target.length) targetStart = target.length;
@@ -11595,7 +8083,7 @@ var require_buffer2 = __commonJS({
       }
       return len;
     };
-    Buffer5.prototype.fill = function fill(val, start, end, encoding) {
+    Buffer4.prototype.fill = function fill(val, start, end, encoding) {
       if (typeof val === "string") {
         if (typeof start === "string") {
           encoding = start;
@@ -11608,7 +8096,7 @@ var require_buffer2 = __commonJS({
         if (encoding !== void 0 && typeof encoding !== "string") {
           throw new TypeError("encoding must be a string");
         }
-        if (typeof encoding === "string" && !Buffer5.isEncoding(encoding)) {
+        if (typeof encoding === "string" && !Buffer4.isEncoding(encoding)) {
           throw new TypeError("Unknown encoding: " + encoding);
         }
         if (val.length === 1) {
@@ -11637,7 +8125,7 @@ var require_buffer2 = __commonJS({
           this[i] = val;
         }
       } else {
-        const bytes = Buffer5.isBuffer(val) ? val : Buffer5.from(val, encoding);
+        const bytes = Buffer4.isBuffer(val) ? val : Buffer4.from(val, encoding);
         const len = bytes.length;
         if (len === 0) {
           throw new TypeError('The value "' + val + '" is invalid for argument "value"');
@@ -11892,6 +8380,3518 @@ var require_buffer2 = __commonJS({
   }
 });
 
+// node_modules/ar-gql/dist/queries/tx.js
+var require_tx = __commonJS({
+  "node_modules/ar-gql/dist/queries/tx.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.default = `
+query($id: ID!) {
+  transaction(id: $id) {
+    id
+    anchor
+    signature
+    recipient
+    owner {
+      address
+      key
+    }
+    fee {
+      winston
+      ar
+    }
+    quantity {
+      winston
+      ar
+    }
+    data {
+      size
+      type
+    }
+    tags {
+      name
+      value
+    }
+    block {
+      id
+      timestamp
+      height
+      previous
+    }
+    parent {
+      id
+    }
+  }
+}
+`;
+  }
+});
+
+// node_modules/ar-gql/dist/utils/fetchRetry.js
+var require_fetchRetry = __commonJS({
+  "node_modules/ar-gql/dist/utils/fetchRetry.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.fetchRetry = void 0;
+    var fetchRetry = async (input, init, opts) => {
+      const { retry, retryMs } = opts;
+      let tries = 0;
+      while (true) {
+        try {
+          return await fetch(input, init);
+        } catch (e) {
+          if (tries++ < retry) {
+            console.warn(`[ar-gql] waiting ${retryMs}ms before retrying ${tries} of ${retry}`);
+            await new Promise((resolve) => setTimeout(resolve, retryMs));
+            continue;
+          }
+          throw new TypeError(`Failed to fetch from ${input} after ${retry} retries`, { cause: e });
+        }
+      }
+    };
+    exports.fetchRetry = fetchRetry;
+  }
+});
+
+// node_modules/ar-gql/dist/index.js
+var require_dist = __commonJS({
+  "node_modules/ar-gql/dist/index.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.GQLUrls = exports.arGql = void 0;
+    var tx_1 = require_tx();
+    var fetchRetry_1 = require_fetchRetry();
+    function arGql3(options) {
+      const defaultOpts = {
+        endpointUrl: "https://arweave.net/graphql",
+        retries: 0,
+        retryMs: 1e4
+      };
+      const opts = { ...defaultOpts, ...options };
+      if (!opts.endpointUrl.match(/^https?:\/\/.*\/graphql*/)) {
+        throw new Error(`string doesn't appear to be a URL of the form <http(s)://some-domain/graphql>'. You entered "${opts.endpointUrl}"`);
+      }
+      const run = async (query, variables) => {
+        const graphql = JSON.stringify({
+          query,
+          variables
+        });
+        const res = await (0, fetchRetry_1.fetchRetry)(opts.endpointUrl, {
+          method: "POST",
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+          },
+          body: graphql
+        }, {
+          retry: opts.retries,
+          retryMs: opts.retryMs
+        });
+        if (!res.ok) {
+          throw new Error(res.statusText, { cause: res.status });
+        }
+        return await res.json();
+      };
+      const all = async (query, variables, pageCallback) => {
+        let hasNextPage = true;
+        let edges = [];
+        let cursor = "";
+        let pageCallbacks = [];
+        while (hasNextPage) {
+          const res = (await run(query, { ...variables, cursor })).data.transactions;
+          if (res.edges && res.edges.length) {
+            if (typeof pageCallback === "function") {
+              pageCallbacks.push(pageCallback(res.edges));
+            } else {
+              edges = edges.concat(res.edges);
+            }
+            cursor = res.edges[res.edges.length - 1].cursor;
+          }
+          hasNextPage = res.pageInfo.hasNextPage;
+        }
+        await Promise.all(pageCallbacks);
+        return edges;
+      };
+      const tx = async (id) => {
+        const res = await run(tx_1.default, { id });
+        return res.data.transaction;
+      };
+      const fetchTxTag = async (id, name) => {
+        const res = await tx(id);
+        const tag = res.tags.find((tag2) => tag2.name === name);
+        if (tag)
+          return tag.value;
+      };
+      return {
+        run,
+        all,
+        tx,
+        fetchTxTag,
+        endpointUrl: opts.endpointUrl
+      };
+    }
+    exports.arGql = arGql3;
+    exports.GQLUrls = {
+      goldsky: "https://arweave-search.goldsky.com/graphql",
+      arweave: "https://arweave.net/graphql"
+    };
+  }
+});
+
+// node_modules/bignumber.js/bignumber.js
+var require_bignumber = __commonJS({
+  "node_modules/bignumber.js/bignumber.js"(exports, module2) {
+    (function(globalObject) {
+      "use strict";
+      var BigNumber, isNumeric = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i, mathceil = Math.ceil, mathfloor = Math.floor, bignumberError = "[BigNumber Error] ", tooManyDigits = bignumberError + "Number primitive has more than 15 significant digits: ", BASE = 1e14, LOG_BASE = 14, MAX_SAFE_INTEGER = 9007199254740991, POWS_TEN = [1, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13], SQRT_BASE = 1e7, MAX = 1e9;
+      function clone(configObject) {
+        var div, convertBase, parseNumeric, P4 = BigNumber2.prototype = { constructor: BigNumber2, toString: null, valueOf: null }, ONE = new BigNumber2(1), DECIMAL_PLACES = 20, ROUNDING_MODE = 4, TO_EXP_NEG = -7, TO_EXP_POS = 21, MIN_EXP = -1e7, MAX_EXP = 1e7, CRYPTO = false, MODULO_MODE = 1, POW_PRECISION = 0, FORMAT = {
+          prefix: "",
+          groupSize: 3,
+          secondaryGroupSize: 0,
+          groupSeparator: ",",
+          decimalSeparator: ".",
+          fractionGroupSize: 0,
+          fractionGroupSeparator: "\xA0",
+          // non-breaking space
+          suffix: ""
+        }, ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz", alphabetHasNormalDecimalDigits = true;
+        function BigNumber2(v3, b2) {
+          var alphabet, c2, caseChanged, e, i, isNum, len, str, x4 = this;
+          if (!(x4 instanceof BigNumber2)) return new BigNumber2(v3, b2);
+          if (b2 == null) {
+            if (v3 && v3._isBigNumber === true) {
+              x4.s = v3.s;
+              if (!v3.c || v3.e > MAX_EXP) {
+                x4.c = x4.e = null;
+              } else if (v3.e < MIN_EXP) {
+                x4.c = [x4.e = 0];
+              } else {
+                x4.e = v3.e;
+                x4.c = v3.c.slice();
+              }
+              return;
+            }
+            if ((isNum = typeof v3 == "number") && v3 * 0 == 0) {
+              x4.s = 1 / v3 < 0 ? (v3 = -v3, -1) : 1;
+              if (v3 === ~~v3) {
+                for (e = 0, i = v3; i >= 10; i /= 10, e++) ;
+                if (e > MAX_EXP) {
+                  x4.c = x4.e = null;
+                } else {
+                  x4.e = e;
+                  x4.c = [v3];
+                }
+                return;
+              }
+              str = String(v3);
+            } else {
+              if (!isNumeric.test(str = String(v3))) return parseNumeric(x4, str, isNum);
+              x4.s = str.charCodeAt(0) == 45 ? (str = str.slice(1), -1) : 1;
+            }
+            if ((e = str.indexOf(".")) > -1) str = str.replace(".", "");
+            if ((i = str.search(/e/i)) > 0) {
+              if (e < 0) e = i;
+              e += +str.slice(i + 1);
+              str = str.substring(0, i);
+            } else if (e < 0) {
+              e = str.length;
+            }
+          } else {
+            intCheck(b2, 2, ALPHABET.length, "Base");
+            if (b2 == 10 && alphabetHasNormalDecimalDigits) {
+              x4 = new BigNumber2(v3);
+              return round(x4, DECIMAL_PLACES + x4.e + 1, ROUNDING_MODE);
+            }
+            str = String(v3);
+            if (isNum = typeof v3 == "number") {
+              if (v3 * 0 != 0) return parseNumeric(x4, str, isNum, b2);
+              x4.s = 1 / v3 < 0 ? (str = str.slice(1), -1) : 1;
+              if (BigNumber2.DEBUG && str.replace(/^0\.0*|\./, "").length > 15) {
+                throw Error(tooManyDigits + v3);
+              }
+            } else {
+              x4.s = str.charCodeAt(0) === 45 ? (str = str.slice(1), -1) : 1;
+            }
+            alphabet = ALPHABET.slice(0, b2);
+            e = i = 0;
+            for (len = str.length; i < len; i++) {
+              if (alphabet.indexOf(c2 = str.charAt(i)) < 0) {
+                if (c2 == ".") {
+                  if (i > e) {
+                    e = len;
+                    continue;
+                  }
+                } else if (!caseChanged) {
+                  if (str == str.toUpperCase() && (str = str.toLowerCase()) || str == str.toLowerCase() && (str = str.toUpperCase())) {
+                    caseChanged = true;
+                    i = -1;
+                    e = 0;
+                    continue;
+                  }
+                }
+                return parseNumeric(x4, String(v3), isNum, b2);
+              }
+            }
+            isNum = false;
+            str = convertBase(str, b2, 10, x4.s);
+            if ((e = str.indexOf(".")) > -1) str = str.replace(".", "");
+            else e = str.length;
+          }
+          for (i = 0; str.charCodeAt(i) === 48; i++) ;
+          for (len = str.length; str.charCodeAt(--len) === 48; ) ;
+          if (str = str.slice(i, ++len)) {
+            len -= i;
+            if (isNum && BigNumber2.DEBUG && len > 15 && (v3 > MAX_SAFE_INTEGER || v3 !== mathfloor(v3))) {
+              throw Error(tooManyDigits + x4.s * v3);
+            }
+            if ((e = e - i - 1) > MAX_EXP) {
+              x4.c = x4.e = null;
+            } else if (e < MIN_EXP) {
+              x4.c = [x4.e = 0];
+            } else {
+              x4.e = e;
+              x4.c = [];
+              i = (e + 1) % LOG_BASE;
+              if (e < 0) i += LOG_BASE;
+              if (i < len) {
+                if (i) x4.c.push(+str.slice(0, i));
+                for (len -= LOG_BASE; i < len; ) {
+                  x4.c.push(+str.slice(i, i += LOG_BASE));
+                }
+                i = LOG_BASE - (str = str.slice(i)).length;
+              } else {
+                i -= len;
+              }
+              for (; i--; str += "0") ;
+              x4.c.push(+str);
+            }
+          } else {
+            x4.c = [x4.e = 0];
+          }
+        }
+        BigNumber2.clone = clone;
+        BigNumber2.ROUND_UP = 0;
+        BigNumber2.ROUND_DOWN = 1;
+        BigNumber2.ROUND_CEIL = 2;
+        BigNumber2.ROUND_FLOOR = 3;
+        BigNumber2.ROUND_HALF_UP = 4;
+        BigNumber2.ROUND_HALF_DOWN = 5;
+        BigNumber2.ROUND_HALF_EVEN = 6;
+        BigNumber2.ROUND_HALF_CEIL = 7;
+        BigNumber2.ROUND_HALF_FLOOR = 8;
+        BigNumber2.EUCLID = 9;
+        BigNumber2.config = BigNumber2.set = function(obj) {
+          var p2, v3;
+          if (obj != null) {
+            if (typeof obj == "object") {
+              if (obj.hasOwnProperty(p2 = "DECIMAL_PLACES")) {
+                v3 = obj[p2];
+                intCheck(v3, 0, MAX, p2);
+                DECIMAL_PLACES = v3;
+              }
+              if (obj.hasOwnProperty(p2 = "ROUNDING_MODE")) {
+                v3 = obj[p2];
+                intCheck(v3, 0, 8, p2);
+                ROUNDING_MODE = v3;
+              }
+              if (obj.hasOwnProperty(p2 = "EXPONENTIAL_AT")) {
+                v3 = obj[p2];
+                if (v3 && v3.pop) {
+                  intCheck(v3[0], -MAX, 0, p2);
+                  intCheck(v3[1], 0, MAX, p2);
+                  TO_EXP_NEG = v3[0];
+                  TO_EXP_POS = v3[1];
+                } else {
+                  intCheck(v3, -MAX, MAX, p2);
+                  TO_EXP_NEG = -(TO_EXP_POS = v3 < 0 ? -v3 : v3);
+                }
+              }
+              if (obj.hasOwnProperty(p2 = "RANGE")) {
+                v3 = obj[p2];
+                if (v3 && v3.pop) {
+                  intCheck(v3[0], -MAX, -1, p2);
+                  intCheck(v3[1], 1, MAX, p2);
+                  MIN_EXP = v3[0];
+                  MAX_EXP = v3[1];
+                } else {
+                  intCheck(v3, -MAX, MAX, p2);
+                  if (v3) {
+                    MIN_EXP = -(MAX_EXP = v3 < 0 ? -v3 : v3);
+                  } else {
+                    throw Error(bignumberError + p2 + " cannot be zero: " + v3);
+                  }
+                }
+              }
+              if (obj.hasOwnProperty(p2 = "CRYPTO")) {
+                v3 = obj[p2];
+                if (v3 === !!v3) {
+                  if (v3) {
+                    if (typeof crypto != "undefined" && crypto && (crypto.getRandomValues || crypto.randomBytes)) {
+                      CRYPTO = v3;
+                    } else {
+                      CRYPTO = !v3;
+                      throw Error(bignumberError + "crypto unavailable");
+                    }
+                  } else {
+                    CRYPTO = v3;
+                  }
+                } else {
+                  throw Error(bignumberError + p2 + " not true or false: " + v3);
+                }
+              }
+              if (obj.hasOwnProperty(p2 = "MODULO_MODE")) {
+                v3 = obj[p2];
+                intCheck(v3, 0, 9, p2);
+                MODULO_MODE = v3;
+              }
+              if (obj.hasOwnProperty(p2 = "POW_PRECISION")) {
+                v3 = obj[p2];
+                intCheck(v3, 0, MAX, p2);
+                POW_PRECISION = v3;
+              }
+              if (obj.hasOwnProperty(p2 = "FORMAT")) {
+                v3 = obj[p2];
+                if (typeof v3 == "object") FORMAT = v3;
+                else throw Error(bignumberError + p2 + " not an object: " + v3);
+              }
+              if (obj.hasOwnProperty(p2 = "ALPHABET")) {
+                v3 = obj[p2];
+                if (typeof v3 == "string" && !/^.?$|[+\-.\s]|(.).*\1/.test(v3)) {
+                  alphabetHasNormalDecimalDigits = v3.slice(0, 10) == "0123456789";
+                  ALPHABET = v3;
+                } else {
+                  throw Error(bignumberError + p2 + " invalid: " + v3);
+                }
+              }
+            } else {
+              throw Error(bignumberError + "Object expected: " + obj);
+            }
+          }
+          return {
+            DECIMAL_PLACES,
+            ROUNDING_MODE,
+            EXPONENTIAL_AT: [TO_EXP_NEG, TO_EXP_POS],
+            RANGE: [MIN_EXP, MAX_EXP],
+            CRYPTO,
+            MODULO_MODE,
+            POW_PRECISION,
+            FORMAT,
+            ALPHABET
+          };
+        };
+        BigNumber2.isBigNumber = function(v3) {
+          if (!v3 || v3._isBigNumber !== true) return false;
+          if (!BigNumber2.DEBUG) return true;
+          var i, n, c2 = v3.c, e = v3.e, s = v3.s;
+          out: if ({}.toString.call(c2) == "[object Array]") {
+            if ((s === 1 || s === -1) && e >= -MAX && e <= MAX && e === mathfloor(e)) {
+              if (c2[0] === 0) {
+                if (e === 0 && c2.length === 1) return true;
+                break out;
+              }
+              i = (e + 1) % LOG_BASE;
+              if (i < 1) i += LOG_BASE;
+              if (String(c2[0]).length == i) {
+                for (i = 0; i < c2.length; i++) {
+                  n = c2[i];
+                  if (n < 0 || n >= BASE || n !== mathfloor(n)) break out;
+                }
+                if (n !== 0) return true;
+              }
+            }
+          } else if (c2 === null && e === null && (s === null || s === 1 || s === -1)) {
+            return true;
+          }
+          throw Error(bignumberError + "Invalid BigNumber: " + v3);
+        };
+        BigNumber2.maximum = BigNumber2.max = function() {
+          return maxOrMin(arguments, -1);
+        };
+        BigNumber2.minimum = BigNumber2.min = function() {
+          return maxOrMin(arguments, 1);
+        };
+        BigNumber2.random = function() {
+          var pow2_53 = 9007199254740992;
+          var random53bitInt = Math.random() * pow2_53 & 2097151 ? function() {
+            return mathfloor(Math.random() * pow2_53);
+          } : function() {
+            return (Math.random() * 1073741824 | 0) * 8388608 + (Math.random() * 8388608 | 0);
+          };
+          return function(dp) {
+            var a, b2, e, k2, v3, i = 0, c2 = [], rand = new BigNumber2(ONE);
+            if (dp == null) dp = DECIMAL_PLACES;
+            else intCheck(dp, 0, MAX);
+            k2 = mathceil(dp / LOG_BASE);
+            if (CRYPTO) {
+              if (crypto.getRandomValues) {
+                a = crypto.getRandomValues(new Uint32Array(k2 *= 2));
+                for (; i < k2; ) {
+                  v3 = a[i] * 131072 + (a[i + 1] >>> 11);
+                  if (v3 >= 9e15) {
+                    b2 = crypto.getRandomValues(new Uint32Array(2));
+                    a[i] = b2[0];
+                    a[i + 1] = b2[1];
+                  } else {
+                    c2.push(v3 % 1e14);
+                    i += 2;
+                  }
+                }
+                i = k2 / 2;
+              } else if (crypto.randomBytes) {
+                a = crypto.randomBytes(k2 *= 7);
+                for (; i < k2; ) {
+                  v3 = (a[i] & 31) * 281474976710656 + a[i + 1] * 1099511627776 + a[i + 2] * 4294967296 + a[i + 3] * 16777216 + (a[i + 4] << 16) + (a[i + 5] << 8) + a[i + 6];
+                  if (v3 >= 9e15) {
+                    crypto.randomBytes(7).copy(a, i);
+                  } else {
+                    c2.push(v3 % 1e14);
+                    i += 7;
+                  }
+                }
+                i = k2 / 7;
+              } else {
+                CRYPTO = false;
+                throw Error(bignumberError + "crypto unavailable");
+              }
+            }
+            if (!CRYPTO) {
+              for (; i < k2; ) {
+                v3 = random53bitInt();
+                if (v3 < 9e15) c2[i++] = v3 % 1e14;
+              }
+            }
+            k2 = c2[--i];
+            dp %= LOG_BASE;
+            if (k2 && dp) {
+              v3 = POWS_TEN[LOG_BASE - dp];
+              c2[i] = mathfloor(k2 / v3) * v3;
+            }
+            for (; c2[i] === 0; c2.pop(), i--) ;
+            if (i < 0) {
+              c2 = [e = 0];
+            } else {
+              for (e = -1; c2[0] === 0; c2.splice(0, 1), e -= LOG_BASE) ;
+              for (i = 1, v3 = c2[0]; v3 >= 10; v3 /= 10, i++) ;
+              if (i < LOG_BASE) e -= LOG_BASE - i;
+            }
+            rand.e = e;
+            rand.c = c2;
+            return rand;
+          };
+        }();
+        BigNumber2.sum = function() {
+          var i = 1, args = arguments, sum = new BigNumber2(args[0]);
+          for (; i < args.length; ) sum = sum.plus(args[i++]);
+          return sum;
+        };
+        convertBase = /* @__PURE__ */ function() {
+          var decimal = "0123456789";
+          function toBaseOut(str, baseIn, baseOut, alphabet) {
+            var j2, arr = [0], arrL, i = 0, len = str.length;
+            for (; i < len; ) {
+              for (arrL = arr.length; arrL--; arr[arrL] *= baseIn) ;
+              arr[0] += alphabet.indexOf(str.charAt(i++));
+              for (j2 = 0; j2 < arr.length; j2++) {
+                if (arr[j2] > baseOut - 1) {
+                  if (arr[j2 + 1] == null) arr[j2 + 1] = 0;
+                  arr[j2 + 1] += arr[j2] / baseOut | 0;
+                  arr[j2] %= baseOut;
+                }
+              }
+            }
+            return arr.reverse();
+          }
+          return function(str, baseIn, baseOut, sign, callerIsToString) {
+            var alphabet, d2, e, k2, r, x4, xc, y2, i = str.indexOf("."), dp = DECIMAL_PLACES, rm = ROUNDING_MODE;
+            if (i >= 0) {
+              k2 = POW_PRECISION;
+              POW_PRECISION = 0;
+              str = str.replace(".", "");
+              y2 = new BigNumber2(baseIn);
+              x4 = y2.pow(str.length - i);
+              POW_PRECISION = k2;
+              y2.c = toBaseOut(
+                toFixedPoint(coeffToString(x4.c), x4.e, "0"),
+                10,
+                baseOut,
+                decimal
+              );
+              y2.e = y2.c.length;
+            }
+            xc = toBaseOut(str, baseIn, baseOut, callerIsToString ? (alphabet = ALPHABET, decimal) : (alphabet = decimal, ALPHABET));
+            e = k2 = xc.length;
+            for (; xc[--k2] == 0; xc.pop()) ;
+            if (!xc[0]) return alphabet.charAt(0);
+            if (i < 0) {
+              --e;
+            } else {
+              x4.c = xc;
+              x4.e = e;
+              x4.s = sign;
+              x4 = div(x4, y2, dp, rm, baseOut);
+              xc = x4.c;
+              r = x4.r;
+              e = x4.e;
+            }
+            d2 = e + dp + 1;
+            i = xc[d2];
+            k2 = baseOut / 2;
+            r = r || d2 < 0 || xc[d2 + 1] != null;
+            r = rm < 4 ? (i != null || r) && (rm == 0 || rm == (x4.s < 0 ? 3 : 2)) : i > k2 || i == k2 && (rm == 4 || r || rm == 6 && xc[d2 - 1] & 1 || rm == (x4.s < 0 ? 8 : 7));
+            if (d2 < 1 || !xc[0]) {
+              str = r ? toFixedPoint(alphabet.charAt(1), -dp, alphabet.charAt(0)) : alphabet.charAt(0);
+            } else {
+              xc.length = d2;
+              if (r) {
+                for (--baseOut; ++xc[--d2] > baseOut; ) {
+                  xc[d2] = 0;
+                  if (!d2) {
+                    ++e;
+                    xc = [1].concat(xc);
+                  }
+                }
+              }
+              for (k2 = xc.length; !xc[--k2]; ) ;
+              for (i = 0, str = ""; i <= k2; str += alphabet.charAt(xc[i++])) ;
+              str = toFixedPoint(str, e, alphabet.charAt(0));
+            }
+            return str;
+          };
+        }();
+        div = /* @__PURE__ */ function() {
+          function multiply(x4, k2, base) {
+            var m2, temp, xlo, xhi, carry = 0, i = x4.length, klo = k2 % SQRT_BASE, khi = k2 / SQRT_BASE | 0;
+            for (x4 = x4.slice(); i--; ) {
+              xlo = x4[i] % SQRT_BASE;
+              xhi = x4[i] / SQRT_BASE | 0;
+              m2 = khi * xlo + xhi * klo;
+              temp = klo * xlo + m2 % SQRT_BASE * SQRT_BASE + carry;
+              carry = (temp / base | 0) + (m2 / SQRT_BASE | 0) + khi * xhi;
+              x4[i] = temp % base;
+            }
+            if (carry) x4 = [carry].concat(x4);
+            return x4;
+          }
+          function compare2(a, b2, aL, bL) {
+            var i, cmp;
+            if (aL != bL) {
+              cmp = aL > bL ? 1 : -1;
+            } else {
+              for (i = cmp = 0; i < aL; i++) {
+                if (a[i] != b2[i]) {
+                  cmp = a[i] > b2[i] ? 1 : -1;
+                  break;
+                }
+              }
+            }
+            return cmp;
+          }
+          function subtract(a, b2, aL, base) {
+            var i = 0;
+            for (; aL--; ) {
+              a[aL] -= i;
+              i = a[aL] < b2[aL] ? 1 : 0;
+              a[aL] = i * base + a[aL] - b2[aL];
+            }
+            for (; !a[0] && a.length > 1; a.splice(0, 1)) ;
+          }
+          return function(x4, y2, dp, rm, base) {
+            var cmp, e, i, more, n, prod, prodL, q2, qc, rem, remL, rem0, xi, xL, yc0, yL, yz, s = x4.s == y2.s ? 1 : -1, xc = x4.c, yc = y2.c;
+            if (!xc || !xc[0] || !yc || !yc[0]) {
+              return new BigNumber2(
+                // Return NaN if either NaN, or both Infinity or 0.
+                !x4.s || !y2.s || (xc ? yc && xc[0] == yc[0] : !yc) ? NaN : (
+                  // Return ±0 if x is ±0 or y is ±Infinity, or return ±Infinity as y is ±0.
+                  xc && xc[0] == 0 || !yc ? s * 0 : s / 0
+                )
+              );
+            }
+            q2 = new BigNumber2(s);
+            qc = q2.c = [];
+            e = x4.e - y2.e;
+            s = dp + e + 1;
+            if (!base) {
+              base = BASE;
+              e = bitFloor(x4.e / LOG_BASE) - bitFloor(y2.e / LOG_BASE);
+              s = s / LOG_BASE | 0;
+            }
+            for (i = 0; yc[i] == (xc[i] || 0); i++) ;
+            if (yc[i] > (xc[i] || 0)) e--;
+            if (s < 0) {
+              qc.push(1);
+              more = true;
+            } else {
+              xL = xc.length;
+              yL = yc.length;
+              i = 0;
+              s += 2;
+              n = mathfloor(base / (yc[0] + 1));
+              if (n > 1) {
+                yc = multiply(yc, n, base);
+                xc = multiply(xc, n, base);
+                yL = yc.length;
+                xL = xc.length;
+              }
+              xi = yL;
+              rem = xc.slice(0, yL);
+              remL = rem.length;
+              for (; remL < yL; rem[remL++] = 0) ;
+              yz = yc.slice();
+              yz = [0].concat(yz);
+              yc0 = yc[0];
+              if (yc[1] >= base / 2) yc0++;
+              do {
+                n = 0;
+                cmp = compare2(yc, rem, yL, remL);
+                if (cmp < 0) {
+                  rem0 = rem[0];
+                  if (yL != remL) rem0 = rem0 * base + (rem[1] || 0);
+                  n = mathfloor(rem0 / yc0);
+                  if (n > 1) {
+                    if (n >= base) n = base - 1;
+                    prod = multiply(yc, n, base);
+                    prodL = prod.length;
+                    remL = rem.length;
+                    while (compare2(prod, rem, prodL, remL) == 1) {
+                      n--;
+                      subtract(prod, yL < prodL ? yz : yc, prodL, base);
+                      prodL = prod.length;
+                      cmp = 1;
+                    }
+                  } else {
+                    if (n == 0) {
+                      cmp = n = 1;
+                    }
+                    prod = yc.slice();
+                    prodL = prod.length;
+                  }
+                  if (prodL < remL) prod = [0].concat(prod);
+                  subtract(rem, prod, remL, base);
+                  remL = rem.length;
+                  if (cmp == -1) {
+                    while (compare2(yc, rem, yL, remL) < 1) {
+                      n++;
+                      subtract(rem, yL < remL ? yz : yc, remL, base);
+                      remL = rem.length;
+                    }
+                  }
+                } else if (cmp === 0) {
+                  n++;
+                  rem = [0];
+                }
+                qc[i++] = n;
+                if (rem[0]) {
+                  rem[remL++] = xc[xi] || 0;
+                } else {
+                  rem = [xc[xi]];
+                  remL = 1;
+                }
+              } while ((xi++ < xL || rem[0] != null) && s--);
+              more = rem[0] != null;
+              if (!qc[0]) qc.splice(0, 1);
+            }
+            if (base == BASE) {
+              for (i = 1, s = qc[0]; s >= 10; s /= 10, i++) ;
+              round(q2, dp + (q2.e = i + e * LOG_BASE - 1) + 1, rm, more);
+            } else {
+              q2.e = e;
+              q2.r = +more;
+            }
+            return q2;
+          };
+        }();
+        function format(n, i, rm, id) {
+          var c0, e, ne2, len, str;
+          if (rm == null) rm = ROUNDING_MODE;
+          else intCheck(rm, 0, 8);
+          if (!n.c) return n.toString();
+          c0 = n.c[0];
+          ne2 = n.e;
+          if (i == null) {
+            str = coeffToString(n.c);
+            str = id == 1 || id == 2 && (ne2 <= TO_EXP_NEG || ne2 >= TO_EXP_POS) ? toExponential(str, ne2) : toFixedPoint(str, ne2, "0");
+          } else {
+            n = round(new BigNumber2(n), i, rm);
+            e = n.e;
+            str = coeffToString(n.c);
+            len = str.length;
+            if (id == 1 || id == 2 && (i <= e || e <= TO_EXP_NEG)) {
+              for (; len < i; str += "0", len++) ;
+              str = toExponential(str, e);
+            } else {
+              i -= ne2;
+              str = toFixedPoint(str, e, "0");
+              if (e + 1 > len) {
+                if (--i > 0) for (str += "."; i--; str += "0") ;
+              } else {
+                i += e - len;
+                if (i > 0) {
+                  if (e + 1 == len) str += ".";
+                  for (; i--; str += "0") ;
+                }
+              }
+            }
+          }
+          return n.s < 0 && c0 ? "-" + str : str;
+        }
+        function maxOrMin(args, n) {
+          var k2, y2, i = 1, x4 = new BigNumber2(args[0]);
+          for (; i < args.length; i++) {
+            y2 = new BigNumber2(args[i]);
+            if (!y2.s || (k2 = compare(x4, y2)) === n || k2 === 0 && x4.s === n) {
+              x4 = y2;
+            }
+          }
+          return x4;
+        }
+        function normalise(n, c2, e) {
+          var i = 1, j2 = c2.length;
+          for (; !c2[--j2]; c2.pop()) ;
+          for (j2 = c2[0]; j2 >= 10; j2 /= 10, i++) ;
+          if ((e = i + e * LOG_BASE - 1) > MAX_EXP) {
+            n.c = n.e = null;
+          } else if (e < MIN_EXP) {
+            n.c = [n.e = 0];
+          } else {
+            n.e = e;
+            n.c = c2;
+          }
+          return n;
+        }
+        parseNumeric = /* @__PURE__ */ function() {
+          var basePrefix = /^(-?)0([xbo])(?=\w[\w.]*$)/i, dotAfter = /^([^.]+)\.$/, dotBefore = /^\.([^.]+)$/, isInfinityOrNaN = /^-?(Infinity|NaN)$/, whitespaceOrPlus = /^\s*\+(?=[\w.])|^\s+|\s+$/g;
+          return function(x4, str, isNum, b2) {
+            var base, s = isNum ? str : str.replace(whitespaceOrPlus, "");
+            if (isInfinityOrNaN.test(s)) {
+              x4.s = isNaN(s) ? null : s < 0 ? -1 : 1;
+            } else {
+              if (!isNum) {
+                s = s.replace(basePrefix, function(m2, p1, p2) {
+                  base = (p2 = p2.toLowerCase()) == "x" ? 16 : p2 == "b" ? 2 : 8;
+                  return !b2 || b2 == base ? p1 : m2;
+                });
+                if (b2) {
+                  base = b2;
+                  s = s.replace(dotAfter, "$1").replace(dotBefore, "0.$1");
+                }
+                if (str != s) return new BigNumber2(s, base);
+              }
+              if (BigNumber2.DEBUG) {
+                throw Error(bignumberError + "Not a" + (b2 ? " base " + b2 : "") + " number: " + str);
+              }
+              x4.s = null;
+            }
+            x4.c = x4.e = null;
+          };
+        }();
+        function round(x4, sd, rm, r) {
+          var d2, i, j2, k2, n, ni, rd, xc = x4.c, pows10 = POWS_TEN;
+          if (xc) {
+            out: {
+              for (d2 = 1, k2 = xc[0]; k2 >= 10; k2 /= 10, d2++) ;
+              i = sd - d2;
+              if (i < 0) {
+                i += LOG_BASE;
+                j2 = sd;
+                n = xc[ni = 0];
+                rd = mathfloor(n / pows10[d2 - j2 - 1] % 10);
+              } else {
+                ni = mathceil((i + 1) / LOG_BASE);
+                if (ni >= xc.length) {
+                  if (r) {
+                    for (; xc.length <= ni; xc.push(0)) ;
+                    n = rd = 0;
+                    d2 = 1;
+                    i %= LOG_BASE;
+                    j2 = i - LOG_BASE + 1;
+                  } else {
+                    break out;
+                  }
+                } else {
+                  n = k2 = xc[ni];
+                  for (d2 = 1; k2 >= 10; k2 /= 10, d2++) ;
+                  i %= LOG_BASE;
+                  j2 = i - LOG_BASE + d2;
+                  rd = j2 < 0 ? 0 : mathfloor(n / pows10[d2 - j2 - 1] % 10);
+                }
+              }
+              r = r || sd < 0 || // Are there any non-zero digits after the rounding digit?
+              // The expression  n % pows10[d - j - 1]  returns all digits of n to the right
+              // of the digit at j, e.g. if n is 908714 and j is 2, the expression gives 714.
+              xc[ni + 1] != null || (j2 < 0 ? n : n % pows10[d2 - j2 - 1]);
+              r = rm < 4 ? (rd || r) && (rm == 0 || rm == (x4.s < 0 ? 3 : 2)) : rd > 5 || rd == 5 && (rm == 4 || r || rm == 6 && // Check whether the digit to the left of the rounding digit is odd.
+              (i > 0 ? j2 > 0 ? n / pows10[d2 - j2] : 0 : xc[ni - 1]) % 10 & 1 || rm == (x4.s < 0 ? 8 : 7));
+              if (sd < 1 || !xc[0]) {
+                xc.length = 0;
+                if (r) {
+                  sd -= x4.e + 1;
+                  xc[0] = pows10[(LOG_BASE - sd % LOG_BASE) % LOG_BASE];
+                  x4.e = -sd || 0;
+                } else {
+                  xc[0] = x4.e = 0;
+                }
+                return x4;
+              }
+              if (i == 0) {
+                xc.length = ni;
+                k2 = 1;
+                ni--;
+              } else {
+                xc.length = ni + 1;
+                k2 = pows10[LOG_BASE - i];
+                xc[ni] = j2 > 0 ? mathfloor(n / pows10[d2 - j2] % pows10[j2]) * k2 : 0;
+              }
+              if (r) {
+                for (; ; ) {
+                  if (ni == 0) {
+                    for (i = 1, j2 = xc[0]; j2 >= 10; j2 /= 10, i++) ;
+                    j2 = xc[0] += k2;
+                    for (k2 = 1; j2 >= 10; j2 /= 10, k2++) ;
+                    if (i != k2) {
+                      x4.e++;
+                      if (xc[0] == BASE) xc[0] = 1;
+                    }
+                    break;
+                  } else {
+                    xc[ni] += k2;
+                    if (xc[ni] != BASE) break;
+                    xc[ni--] = 0;
+                    k2 = 1;
+                  }
+                }
+              }
+              for (i = xc.length; xc[--i] === 0; xc.pop()) ;
+            }
+            if (x4.e > MAX_EXP) {
+              x4.c = x4.e = null;
+            } else if (x4.e < MIN_EXP) {
+              x4.c = [x4.e = 0];
+            }
+          }
+          return x4;
+        }
+        function valueOf(n) {
+          var str, e = n.e;
+          if (e === null) return n.toString();
+          str = coeffToString(n.c);
+          str = e <= TO_EXP_NEG || e >= TO_EXP_POS ? toExponential(str, e) : toFixedPoint(str, e, "0");
+          return n.s < 0 ? "-" + str : str;
+        }
+        P4.absoluteValue = P4.abs = function() {
+          var x4 = new BigNumber2(this);
+          if (x4.s < 0) x4.s = 1;
+          return x4;
+        };
+        P4.comparedTo = function(y2, b2) {
+          return compare(this, new BigNumber2(y2, b2));
+        };
+        P4.decimalPlaces = P4.dp = function(dp, rm) {
+          var c2, n, v3, x4 = this;
+          if (dp != null) {
+            intCheck(dp, 0, MAX);
+            if (rm == null) rm = ROUNDING_MODE;
+            else intCheck(rm, 0, 8);
+            return round(new BigNumber2(x4), dp + x4.e + 1, rm);
+          }
+          if (!(c2 = x4.c)) return null;
+          n = ((v3 = c2.length - 1) - bitFloor(this.e / LOG_BASE)) * LOG_BASE;
+          if (v3 = c2[v3]) for (; v3 % 10 == 0; v3 /= 10, n--) ;
+          if (n < 0) n = 0;
+          return n;
+        };
+        P4.dividedBy = P4.div = function(y2, b2) {
+          return div(this, new BigNumber2(y2, b2), DECIMAL_PLACES, ROUNDING_MODE);
+        };
+        P4.dividedToIntegerBy = P4.idiv = function(y2, b2) {
+          return div(this, new BigNumber2(y2, b2), 0, 1);
+        };
+        P4.exponentiatedBy = P4.pow = function(n, m2) {
+          var half, isModExp, i, k2, more, nIsBig, nIsNeg, nIsOdd, y2, x4 = this;
+          n = new BigNumber2(n);
+          if (n.c && !n.isInteger()) {
+            throw Error(bignumberError + "Exponent not an integer: " + valueOf(n));
+          }
+          if (m2 != null) m2 = new BigNumber2(m2);
+          nIsBig = n.e > 14;
+          if (!x4.c || !x4.c[0] || x4.c[0] == 1 && !x4.e && x4.c.length == 1 || !n.c || !n.c[0]) {
+            y2 = new BigNumber2(Math.pow(+valueOf(x4), nIsBig ? n.s * (2 - isOdd(n)) : +valueOf(n)));
+            return m2 ? y2.mod(m2) : y2;
+          }
+          nIsNeg = n.s < 0;
+          if (m2) {
+            if (m2.c ? !m2.c[0] : !m2.s) return new BigNumber2(NaN);
+            isModExp = !nIsNeg && x4.isInteger() && m2.isInteger();
+            if (isModExp) x4 = x4.mod(m2);
+          } else if (n.e > 9 && (x4.e > 0 || x4.e < -1 || (x4.e == 0 ? x4.c[0] > 1 || nIsBig && x4.c[1] >= 24e7 : x4.c[0] < 8e13 || nIsBig && x4.c[0] <= 9999975e7))) {
+            k2 = x4.s < 0 && isOdd(n) ? -0 : 0;
+            if (x4.e > -1) k2 = 1 / k2;
+            return new BigNumber2(nIsNeg ? 1 / k2 : k2);
+          } else if (POW_PRECISION) {
+            k2 = mathceil(POW_PRECISION / LOG_BASE + 2);
+          }
+          if (nIsBig) {
+            half = new BigNumber2(0.5);
+            if (nIsNeg) n.s = 1;
+            nIsOdd = isOdd(n);
+          } else {
+            i = Math.abs(+valueOf(n));
+            nIsOdd = i % 2;
+          }
+          y2 = new BigNumber2(ONE);
+          for (; ; ) {
+            if (nIsOdd) {
+              y2 = y2.times(x4);
+              if (!y2.c) break;
+              if (k2) {
+                if (y2.c.length > k2) y2.c.length = k2;
+              } else if (isModExp) {
+                y2 = y2.mod(m2);
+              }
+            }
+            if (i) {
+              i = mathfloor(i / 2);
+              if (i === 0) break;
+              nIsOdd = i % 2;
+            } else {
+              n = n.times(half);
+              round(n, n.e + 1, 1);
+              if (n.e > 14) {
+                nIsOdd = isOdd(n);
+              } else {
+                i = +valueOf(n);
+                if (i === 0) break;
+                nIsOdd = i % 2;
+              }
+            }
+            x4 = x4.times(x4);
+            if (k2) {
+              if (x4.c && x4.c.length > k2) x4.c.length = k2;
+            } else if (isModExp) {
+              x4 = x4.mod(m2);
+            }
+          }
+          if (isModExp) return y2;
+          if (nIsNeg) y2 = ONE.div(y2);
+          return m2 ? y2.mod(m2) : k2 ? round(y2, POW_PRECISION, ROUNDING_MODE, more) : y2;
+        };
+        P4.integerValue = function(rm) {
+          var n = new BigNumber2(this);
+          if (rm == null) rm = ROUNDING_MODE;
+          else intCheck(rm, 0, 8);
+          return round(n, n.e + 1, rm);
+        };
+        P4.isEqualTo = P4.eq = function(y2, b2) {
+          return compare(this, new BigNumber2(y2, b2)) === 0;
+        };
+        P4.isFinite = function() {
+          return !!this.c;
+        };
+        P4.isGreaterThan = P4.gt = function(y2, b2) {
+          return compare(this, new BigNumber2(y2, b2)) > 0;
+        };
+        P4.isGreaterThanOrEqualTo = P4.gte = function(y2, b2) {
+          return (b2 = compare(this, new BigNumber2(y2, b2))) === 1 || b2 === 0;
+        };
+        P4.isInteger = function() {
+          return !!this.c && bitFloor(this.e / LOG_BASE) > this.c.length - 2;
+        };
+        P4.isLessThan = P4.lt = function(y2, b2) {
+          return compare(this, new BigNumber2(y2, b2)) < 0;
+        };
+        P4.isLessThanOrEqualTo = P4.lte = function(y2, b2) {
+          return (b2 = compare(this, new BigNumber2(y2, b2))) === -1 || b2 === 0;
+        };
+        P4.isNaN = function() {
+          return !this.s;
+        };
+        P4.isNegative = function() {
+          return this.s < 0;
+        };
+        P4.isPositive = function() {
+          return this.s > 0;
+        };
+        P4.isZero = function() {
+          return !!this.c && this.c[0] == 0;
+        };
+        P4.minus = function(y2, b2) {
+          var i, j2, t, xLTy, x4 = this, a = x4.s;
+          y2 = new BigNumber2(y2, b2);
+          b2 = y2.s;
+          if (!a || !b2) return new BigNumber2(NaN);
+          if (a != b2) {
+            y2.s = -b2;
+            return x4.plus(y2);
+          }
+          var xe2 = x4.e / LOG_BASE, ye2 = y2.e / LOG_BASE, xc = x4.c, yc = y2.c;
+          if (!xe2 || !ye2) {
+            if (!xc || !yc) return xc ? (y2.s = -b2, y2) : new BigNumber2(yc ? x4 : NaN);
+            if (!xc[0] || !yc[0]) {
+              return yc[0] ? (y2.s = -b2, y2) : new BigNumber2(xc[0] ? x4 : (
+                // IEEE 754 (2008) 6.3: n - n = -0 when rounding to -Infinity
+                ROUNDING_MODE == 3 ? -0 : 0
+              ));
+            }
+          }
+          xe2 = bitFloor(xe2);
+          ye2 = bitFloor(ye2);
+          xc = xc.slice();
+          if (a = xe2 - ye2) {
+            if (xLTy = a < 0) {
+              a = -a;
+              t = xc;
+            } else {
+              ye2 = xe2;
+              t = yc;
+            }
+            t.reverse();
+            for (b2 = a; b2--; t.push(0)) ;
+            t.reverse();
+          } else {
+            j2 = (xLTy = (a = xc.length) < (b2 = yc.length)) ? a : b2;
+            for (a = b2 = 0; b2 < j2; b2++) {
+              if (xc[b2] != yc[b2]) {
+                xLTy = xc[b2] < yc[b2];
+                break;
+              }
+            }
+          }
+          if (xLTy) {
+            t = xc;
+            xc = yc;
+            yc = t;
+            y2.s = -y2.s;
+          }
+          b2 = (j2 = yc.length) - (i = xc.length);
+          if (b2 > 0) for (; b2--; xc[i++] = 0) ;
+          b2 = BASE - 1;
+          for (; j2 > a; ) {
+            if (xc[--j2] < yc[j2]) {
+              for (i = j2; i && !xc[--i]; xc[i] = b2) ;
+              --xc[i];
+              xc[j2] += BASE;
+            }
+            xc[j2] -= yc[j2];
+          }
+          for (; xc[0] == 0; xc.splice(0, 1), --ye2) ;
+          if (!xc[0]) {
+            y2.s = ROUNDING_MODE == 3 ? -1 : 1;
+            y2.c = [y2.e = 0];
+            return y2;
+          }
+          return normalise(y2, xc, ye2);
+        };
+        P4.modulo = P4.mod = function(y2, b2) {
+          var q2, s, x4 = this;
+          y2 = new BigNumber2(y2, b2);
+          if (!x4.c || !y2.s || y2.c && !y2.c[0]) {
+            return new BigNumber2(NaN);
+          } else if (!y2.c || x4.c && !x4.c[0]) {
+            return new BigNumber2(x4);
+          }
+          if (MODULO_MODE == 9) {
+            s = y2.s;
+            y2.s = 1;
+            q2 = div(x4, y2, 0, 3);
+            y2.s = s;
+            q2.s *= s;
+          } else {
+            q2 = div(x4, y2, 0, MODULO_MODE);
+          }
+          y2 = x4.minus(q2.times(y2));
+          if (!y2.c[0] && MODULO_MODE == 1) y2.s = x4.s;
+          return y2;
+        };
+        P4.multipliedBy = P4.times = function(y2, b2) {
+          var c2, e, i, j2, k2, m2, xcL, xlo, xhi, ycL, ylo, yhi, zc, base, sqrtBase, x4 = this, xc = x4.c, yc = (y2 = new BigNumber2(y2, b2)).c;
+          if (!xc || !yc || !xc[0] || !yc[0]) {
+            if (!x4.s || !y2.s || xc && !xc[0] && !yc || yc && !yc[0] && !xc) {
+              y2.c = y2.e = y2.s = null;
+            } else {
+              y2.s *= x4.s;
+              if (!xc || !yc) {
+                y2.c = y2.e = null;
+              } else {
+                y2.c = [0];
+                y2.e = 0;
+              }
+            }
+            return y2;
+          }
+          e = bitFloor(x4.e / LOG_BASE) + bitFloor(y2.e / LOG_BASE);
+          y2.s *= x4.s;
+          xcL = xc.length;
+          ycL = yc.length;
+          if (xcL < ycL) {
+            zc = xc;
+            xc = yc;
+            yc = zc;
+            i = xcL;
+            xcL = ycL;
+            ycL = i;
+          }
+          for (i = xcL + ycL, zc = []; i--; zc.push(0)) ;
+          base = BASE;
+          sqrtBase = SQRT_BASE;
+          for (i = ycL; --i >= 0; ) {
+            c2 = 0;
+            ylo = yc[i] % sqrtBase;
+            yhi = yc[i] / sqrtBase | 0;
+            for (k2 = xcL, j2 = i + k2; j2 > i; ) {
+              xlo = xc[--k2] % sqrtBase;
+              xhi = xc[k2] / sqrtBase | 0;
+              m2 = yhi * xlo + xhi * ylo;
+              xlo = ylo * xlo + m2 % sqrtBase * sqrtBase + zc[j2] + c2;
+              c2 = (xlo / base | 0) + (m2 / sqrtBase | 0) + yhi * xhi;
+              zc[j2--] = xlo % base;
+            }
+            zc[j2] = c2;
+          }
+          if (c2) {
+            ++e;
+          } else {
+            zc.splice(0, 1);
+          }
+          return normalise(y2, zc, e);
+        };
+        P4.negated = function() {
+          var x4 = new BigNumber2(this);
+          x4.s = -x4.s || null;
+          return x4;
+        };
+        P4.plus = function(y2, b2) {
+          var t, x4 = this, a = x4.s;
+          y2 = new BigNumber2(y2, b2);
+          b2 = y2.s;
+          if (!a || !b2) return new BigNumber2(NaN);
+          if (a != b2) {
+            y2.s = -b2;
+            return x4.minus(y2);
+          }
+          var xe2 = x4.e / LOG_BASE, ye2 = y2.e / LOG_BASE, xc = x4.c, yc = y2.c;
+          if (!xe2 || !ye2) {
+            if (!xc || !yc) return new BigNumber2(a / 0);
+            if (!xc[0] || !yc[0]) return yc[0] ? y2 : new BigNumber2(xc[0] ? x4 : a * 0);
+          }
+          xe2 = bitFloor(xe2);
+          ye2 = bitFloor(ye2);
+          xc = xc.slice();
+          if (a = xe2 - ye2) {
+            if (a > 0) {
+              ye2 = xe2;
+              t = yc;
+            } else {
+              a = -a;
+              t = xc;
+            }
+            t.reverse();
+            for (; a--; t.push(0)) ;
+            t.reverse();
+          }
+          a = xc.length;
+          b2 = yc.length;
+          if (a - b2 < 0) {
+            t = yc;
+            yc = xc;
+            xc = t;
+            b2 = a;
+          }
+          for (a = 0; b2; ) {
+            a = (xc[--b2] = xc[b2] + yc[b2] + a) / BASE | 0;
+            xc[b2] = BASE === xc[b2] ? 0 : xc[b2] % BASE;
+          }
+          if (a) {
+            xc = [a].concat(xc);
+            ++ye2;
+          }
+          return normalise(y2, xc, ye2);
+        };
+        P4.precision = P4.sd = function(sd, rm) {
+          var c2, n, v3, x4 = this;
+          if (sd != null && sd !== !!sd) {
+            intCheck(sd, 1, MAX);
+            if (rm == null) rm = ROUNDING_MODE;
+            else intCheck(rm, 0, 8);
+            return round(new BigNumber2(x4), sd, rm);
+          }
+          if (!(c2 = x4.c)) return null;
+          v3 = c2.length - 1;
+          n = v3 * LOG_BASE + 1;
+          if (v3 = c2[v3]) {
+            for (; v3 % 10 == 0; v3 /= 10, n--) ;
+            for (v3 = c2[0]; v3 >= 10; v3 /= 10, n++) ;
+          }
+          if (sd && x4.e + 1 > n) n = x4.e + 1;
+          return n;
+        };
+        P4.shiftedBy = function(k2) {
+          intCheck(k2, -MAX_SAFE_INTEGER, MAX_SAFE_INTEGER);
+          return this.times("1e" + k2);
+        };
+        P4.squareRoot = P4.sqrt = function() {
+          var m2, n, r, rep, t, x4 = this, c2 = x4.c, s = x4.s, e = x4.e, dp = DECIMAL_PLACES + 4, half = new BigNumber2("0.5");
+          if (s !== 1 || !c2 || !c2[0]) {
+            return new BigNumber2(!s || s < 0 && (!c2 || c2[0]) ? NaN : c2 ? x4 : 1 / 0);
+          }
+          s = Math.sqrt(+valueOf(x4));
+          if (s == 0 || s == 1 / 0) {
+            n = coeffToString(c2);
+            if ((n.length + e) % 2 == 0) n += "0";
+            s = Math.sqrt(+n);
+            e = bitFloor((e + 1) / 2) - (e < 0 || e % 2);
+            if (s == 1 / 0) {
+              n = "5e" + e;
+            } else {
+              n = s.toExponential();
+              n = n.slice(0, n.indexOf("e") + 1) + e;
+            }
+            r = new BigNumber2(n);
+          } else {
+            r = new BigNumber2(s + "");
+          }
+          if (r.c[0]) {
+            e = r.e;
+            s = e + dp;
+            if (s < 3) s = 0;
+            for (; ; ) {
+              t = r;
+              r = half.times(t.plus(div(x4, t, dp, 1)));
+              if (coeffToString(t.c).slice(0, s) === (n = coeffToString(r.c)).slice(0, s)) {
+                if (r.e < e) --s;
+                n = n.slice(s - 3, s + 1);
+                if (n == "9999" || !rep && n == "4999") {
+                  if (!rep) {
+                    round(t, t.e + DECIMAL_PLACES + 2, 0);
+                    if (t.times(t).eq(x4)) {
+                      r = t;
+                      break;
+                    }
+                  }
+                  dp += 4;
+                  s += 4;
+                  rep = 1;
+                } else {
+                  if (!+n || !+n.slice(1) && n.charAt(0) == "5") {
+                    round(r, r.e + DECIMAL_PLACES + 2, 1);
+                    m2 = !r.times(r).eq(x4);
+                  }
+                  break;
+                }
+              }
+            }
+          }
+          return round(r, r.e + DECIMAL_PLACES + 1, ROUNDING_MODE, m2);
+        };
+        P4.toExponential = function(dp, rm) {
+          if (dp != null) {
+            intCheck(dp, 0, MAX);
+            dp++;
+          }
+          return format(this, dp, rm, 1);
+        };
+        P4.toFixed = function(dp, rm) {
+          if (dp != null) {
+            intCheck(dp, 0, MAX);
+            dp = dp + this.e + 1;
+          }
+          return format(this, dp, rm);
+        };
+        P4.toFormat = function(dp, rm, format2) {
+          var str, x4 = this;
+          if (format2 == null) {
+            if (dp != null && rm && typeof rm == "object") {
+              format2 = rm;
+              rm = null;
+            } else if (dp && typeof dp == "object") {
+              format2 = dp;
+              dp = rm = null;
+            } else {
+              format2 = FORMAT;
+            }
+          } else if (typeof format2 != "object") {
+            throw Error(bignumberError + "Argument not an object: " + format2);
+          }
+          str = x4.toFixed(dp, rm);
+          if (x4.c) {
+            var i, arr = str.split("."), g1 = +format2.groupSize, g2 = +format2.secondaryGroupSize, groupSeparator = format2.groupSeparator || "", intPart = arr[0], fractionPart = arr[1], isNeg = x4.s < 0, intDigits = isNeg ? intPart.slice(1) : intPart, len = intDigits.length;
+            if (g2) {
+              i = g1;
+              g1 = g2;
+              g2 = i;
+              len -= i;
+            }
+            if (g1 > 0 && len > 0) {
+              i = len % g1 || g1;
+              intPart = intDigits.substr(0, i);
+              for (; i < len; i += g1) intPart += groupSeparator + intDigits.substr(i, g1);
+              if (g2 > 0) intPart += groupSeparator + intDigits.slice(i);
+              if (isNeg) intPart = "-" + intPart;
+            }
+            str = fractionPart ? intPart + (format2.decimalSeparator || "") + ((g2 = +format2.fractionGroupSize) ? fractionPart.replace(
+              new RegExp("\\d{" + g2 + "}\\B", "g"),
+              "$&" + (format2.fractionGroupSeparator || "")
+            ) : fractionPart) : intPart;
+          }
+          return (format2.prefix || "") + str + (format2.suffix || "");
+        };
+        P4.toFraction = function(md) {
+          var d2, d0, d1, d22, e, exp, n, n0, n1, q2, r, s, x4 = this, xc = x4.c;
+          if (md != null) {
+            n = new BigNumber2(md);
+            if (!n.isInteger() && (n.c || n.s !== 1) || n.lt(ONE)) {
+              throw Error(bignumberError + "Argument " + (n.isInteger() ? "out of range: " : "not an integer: ") + valueOf(n));
+            }
+          }
+          if (!xc) return new BigNumber2(x4);
+          d2 = new BigNumber2(ONE);
+          n1 = d0 = new BigNumber2(ONE);
+          d1 = n0 = new BigNumber2(ONE);
+          s = coeffToString(xc);
+          e = d2.e = s.length - x4.e - 1;
+          d2.c[0] = POWS_TEN[(exp = e % LOG_BASE) < 0 ? LOG_BASE + exp : exp];
+          md = !md || n.comparedTo(d2) > 0 ? e > 0 ? d2 : n1 : n;
+          exp = MAX_EXP;
+          MAX_EXP = 1 / 0;
+          n = new BigNumber2(s);
+          n0.c[0] = 0;
+          for (; ; ) {
+            q2 = div(n, d2, 0, 1);
+            d22 = d0.plus(q2.times(d1));
+            if (d22.comparedTo(md) == 1) break;
+            d0 = d1;
+            d1 = d22;
+            n1 = n0.plus(q2.times(d22 = n1));
+            n0 = d22;
+            d2 = n.minus(q2.times(d22 = d2));
+            n = d22;
+          }
+          d22 = div(md.minus(d0), d1, 0, 1);
+          n0 = n0.plus(d22.times(n1));
+          d0 = d0.plus(d22.times(d1));
+          n0.s = n1.s = x4.s;
+          e = e * 2;
+          r = div(n1, d1, e, ROUNDING_MODE).minus(x4).abs().comparedTo(
+            div(n0, d0, e, ROUNDING_MODE).minus(x4).abs()
+          ) < 1 ? [n1, d1] : [n0, d0];
+          MAX_EXP = exp;
+          return r;
+        };
+        P4.toNumber = function() {
+          return +valueOf(this);
+        };
+        P4.toPrecision = function(sd, rm) {
+          if (sd != null) intCheck(sd, 1, MAX);
+          return format(this, sd, rm, 2);
+        };
+        P4.toString = function(b2) {
+          var str, n = this, s = n.s, e = n.e;
+          if (e === null) {
+            if (s) {
+              str = "Infinity";
+              if (s < 0) str = "-" + str;
+            } else {
+              str = "NaN";
+            }
+          } else {
+            if (b2 == null) {
+              str = e <= TO_EXP_NEG || e >= TO_EXP_POS ? toExponential(coeffToString(n.c), e) : toFixedPoint(coeffToString(n.c), e, "0");
+            } else if (b2 === 10 && alphabetHasNormalDecimalDigits) {
+              n = round(new BigNumber2(n), DECIMAL_PLACES + e + 1, ROUNDING_MODE);
+              str = toFixedPoint(coeffToString(n.c), n.e, "0");
+            } else {
+              intCheck(b2, 2, ALPHABET.length, "Base");
+              str = convertBase(toFixedPoint(coeffToString(n.c), e, "0"), 10, b2, s, true);
+            }
+            if (s < 0 && n.c[0]) str = "-" + str;
+          }
+          return str;
+        };
+        P4.valueOf = P4.toJSON = function() {
+          return valueOf(this);
+        };
+        P4._isBigNumber = true;
+        if (configObject != null) BigNumber2.set(configObject);
+        return BigNumber2;
+      }
+      function bitFloor(n) {
+        var i = n | 0;
+        return n > 0 || n === i ? i : i - 1;
+      }
+      function coeffToString(a) {
+        var s, z5, i = 1, j2 = a.length, r = a[0] + "";
+        for (; i < j2; ) {
+          s = a[i++] + "";
+          z5 = LOG_BASE - s.length;
+          for (; z5--; s = "0" + s) ;
+          r += s;
+        }
+        for (j2 = r.length; r.charCodeAt(--j2) === 48; ) ;
+        return r.slice(0, j2 + 1 || 1);
+      }
+      function compare(x4, y2) {
+        var a, b2, xc = x4.c, yc = y2.c, i = x4.s, j2 = y2.s, k2 = x4.e, l = y2.e;
+        if (!i || !j2) return null;
+        a = xc && !xc[0];
+        b2 = yc && !yc[0];
+        if (a || b2) return a ? b2 ? 0 : -j2 : i;
+        if (i != j2) return i;
+        a = i < 0;
+        b2 = k2 == l;
+        if (!xc || !yc) return b2 ? 0 : !xc ^ a ? 1 : -1;
+        if (!b2) return k2 > l ^ a ? 1 : -1;
+        j2 = (k2 = xc.length) < (l = yc.length) ? k2 : l;
+        for (i = 0; i < j2; i++) if (xc[i] != yc[i]) return xc[i] > yc[i] ^ a ? 1 : -1;
+        return k2 == l ? 0 : k2 > l ^ a ? 1 : -1;
+      }
+      function intCheck(n, min, max3, name) {
+        if (n < min || n > max3 || n !== mathfloor(n)) {
+          throw Error(bignumberError + (name || "Argument") + (typeof n == "number" ? n < min || n > max3 ? " out of range: " : " not an integer: " : " not a primitive number: ") + String(n));
+        }
+      }
+      function isOdd(n) {
+        var k2 = n.c.length - 1;
+        return bitFloor(n.e / LOG_BASE) == k2 && n.c[k2] % 2 != 0;
+      }
+      function toExponential(str, e) {
+        return (str.length > 1 ? str.charAt(0) + "." + str.slice(1) : str) + (e < 0 ? "e" : "e+") + e;
+      }
+      function toFixedPoint(str, e, z5) {
+        var len, zs2;
+        if (e < 0) {
+          for (zs2 = z5 + "."; ++e; zs2 += z5) ;
+          str = zs2 + str;
+        } else {
+          len = str.length;
+          if (++e > len) {
+            for (zs2 = z5, e -= len; --e; zs2 += z5) ;
+            str += zs2;
+          } else if (e < len) {
+            str = str.slice(0, e) + "." + str.slice(e);
+          }
+        }
+        return str;
+      }
+      BigNumber = clone();
+      BigNumber["default"] = BigNumber.BigNumber = BigNumber;
+      if (typeof define == "function" && define.amd) {
+        define(function() {
+          return BigNumber;
+        });
+      } else if (typeof module2 != "undefined" && module2.exports) {
+        module2.exports = BigNumber;
+      } else {
+        if (!globalObject) {
+          globalObject = typeof self != "undefined" && self ? self : window;
+        }
+        globalObject.BigNumber = BigNumber;
+      }
+    })(exports);
+  }
+});
+
+// node_modules/arweave/web/ar.js
+var require_ar = __commonJS({
+  "node_modules/arweave/web/ar.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    var bignumber_js_1 = require_bignumber();
+    var Ar4 = class {
+      constructor() {
+        /**
+         * Method to take a string value and return a bignumber object.
+         *
+         * @protected
+         * @type {Function}
+         * @memberof Arweave
+         */
+        __publicField(this, "BigNum");
+        this.BigNum = (value, decimals) => {
+          let instance = bignumber_js_1.BigNumber.clone({ DECIMAL_PLACES: decimals });
+          return new instance(value);
+        };
+      }
+      winstonToAr(winstonString, { formatted = false, decimals = 12, trim = true } = {}) {
+        let number = this.stringToBigNum(winstonString, decimals).shiftedBy(-12);
+        return formatted ? number.toFormat(decimals) : number.toFixed(decimals);
+      }
+      arToWinston(arString, { formatted = false } = {}) {
+        let number = this.stringToBigNum(arString).shiftedBy(12);
+        return formatted ? number.toFormat() : number.toFixed(0);
+      }
+      compare(winstonStringA, winstonStringB) {
+        let a = this.stringToBigNum(winstonStringA);
+        let b2 = this.stringToBigNum(winstonStringB);
+        return a.comparedTo(b2);
+      }
+      isEqual(winstonStringA, winstonStringB) {
+        return this.compare(winstonStringA, winstonStringB) === 0;
+      }
+      isLessThan(winstonStringA, winstonStringB) {
+        let a = this.stringToBigNum(winstonStringA);
+        let b2 = this.stringToBigNum(winstonStringB);
+        return a.isLessThan(b2);
+      }
+      isGreaterThan(winstonStringA, winstonStringB) {
+        let a = this.stringToBigNum(winstonStringA);
+        let b2 = this.stringToBigNum(winstonStringB);
+        return a.isGreaterThan(b2);
+      }
+      add(winstonStringA, winstonStringB) {
+        let a = this.stringToBigNum(winstonStringA);
+        let b2 = this.stringToBigNum(winstonStringB);
+        return a.plus(winstonStringB).toFixed(0);
+      }
+      sub(winstonStringA, winstonStringB) {
+        let a = this.stringToBigNum(winstonStringA);
+        let b2 = this.stringToBigNum(winstonStringB);
+        return a.minus(winstonStringB).toFixed(0);
+      }
+      stringToBigNum(stringValue, decimalPlaces = 12) {
+        return this.BigNum(stringValue, decimalPlaces);
+      }
+    };
+    exports.default = Ar4;
+  }
+});
+
+// node_modules/arweave/web/lib/api.js
+var require_api = __commonJS({
+  "node_modules/arweave/web/lib/api.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    var Api = class {
+      constructor(config) {
+        __publicField(this, "METHOD_GET", "GET");
+        __publicField(this, "METHOD_POST", "POST");
+        __publicField(this, "config");
+        this.applyConfig(config);
+      }
+      applyConfig(config) {
+        this.config = this.mergeDefaults(config);
+      }
+      getConfig() {
+        return this.config;
+      }
+      mergeDefaults(config) {
+        const protocol = config.protocol || "http";
+        const port = config.port || (protocol === "https" ? 443 : 80);
+        return {
+          host: config.host || "127.0.0.1",
+          protocol,
+          port,
+          timeout: config.timeout || 2e4,
+          logging: config.logging || false,
+          logger: config.logger || console.log,
+          network: config.network
+        };
+      }
+      async get(endpoint, config) {
+        return await this.request(endpoint, { ...config, method: this.METHOD_GET });
+      }
+      async post(endpoint, body, config) {
+        var _a7;
+        const headers = new Headers((config == null ? void 0 : config.headers) || {});
+        if (!((_a7 = headers.get("content-type")) == null ? void 0 : _a7.includes("application/json"))) {
+          headers.append("content-type", "application/json");
+        }
+        headers.append("accept", "application/json, text/plain, */*");
+        return await this.request(endpoint, {
+          ...config,
+          method: this.METHOD_POST,
+          body: typeof body !== "string" ? JSON.stringify(body) : body,
+          headers
+        });
+      }
+      async request(endpoint, init) {
+        var _a7;
+        const headers = new Headers((init == null ? void 0 : init.headers) || {});
+        const baseURL = `${this.config.protocol}://${this.config.host}:${this.config.port}`;
+        const responseType = init == null ? void 0 : init.responseType;
+        init == null ? true : delete init.responseType;
+        if (endpoint.startsWith("/")) {
+          endpoint = endpoint.slice(1);
+        }
+        if (this.config.network) {
+          headers.append("x-network", this.config.network);
+        }
+        if (this.config.logging) {
+          this.config.logger(`Requesting: ${baseURL}/${endpoint}`);
+        }
+        let res = await fetch(`${baseURL}/${endpoint}`, {
+          ...init || {},
+          headers
+        });
+        if (this.config.logging) {
+          this.config.logger(`Response:   ${res.url} - ${res.status}`);
+        }
+        const contentType = res.headers.get("content-type");
+        const charset = (_a7 = contentType == null ? void 0 : contentType.match(/charset=([^()<>@,;:\"/[\]?.=\s]*)/i)) == null ? void 0 : _a7[1];
+        const response = res;
+        const decodeText = async () => {
+          if (charset) {
+            try {
+              response.data = new TextDecoder(charset).decode(await res.arrayBuffer());
+            } catch (e) {
+              response.data = await res.text();
+            }
+          } else {
+            response.data = await res.text();
+          }
+        };
+        if (responseType === "arraybuffer") {
+          response.data = await res.arrayBuffer();
+        } else if (responseType === "text") {
+          await decodeText();
+        } else if (responseType === "webstream") {
+          response.data = addAsyncIterator(res.body);
+        } else {
+          try {
+            let test = await res.clone().json();
+            if (typeof test !== "object") {
+              await decodeText();
+            } else {
+              response.data = await res.json();
+            }
+            test = null;
+          } catch (e) {
+            await decodeText();
+          }
+        }
+        return response;
+      }
+    };
+    exports.default = Api;
+    var addAsyncIterator = (body) => {
+      const bodyWithIter = body;
+      if (typeof bodyWithIter[Symbol.asyncIterator] === "undefined") {
+        bodyWithIter[Symbol.asyncIterator] = webIiterator(body);
+      }
+      return bodyWithIter;
+    };
+    var webIiterator = function(stream) {
+      return async function* iteratorGenerator() {
+        const reader = stream.getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done)
+              return;
+            yield value;
+          }
+        } finally {
+          reader.releaseLock();
+        }
+      };
+    };
+  }
+});
+
+// node_modules/arweave/web/lib/utils.js
+var require_utils = __commonJS({
+  "node_modules/arweave/web/lib/utils.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.concatBuffers = concatBuffers;
+    exports.b64UrlToString = b64UrlToString;
+    exports.bufferToString = bufferToString;
+    exports.stringToBuffer = stringToBuffer;
+    exports.stringToB64Url = stringToB64Url;
+    exports.b64UrlToBuffer = b64UrlToBuffer;
+    exports.bufferTob64 = bufferTob64;
+    exports.bufferTob64Url = bufferTob64Url;
+    exports.b64UrlEncode = b64UrlEncode;
+    exports.b64UrlDecode = b64UrlDecode;
+    var B64js = require_base64_js2();
+    function concatBuffers(buffers) {
+      let total_length = 0;
+      for (let i = 0; i < buffers.length; i++) {
+        total_length += buffers[i].byteLength;
+      }
+      let temp = new Uint8Array(total_length);
+      let offset = 0;
+      temp.set(new Uint8Array(buffers[0]), offset);
+      offset += buffers[0].byteLength;
+      for (let i = 1; i < buffers.length; i++) {
+        temp.set(new Uint8Array(buffers[i]), offset);
+        offset += buffers[i].byteLength;
+      }
+      return temp;
+    }
+    function b64UrlToString(b64UrlString) {
+      let buffer = b64UrlToBuffer(b64UrlString);
+      return bufferToString(buffer);
+    }
+    function bufferToString(buffer) {
+      return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    }
+    function stringToBuffer(string) {
+      return new TextEncoder().encode(string);
+    }
+    function stringToB64Url(string) {
+      return bufferTob64Url(stringToBuffer(string));
+    }
+    function b64UrlToBuffer(b64UrlString) {
+      return new Uint8Array(B64js.toByteArray(b64UrlDecode(b64UrlString)));
+    }
+    function bufferTob64(buffer) {
+      return B64js.fromByteArray(new Uint8Array(buffer));
+    }
+    function bufferTob64Url(buffer) {
+      return b64UrlEncode(bufferTob64(buffer));
+    }
+    function b64UrlEncode(b64UrlString) {
+      try {
+        return b64UrlString.replace(/\+/g, "-").replace(/\//g, "_").replace(/\=/g, "");
+      } catch (error) {
+        throw new Error("Failed to encode string", { cause: error });
+      }
+    }
+    function b64UrlDecode(b64UrlString) {
+      try {
+        b64UrlString = b64UrlString.replace(/\-/g, "+").replace(/\_/g, "/");
+        let padding;
+        b64UrlString.length % 4 == 0 ? padding = 0 : padding = 4 - b64UrlString.length % 4;
+        return b64UrlString.concat("=".repeat(padding));
+      } catch (error) {
+        throw new Error("Failed to decode string", { cause: error });
+      }
+    }
+  }
+});
+
+// node_modules/arweave/web/lib/crypto/webcrypto-driver.js
+var require_webcrypto_driver = __commonJS({
+  "node_modules/arweave/web/lib/crypto/webcrypto-driver.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    var ArweaveUtils = require_utils();
+    var WebCryptoDriver = class {
+      constructor() {
+        __publicField(this, "keyLength", 4096);
+        __publicField(this, "publicExponent", 65537);
+        __publicField(this, "hashAlgorithm", "sha256");
+        __publicField(this, "driver");
+        if (!this.detectWebCrypto()) {
+          throw new Error("SubtleCrypto not available!");
+        }
+        this.driver = crypto.subtle;
+      }
+      async generateJWK() {
+        let cryptoKey = await this.driver.generateKey({
+          name: "RSA-PSS",
+          modulusLength: 4096,
+          publicExponent: new Uint8Array([1, 0, 1]),
+          hash: {
+            name: "SHA-256"
+          }
+        }, true, ["sign"]);
+        let jwk = await this.driver.exportKey("jwk", cryptoKey.privateKey);
+        return {
+          kty: jwk.kty,
+          e: jwk.e,
+          n: jwk.n,
+          d: jwk.d,
+          p: jwk.p,
+          q: jwk.q,
+          dp: jwk.dp,
+          dq: jwk.dq,
+          qi: jwk.qi
+        };
+      }
+      async sign(jwk, data, { saltLength } = {}) {
+        let signature = await this.driver.sign({
+          name: "RSA-PSS",
+          saltLength: 32
+        }, await this.jwkToCryptoKey(jwk), data);
+        return new Uint8Array(signature);
+      }
+      async hash(data, algorithm = "SHA-256") {
+        let digest = await this.driver.digest(algorithm, data);
+        return new Uint8Array(digest);
+      }
+      async verify(publicModulus, data, signature) {
+        const publicKey = {
+          kty: "RSA",
+          e: "AQAB",
+          n: publicModulus
+        };
+        const key = await this.jwkToPublicCryptoKey(publicKey);
+        const digest = await this.driver.digest("SHA-256", data);
+        const salt0 = await this.driver.verify({
+          name: "RSA-PSS",
+          saltLength: 0
+        }, key, signature, data);
+        const salt32 = await this.driver.verify({
+          name: "RSA-PSS",
+          saltLength: 32
+        }, key, signature, data);
+        const saltLengthN = Math.ceil((key.algorithm.modulusLength - 1) / 8) - digest.byteLength - 2;
+        const saltN = await this.driver.verify({
+          name: "RSA-PSS",
+          saltLength: saltLengthN
+        }, key, signature, data);
+        const result2 = salt0 || salt32 || saltN;
+        if (!result2) {
+          const details = {
+            algorithm: key.algorithm.name,
+            modulusLength: key.algorithm.modulusLength,
+            keyUsages: key.usages,
+            saltLengthsAttempted: `0, 32, ${saltLengthN}`
+          };
+          console.warn("Transaction Verification Failed! \n", `Details: ${JSON.stringify(details, null, 2)} 
+`, "N.B. ArweaveJS is only guaranteed to verify txs created using ArweaveJS.");
+        }
+        return result2;
+      }
+      async jwkToCryptoKey(jwk) {
+        return this.driver.importKey("jwk", jwk, {
+          name: "RSA-PSS",
+          hash: {
+            name: "SHA-256"
+          }
+        }, false, ["sign"]);
+      }
+      async jwkToPublicCryptoKey(publicJwk) {
+        return this.driver.importKey("jwk", publicJwk, {
+          name: "RSA-PSS",
+          hash: {
+            name: "SHA-256"
+          }
+        }, false, ["verify"]);
+      }
+      detectWebCrypto() {
+        if (typeof crypto === "undefined") {
+          return false;
+        }
+        const subtle = crypto == null ? void 0 : crypto.subtle;
+        if (subtle === void 0) {
+          return false;
+        }
+        const names = [
+          "generateKey",
+          "importKey",
+          "exportKey",
+          "digest",
+          "sign"
+        ];
+        return names.every((name) => typeof subtle[name] === "function");
+      }
+      async encrypt(data, key, salt) {
+        const initialKey = await this.driver.importKey("raw", typeof key == "string" ? ArweaveUtils.stringToBuffer(key) : key, {
+          name: "PBKDF2",
+          length: 32
+        }, false, ["deriveKey"]);
+        const derivedkey = await this.driver.deriveKey({
+          name: "PBKDF2",
+          salt: salt ? ArweaveUtils.stringToBuffer(salt) : ArweaveUtils.stringToBuffer("salt"),
+          iterations: 1e5,
+          hash: "SHA-256"
+        }, initialKey, {
+          name: "AES-CBC",
+          length: 256
+        }, false, ["encrypt", "decrypt"]);
+        const iv = new Uint8Array(16);
+        crypto.getRandomValues(iv);
+        const encryptedData = await this.driver.encrypt({
+          name: "AES-CBC",
+          iv
+        }, derivedkey, data);
+        return ArweaveUtils.concatBuffers([iv, encryptedData]);
+      }
+      async decrypt(encrypted, key, salt) {
+        const initialKey = await this.driver.importKey("raw", typeof key == "string" ? ArweaveUtils.stringToBuffer(key) : key, {
+          name: "PBKDF2",
+          length: 32
+        }, false, ["deriveKey"]);
+        const derivedkey = await this.driver.deriveKey({
+          name: "PBKDF2",
+          salt: salt ? ArweaveUtils.stringToBuffer(salt) : ArweaveUtils.stringToBuffer("salt"),
+          iterations: 1e5,
+          hash: "SHA-256"
+        }, initialKey, {
+          name: "AES-CBC",
+          length: 256
+        }, false, ["encrypt", "decrypt"]);
+        const iv = encrypted.slice(0, 16);
+        const data = await this.driver.decrypt({
+          name: "AES-CBC",
+          iv
+        }, derivedkey, encrypted.slice(16));
+        return ArweaveUtils.concatBuffers([data]);
+      }
+    };
+    exports.default = WebCryptoDriver;
+  }
+});
+
+// node_modules/arweave/web/network.js
+var require_network = __commonJS({
+  "node_modules/arweave/web/network.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    var Network = class {
+      constructor(api) {
+        __publicField(this, "api");
+        this.api = api;
+      }
+      getInfo() {
+        return this.api.get(`info`).then((response) => {
+          return response.data;
+        });
+      }
+      getPeers() {
+        return this.api.get(`peers`).then((response) => {
+          return response.data;
+        });
+      }
+    };
+    exports.default = Network;
+  }
+});
+
+// node_modules/arweave/web/lib/error.js
+var require_error = __commonJS({
+  "node_modules/arweave/web/lib/error.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.getError = getError;
+    var ArweaveError = class extends Error {
+      constructor(type3, optional = {}) {
+        var __super = (...args) => {
+          super(...args);
+          __publicField(this, "type");
+          __publicField(this, "response");
+          return this;
+        };
+        if (optional.message) {
+          __super(optional.message);
+        } else {
+          __super();
+        }
+        this.type = type3;
+        this.response = optional.response;
+      }
+      getType() {
+        return this.type;
+      }
+    };
+    exports.default = ArweaveError;
+    function getError(resp) {
+      let data = resp.data;
+      if (typeof resp.data === "string") {
+        try {
+          data = JSON.parse(resp.data);
+        } catch (e) {
+        }
+      }
+      if (resp.data instanceof ArrayBuffer || resp.data instanceof Uint8Array) {
+        try {
+          data = JSON.parse(data.toString());
+        } catch (e) {
+        }
+      }
+      return data ? data.error || data : resp.statusText || "unknown";
+    }
+  }
+});
+
+// node_modules/arweave/web/lib/deepHash.js
+var require_deepHash = __commonJS({
+  "node_modules/arweave/web/lib/deepHash.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.default = deepHash;
+    var common_1 = require_common2();
+    async function deepHash(data) {
+      if (Array.isArray(data)) {
+        const tag2 = common_1.default.utils.concatBuffers([
+          common_1.default.utils.stringToBuffer("list"),
+          common_1.default.utils.stringToBuffer(data.length.toString())
+        ]);
+        return await deepHashChunks(data, await common_1.default.crypto.hash(tag2, "SHA-384"));
+      }
+      const tag = common_1.default.utils.concatBuffers([
+        common_1.default.utils.stringToBuffer("blob"),
+        common_1.default.utils.stringToBuffer(data.byteLength.toString())
+      ]);
+      const taggedHash = common_1.default.utils.concatBuffers([
+        await common_1.default.crypto.hash(tag, "SHA-384"),
+        await common_1.default.crypto.hash(data, "SHA-384")
+      ]);
+      return await common_1.default.crypto.hash(taggedHash, "SHA-384");
+    }
+    async function deepHashChunks(chunks, acc) {
+      if (chunks.length < 1) {
+        return acc;
+      }
+      const hashPair = common_1.default.utils.concatBuffers([
+        acc,
+        await deepHash(chunks[0])
+      ]);
+      const newAcc = await common_1.default.crypto.hash(hashPair, "SHA-384");
+      return await deepHashChunks(chunks.slice(1), newAcc);
+    }
+  }
+});
+
+// node_modules/arweave/web/lib/merkle.js
+var require_merkle = __commonJS({
+  "node_modules/arweave/web/lib/merkle.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.arrayCompare = exports.MIN_CHUNK_SIZE = exports.MAX_CHUNK_SIZE = void 0;
+    exports.chunkData = chunkData;
+    exports.generateLeaves = generateLeaves;
+    exports.computeRootHash = computeRootHash;
+    exports.generateTree = generateTree;
+    exports.generateTransactionChunks = generateTransactionChunks;
+    exports.buildLayers = buildLayers;
+    exports.generateProofs = generateProofs;
+    exports.arrayFlatten = arrayFlatten;
+    exports.intToBuffer = intToBuffer;
+    exports.bufferToInt = bufferToInt;
+    exports.validatePath = validatePath;
+    exports.debug = debug;
+    var common_1 = require_common2();
+    var utils_1 = require_utils();
+    exports.MAX_CHUNK_SIZE = 256 * 1024;
+    exports.MIN_CHUNK_SIZE = 32 * 1024;
+    var NOTE_SIZE = 32;
+    var HASH_SIZE = 32;
+    async function chunkData(data) {
+      let chunks = [];
+      let rest = data;
+      let cursor = 0;
+      while (rest.byteLength >= exports.MAX_CHUNK_SIZE) {
+        let chunkSize = exports.MAX_CHUNK_SIZE;
+        let nextChunkSize = rest.byteLength - exports.MAX_CHUNK_SIZE;
+        if (nextChunkSize > 0 && nextChunkSize < exports.MIN_CHUNK_SIZE) {
+          chunkSize = Math.ceil(rest.byteLength / 2);
+        }
+        const chunk = rest.slice(0, chunkSize);
+        const dataHash = await common_1.default.crypto.hash(chunk);
+        cursor += chunk.byteLength;
+        chunks.push({
+          dataHash,
+          minByteRange: cursor - chunk.byteLength,
+          maxByteRange: cursor
+        });
+        rest = rest.slice(chunkSize);
+      }
+      chunks.push({
+        dataHash: await common_1.default.crypto.hash(rest),
+        minByteRange: cursor,
+        maxByteRange: cursor + rest.byteLength
+      });
+      return chunks;
+    }
+    async function generateLeaves(chunks) {
+      return Promise.all(chunks.map(async ({ dataHash, minByteRange, maxByteRange }) => {
+        return {
+          type: "leaf",
+          id: await hash(await Promise.all([hash(dataHash), hash(intToBuffer(maxByteRange))])),
+          dataHash,
+          minByteRange,
+          maxByteRange
+        };
+      }));
+    }
+    async function computeRootHash(data) {
+      const rootNode = await generateTree(data);
+      return rootNode.id;
+    }
+    async function generateTree(data) {
+      const rootNode = await buildLayers(await generateLeaves(await chunkData(data)));
+      return rootNode;
+    }
+    async function generateTransactionChunks(data) {
+      const chunks = await chunkData(data);
+      const leaves = await generateLeaves(chunks);
+      const root = await buildLayers(leaves);
+      const proofs = await generateProofs(root);
+      const lastChunk = chunks.slice(-1)[0];
+      if (lastChunk.maxByteRange - lastChunk.minByteRange === 0) {
+        chunks.splice(chunks.length - 1, 1);
+        proofs.splice(proofs.length - 1, 1);
+      }
+      return {
+        data_root: root.id,
+        chunks,
+        proofs
+      };
+    }
+    async function buildLayers(nodes, level = 0) {
+      if (nodes.length < 2) {
+        const root = nodes[0];
+        return root;
+      }
+      const nextLayer = [];
+      for (let i = 0; i < nodes.length; i += 2) {
+        nextLayer.push(await hashBranch(nodes[i], nodes[i + 1]));
+      }
+      return buildLayers(nextLayer, level + 1);
+    }
+    function generateProofs(root) {
+      const proofs = resolveBranchProofs(root);
+      if (!Array.isArray(proofs)) {
+        return [proofs];
+      }
+      return arrayFlatten(proofs);
+    }
+    function resolveBranchProofs(node, proof = new Uint8Array(), depth = 0) {
+      if (node.type == "leaf") {
+        return {
+          offset: node.maxByteRange - 1,
+          proof: (0, utils_1.concatBuffers)([
+            proof,
+            node.dataHash,
+            intToBuffer(node.maxByteRange)
+          ])
+        };
+      }
+      if (node.type == "branch") {
+        const partialProof = (0, utils_1.concatBuffers)([
+          proof,
+          node.leftChild.id,
+          node.rightChild.id,
+          intToBuffer(node.byteRange)
+        ]);
+        return [
+          resolveBranchProofs(node.leftChild, partialProof, depth + 1),
+          resolveBranchProofs(node.rightChild, partialProof, depth + 1)
+        ];
+      }
+      throw new Error(`Unexpected node type`);
+    }
+    function arrayFlatten(input) {
+      const flat = [];
+      input.forEach((item) => {
+        if (Array.isArray(item)) {
+          flat.push(...arrayFlatten(item));
+        } else {
+          flat.push(item);
+        }
+      });
+      return flat;
+    }
+    async function hashBranch(left, right) {
+      if (!right) {
+        return left;
+      }
+      let branch = {
+        type: "branch",
+        id: await hash([
+          await hash(left.id),
+          await hash(right.id),
+          await hash(intToBuffer(left.maxByteRange))
+        ]),
+        byteRange: left.maxByteRange,
+        maxByteRange: right.maxByteRange,
+        leftChild: left,
+        rightChild: right
+      };
+      return branch;
+    }
+    async function hash(data) {
+      if (Array.isArray(data)) {
+        data = common_1.default.utils.concatBuffers(data);
+      }
+      return new Uint8Array(await common_1.default.crypto.hash(data));
+    }
+    function intToBuffer(note) {
+      const buffer = new Uint8Array(NOTE_SIZE);
+      for (var i = buffer.length - 1; i >= 0; i--) {
+        var byte = note % 256;
+        buffer[i] = byte;
+        note = (note - byte) / 256;
+      }
+      return buffer;
+    }
+    function bufferToInt(buffer) {
+      let value = 0;
+      for (var i = 0; i < buffer.length; i++) {
+        value *= 256;
+        value += buffer[i];
+      }
+      return value;
+    }
+    var arrayCompare = (a, b2) => a.every((value, index) => b2[index] === value);
+    exports.arrayCompare = arrayCompare;
+    async function validatePath(id, dest, leftBound, rightBound, path2) {
+      if (rightBound <= 0) {
+        return false;
+      }
+      if (dest >= rightBound) {
+        return validatePath(id, 0, rightBound - 1, rightBound, path2);
+      }
+      if (dest < 0) {
+        return validatePath(id, 0, 0, rightBound, path2);
+      }
+      if (path2.length == HASH_SIZE + NOTE_SIZE) {
+        const pathData = path2.slice(0, HASH_SIZE);
+        const endOffsetBuffer = path2.slice(pathData.length, pathData.length + NOTE_SIZE);
+        const pathDataHash = await hash([
+          await hash(pathData),
+          await hash(endOffsetBuffer)
+        ]);
+        let result2 = (0, exports.arrayCompare)(id, pathDataHash);
+        if (result2) {
+          return {
+            offset: rightBound - 1,
+            leftBound,
+            rightBound,
+            chunkSize: rightBound - leftBound
+          };
+        }
+        return false;
+      }
+      const left = path2.slice(0, HASH_SIZE);
+      const right = path2.slice(left.length, left.length + HASH_SIZE);
+      const offsetBuffer = path2.slice(left.length + right.length, left.length + right.length + NOTE_SIZE);
+      const offset = bufferToInt(offsetBuffer);
+      const remainder = path2.slice(left.length + right.length + offsetBuffer.length);
+      const pathHash = await hash([
+        await hash(left),
+        await hash(right),
+        await hash(offsetBuffer)
+      ]);
+      if ((0, exports.arrayCompare)(id, pathHash)) {
+        if (dest < offset) {
+          return await validatePath(left, dest, leftBound, Math.min(rightBound, offset), remainder);
+        }
+        return await validatePath(right, dest, Math.max(leftBound, offset), rightBound, remainder);
+      }
+      return false;
+    }
+    async function debug(proof, output = "") {
+      if (proof.byteLength < 1) {
+        return output;
+      }
+      const left = proof.slice(0, HASH_SIZE);
+      const right = proof.slice(left.length, left.length + HASH_SIZE);
+      const offsetBuffer = proof.slice(left.length + right.length, left.length + right.length + NOTE_SIZE);
+      const offset = bufferToInt(offsetBuffer);
+      const remainder = proof.slice(left.length + right.length + offsetBuffer.length);
+      const pathHash = await hash([
+        await hash(left),
+        await hash(right),
+        await hash(offsetBuffer)
+      ]);
+      const updatedOutput = `${output}
+${JSON.stringify(Buffer.from(left))},${JSON.stringify(Buffer.from(right))},${offset} => ${JSON.stringify(pathHash)}`;
+      return debug(remainder, updatedOutput);
+    }
+  }
+});
+
+// node_modules/arweave/web/lib/transaction.js
+var require_transaction = __commonJS({
+  "node_modules/arweave/web/lib/transaction.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.Tag = void 0;
+    var ArweaveUtils = require_utils();
+    var deepHash_1 = require_deepHash();
+    var merkle_1 = require_merkle();
+    var BaseObject = class {
+      get(field, options) {
+        if (!Object.getOwnPropertyNames(this).includes(field)) {
+          throw new Error(`Field "${field}" is not a property of the Arweave Transaction class.`);
+        }
+        if (this[field] instanceof Uint8Array) {
+          if (options && options.decode && options.string) {
+            return ArweaveUtils.bufferToString(this[field]);
+          }
+          if (options && options.decode && !options.string) {
+            return this[field];
+          }
+          return ArweaveUtils.bufferTob64Url(this[field]);
+        }
+        if (this[field] instanceof Array) {
+          if ((options == null ? void 0 : options.decode) !== void 0 || (options == null ? void 0 : options.string) !== void 0) {
+            if (field === "tags") {
+              console.warn(`Did you mean to use 'transaction["tags"]' ?`);
+            }
+            throw new Error(`Cannot decode or stringify an array.`);
+          }
+          return this[field];
+        }
+        if (options && options.decode == true) {
+          if (options && options.string) {
+            return ArweaveUtils.b64UrlToString(this[field]);
+          }
+          return ArweaveUtils.b64UrlToBuffer(this[field]);
+        }
+        return this[field];
+      }
+    };
+    var Tag = class extends BaseObject {
+      constructor(name, value, decode = false) {
+        super();
+        __publicField(this, "name");
+        __publicField(this, "value");
+        this.name = name;
+        this.value = value;
+      }
+    };
+    exports.Tag = Tag;
+    var Transaction = class extends BaseObject {
+      constructor(attributes = {}) {
+        super();
+        __publicField(this, "format", 2);
+        __publicField(this, "id", "");
+        __publicField(this, "last_tx", "");
+        __publicField(this, "owner", "");
+        __publicField(this, "tags", []);
+        __publicField(this, "target", "");
+        __publicField(this, "quantity", "0");
+        __publicField(this, "data_size", "0");
+        __publicField(this, "data", new Uint8Array());
+        __publicField(this, "data_root", "");
+        __publicField(this, "reward", "0");
+        __publicField(this, "signature", "");
+        // Computed when needed.
+        __publicField(this, "chunks");
+        Object.assign(this, attributes);
+        if (typeof this.data === "string") {
+          this.data = ArweaveUtils.b64UrlToBuffer(this.data);
+        }
+        if (attributes.tags) {
+          this.tags = attributes.tags.map((tag) => {
+            return new Tag(tag.name, tag.value);
+          });
+        }
+      }
+      addTag(name, value) {
+        this.tags.push(new Tag(ArweaveUtils.stringToB64Url(name), ArweaveUtils.stringToB64Url(value)));
+      }
+      toJSON() {
+        return {
+          format: this.format,
+          id: this.id,
+          last_tx: this.last_tx,
+          owner: this.owner,
+          tags: this.tags,
+          target: this.target,
+          quantity: this.quantity,
+          data: ArweaveUtils.bufferTob64Url(this.data),
+          data_size: this.data_size,
+          data_root: this.data_root,
+          data_tree: this.data_tree,
+          reward: this.reward,
+          signature: this.signature
+        };
+      }
+      setOwner(owner) {
+        this.owner = owner;
+      }
+      setSignature({ id, owner, reward, tags, signature }) {
+        this.id = id;
+        this.owner = owner;
+        if (reward)
+          this.reward = reward;
+        if (tags)
+          this.tags = tags;
+        this.signature = signature;
+      }
+      async prepareChunks(data) {
+        if (!this.chunks && data.byteLength > 0) {
+          this.chunks = await (0, merkle_1.generateTransactionChunks)(data);
+          this.data_root = ArweaveUtils.bufferTob64Url(this.chunks.data_root);
+        }
+        if (!this.chunks && data.byteLength === 0) {
+          this.chunks = {
+            chunks: [],
+            data_root: new Uint8Array(),
+            proofs: []
+          };
+          this.data_root = "";
+        }
+      }
+      // Returns a chunk in a format suitable for posting to /chunk.
+      // Similar to `prepareChunks()` this does not operate `this.data`,
+      // instead using the data passed in.
+      getChunk(idx, data) {
+        if (!this.chunks) {
+          throw new Error(`Chunks have not been prepared`);
+        }
+        const proof = this.chunks.proofs[idx];
+        const chunk = this.chunks.chunks[idx];
+        return {
+          data_root: this.data_root,
+          data_size: this.data_size,
+          data_path: ArweaveUtils.bufferTob64Url(proof.proof),
+          offset: proof.offset.toString(),
+          chunk: ArweaveUtils.bufferTob64Url(data.slice(chunk.minByteRange, chunk.maxByteRange))
+        };
+      }
+      async getSignatureData() {
+        switch (this.format) {
+          case 1:
+            let tags = this.tags.reduce((accumulator, tag) => {
+              return ArweaveUtils.concatBuffers([
+                accumulator,
+                tag.get("name", { decode: true, string: false }),
+                tag.get("value", { decode: true, string: false })
+              ]);
+            }, new Uint8Array());
+            return ArweaveUtils.concatBuffers([
+              this.get("owner", { decode: true, string: false }),
+              this.get("target", { decode: true, string: false }),
+              this.get("data", { decode: true, string: false }),
+              ArweaveUtils.stringToBuffer(this.quantity),
+              ArweaveUtils.stringToBuffer(this.reward),
+              this.get("last_tx", { decode: true, string: false }),
+              tags
+            ]);
+          case 2:
+            if (!this.data_root) {
+              await this.prepareChunks(this.data);
+            }
+            const tagList = this.tags.map((tag) => [
+              tag.get("name", { decode: true, string: false }),
+              tag.get("value", { decode: true, string: false })
+            ]);
+            return await (0, deepHash_1.default)([
+              ArweaveUtils.stringToBuffer(this.format.toString()),
+              this.get("owner", { decode: true, string: false }),
+              this.get("target", { decode: true, string: false }),
+              ArweaveUtils.stringToBuffer(this.quantity),
+              ArweaveUtils.stringToBuffer(this.reward),
+              this.get("last_tx", { decode: true, string: false }),
+              tagList,
+              ArweaveUtils.stringToBuffer(this.data_size),
+              this.get("data_root", { decode: true, string: false })
+            ]);
+          default:
+            throw new Error(`Unexpected transaction format: ${this.format}`);
+        }
+      }
+    };
+    exports.default = Transaction;
+  }
+});
+
+// node_modules/arweave/web/lib/transaction-uploader.js
+var require_transaction_uploader = __commonJS({
+  "node_modules/arweave/web/lib/transaction-uploader.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.TransactionUploader = void 0;
+    var transaction_1 = require_transaction();
+    var ArweaveUtils = require_utils();
+    var error_1 = require_error();
+    var merkle_1 = require_merkle();
+    var MAX_CHUNKS_IN_BODY = 1;
+    var FATAL_CHUNK_UPLOAD_ERRORS = [
+      "invalid_json",
+      "chunk_too_big",
+      "data_path_too_big",
+      "offset_too_big",
+      "data_size_too_big",
+      "chunk_proof_ratio_not_attractive",
+      "invalid_proof"
+    ];
+    var ERROR_DELAY = 1e3 * 40;
+    var TransactionUploader = class _TransactionUploader {
+      constructor(api, transaction) {
+        __publicField(this, "api");
+        __publicField(this, "chunkIndex", 0);
+        __publicField(this, "txPosted", false);
+        __publicField(this, "transaction");
+        __publicField(this, "lastRequestTimeEnd", 0);
+        __publicField(this, "totalErrors", 0);
+        // Not serialized.
+        __publicField(this, "data");
+        __publicField(this, "lastResponseStatus", 0);
+        __publicField(this, "lastResponseError", "");
+        this.api = api;
+        if (!transaction.id) {
+          throw new Error(`Transaction is not signed`);
+        }
+        if (!transaction.chunks) {
+          throw new Error(`Transaction chunks not prepared`);
+        }
+        this.data = transaction.data;
+        this.transaction = new transaction_1.default(Object.assign({}, transaction, { data: new Uint8Array(0) }));
+      }
+      get isComplete() {
+        return this.txPosted && this.chunkIndex === this.transaction.chunks.chunks.length;
+      }
+      get totalChunks() {
+        return this.transaction.chunks.chunks.length;
+      }
+      get uploadedChunks() {
+        return this.chunkIndex;
+      }
+      get pctComplete() {
+        return Math.trunc(this.uploadedChunks / this.totalChunks * 100);
+      }
+      /**
+       * Uploads the next part of the transaction.
+       * On the first call this posts the transaction
+       * itself and on any subsequent calls uploads the
+       * next chunk until it completes.
+       */
+      async uploadChunk(chunkIndex_) {
+        if (this.isComplete) {
+          throw new Error(`Upload is already complete`);
+        }
+        if (this.lastResponseError !== "") {
+          this.totalErrors++;
+        } else {
+          this.totalErrors = 0;
+        }
+        if (this.totalErrors === 100) {
+          throw new Error(`Unable to complete upload: ${this.lastResponseStatus}: ${this.lastResponseError}`);
+        }
+        let delay = this.lastResponseError === "" ? 0 : Math.max(this.lastRequestTimeEnd + ERROR_DELAY - Date.now(), ERROR_DELAY);
+        if (delay > 0) {
+          delay = delay - delay * Math.random() * 0.3;
+          await new Promise((res) => setTimeout(res, delay));
+        }
+        this.lastResponseError = "";
+        if (!this.txPosted) {
+          await this.postTransaction();
+          return;
+        }
+        if (chunkIndex_) {
+          this.chunkIndex = chunkIndex_;
+        }
+        const chunk = this.transaction.getChunk(chunkIndex_ || this.chunkIndex, this.data);
+        const chunkOk = await (0, merkle_1.validatePath)(this.transaction.chunks.data_root, parseInt(chunk.offset), 0, parseInt(chunk.data_size), ArweaveUtils.b64UrlToBuffer(chunk.data_path));
+        if (!chunkOk) {
+          throw new Error(`Unable to validate chunk ${this.chunkIndex}`);
+        }
+        const resp = await this.api.post(`chunk`, this.transaction.getChunk(this.chunkIndex, this.data)).catch((e) => {
+          console.error(e.message);
+          return { status: -1, data: { error: e.message } };
+        });
+        this.lastRequestTimeEnd = Date.now();
+        this.lastResponseStatus = resp.status;
+        if (this.lastResponseStatus == 200) {
+          this.chunkIndex++;
+        } else {
+          this.lastResponseError = (0, error_1.getError)(resp);
+          if (FATAL_CHUNK_UPLOAD_ERRORS.includes(this.lastResponseError)) {
+            throw new Error(`Fatal error uploading chunk ${this.chunkIndex}: ${this.lastResponseError}`);
+          }
+        }
+      }
+      /**
+       * Reconstructs an upload from its serialized state and data.
+       * Checks if data matches the expected data_root.
+       *
+       * @param serialized
+       * @param data
+       */
+      static async fromSerialized(api, serialized, data) {
+        if (!serialized || typeof serialized.chunkIndex !== "number" || typeof serialized.transaction !== "object") {
+          throw new Error(`Serialized object does not match expected format.`);
+        }
+        var transaction = new transaction_1.default(serialized.transaction);
+        if (!transaction.chunks) {
+          await transaction.prepareChunks(data);
+        }
+        const upload = new _TransactionUploader(api, transaction);
+        upload.chunkIndex = serialized.chunkIndex;
+        upload.lastRequestTimeEnd = serialized.lastRequestTimeEnd;
+        upload.lastResponseError = serialized.lastResponseError;
+        upload.lastResponseStatus = serialized.lastResponseStatus;
+        upload.txPosted = serialized.txPosted;
+        upload.data = data;
+        if (upload.transaction.data_root !== serialized.transaction.data_root) {
+          throw new Error(`Data mismatch: Uploader doesn't match provided data.`);
+        }
+        return upload;
+      }
+      /**
+       * Reconstruct an upload from the tx metadata, ie /tx/<id>.
+       *
+       * @param api
+       * @param id
+       * @param data
+       */
+      static async fromTransactionId(api, id) {
+        const resp = await api.get(`tx/${id}`);
+        if (resp.status !== 200) {
+          throw new Error(`Tx ${id} not found: ${resp.status}`);
+        }
+        const transaction = resp.data;
+        transaction.data = new Uint8Array(0);
+        const serialized = {
+          txPosted: true,
+          chunkIndex: 0,
+          lastResponseError: "",
+          lastRequestTimeEnd: 0,
+          lastResponseStatus: 0,
+          transaction
+        };
+        return serialized;
+      }
+      toJSON() {
+        return {
+          chunkIndex: this.chunkIndex,
+          transaction: this.transaction,
+          lastRequestTimeEnd: this.lastRequestTimeEnd,
+          lastResponseStatus: this.lastResponseStatus,
+          lastResponseError: this.lastResponseError,
+          txPosted: this.txPosted
+        };
+      }
+      // POST to /tx
+      async postTransaction() {
+        const uploadInBody = this.totalChunks <= MAX_CHUNKS_IN_BODY;
+        if (uploadInBody) {
+          this.transaction.data = this.data;
+          const resp2 = await this.api.post(`tx`, this.transaction).catch((e) => {
+            console.error(e);
+            return { status: -1, data: { error: e.message } };
+          });
+          this.lastRequestTimeEnd = Date.now();
+          this.lastResponseStatus = resp2.status;
+          this.transaction.data = new Uint8Array(0);
+          if (resp2.status >= 200 && resp2.status < 300) {
+            this.txPosted = true;
+            this.chunkIndex = MAX_CHUNKS_IN_BODY;
+            return;
+          }
+          this.lastResponseError = (0, error_1.getError)(resp2);
+          throw new Error(`Unable to upload transaction: ${resp2.status}, ${this.lastResponseError}`);
+        }
+        const resp = await this.api.post(`tx`, this.transaction);
+        this.lastRequestTimeEnd = Date.now();
+        this.lastResponseStatus = resp.status;
+        if (!(resp.status >= 200 && resp.status < 300)) {
+          this.lastResponseError = (0, error_1.getError)(resp);
+          throw new Error(`Unable to upload transaction: ${resp.status}, ${this.lastResponseError}`);
+        }
+        this.txPosted = true;
+      }
+    };
+    exports.TransactionUploader = TransactionUploader;
+  }
+});
+
+// node_modules/arconnect/index.js
+var require_arconnect = __commonJS({
+  "node_modules/arconnect/index.js"(exports, module2) {
+    module2.exports = {};
+  }
+});
+
+// node_modules/arweave/web/transactions.js
+var require_transactions = __commonJS({
+  "node_modules/arweave/web/transactions.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    var error_1 = require_error();
+    var transaction_1 = require_transaction();
+    var ArweaveUtils = require_utils();
+    var transaction_uploader_1 = require_transaction_uploader();
+    require_arconnect();
+    var Transactions = class {
+      constructor(api, crypto2, chunks) {
+        __publicField(this, "api");
+        __publicField(this, "crypto");
+        __publicField(this, "chunks");
+        this.api = api;
+        this.crypto = crypto2;
+        this.chunks = chunks;
+      }
+      async getTransactionAnchor() {
+        const res = await this.api.get(`tx_anchor`);
+        if (!res.data.match(/^[a-z0-9_-]{43,}/i) || !res.ok) {
+          throw new Error(`Could not getTransactionAnchor. Received: ${res.data}. Status: ${res.status}, ${res.statusText}`);
+        }
+        return res.data;
+      }
+      async getPrice(byteSize, targetAddress) {
+        let endpoint = targetAddress ? `price/${byteSize}/${targetAddress}` : `price/${byteSize}`;
+        const res = await this.api.get(endpoint);
+        if (!/^\d+$/.test(res.data) || !res.ok) {
+          throw new Error(`Could not getPrice. Received: ${res.data}. Status: ${res.status}, ${res.statusText}`);
+        }
+        return res.data;
+      }
+      async get(id) {
+        const response = await this.api.get(`tx/${id}`);
+        if (response.status == 200) {
+          const data_size = parseInt(response.data.data_size);
+          if (response.data.format >= 2 && data_size > 0 && data_size <= 1024 * 1024 * 12) {
+            const data = await this.getData(id);
+            return new transaction_1.default({
+              ...response.data,
+              data
+            });
+          }
+          return new transaction_1.default({
+            ...response.data,
+            format: response.data.format || 1
+          });
+        }
+        if (response.status == 404) {
+          throw new error_1.default(
+            "TX_NOT_FOUND"
+            /* ArweaveErrorType.TX_NOT_FOUND */
+          );
+        }
+        if (response.status == 410) {
+          throw new error_1.default(
+            "TX_FAILED"
+            /* ArweaveErrorType.TX_FAILED */
+          );
+        }
+        throw new error_1.default(
+          "TX_INVALID"
+          /* ArweaveErrorType.TX_INVALID */
+        );
+      }
+      fromRaw(attributes) {
+        return new transaction_1.default(attributes);
+      }
+      /** @deprecated use GQL https://gql-guide.arweave.net */
+      async search(tagName, tagValue) {
+        return this.api.post(`arql`, {
+          op: "equals",
+          expr1: tagName,
+          expr2: tagValue
+        }).then((response) => {
+          if (!response.data) {
+            return [];
+          }
+          return response.data;
+        });
+      }
+      getStatus(id) {
+        return this.api.get(`tx/${id}/status`).then((response) => {
+          if (response.status == 200) {
+            return {
+              status: 200,
+              confirmed: response.data
+            };
+          }
+          return {
+            status: response.status,
+            confirmed: null
+          };
+        });
+      }
+      async getData(id, options) {
+        let data = void 0;
+        try {
+          data = await this.chunks.downloadChunkedData(id);
+        } catch (error) {
+          console.error(`Error while trying to download chunked data for ${id}`);
+          console.error(error);
+        }
+        if (!data) {
+          console.warn(`Falling back to gateway cache for ${id}`);
+          try {
+            const { data: resData, ok, status, statusText } = await this.api.get(`/${id}`, { responseType: "arraybuffer" });
+            if (!ok) {
+              throw new Error(`Bad http status code`, {
+                cause: { status, statusText }
+              });
+            }
+            data = resData;
+          } catch (error) {
+            console.error(`Error while trying to download contiguous data from gateway cache for ${id}`);
+            console.error(error);
+          }
+        }
+        if (!data) {
+          throw new Error(`${id} data was not found!`);
+        }
+        if (options && options.decode && !options.string) {
+          return data;
+        }
+        if (options && options.decode && options.string) {
+          return ArweaveUtils.bufferToString(data);
+        }
+        return ArweaveUtils.bufferTob64Url(data);
+      }
+      async sign(transaction, jwk, options) {
+        const isJwk = (obj) => {
+          let valid = true;
+          ["n", "e", "d", "p", "q", "dp", "dq", "qi"].map((key) => !(key in obj) && (valid = false));
+          return valid;
+        };
+        const validJwk = typeof jwk === "object" && isJwk(jwk);
+        const externalWallet = typeof arweaveWallet === "object";
+        if (!validJwk && !externalWallet) {
+          throw new Error(`No valid JWK or external wallet found to sign transaction.`);
+        } else if (validJwk) {
+          transaction.setOwner(jwk.n);
+          let dataToSign = await transaction.getSignatureData();
+          let rawSignature = await this.crypto.sign(jwk, dataToSign, options);
+          let id = await this.crypto.hash(rawSignature);
+          transaction.setSignature({
+            id: ArweaveUtils.bufferTob64Url(id),
+            owner: jwk.n,
+            signature: ArweaveUtils.bufferTob64Url(rawSignature)
+          });
+        } else if (externalWallet) {
+          try {
+            const existingPermissions = await arweaveWallet.getPermissions();
+            if (!existingPermissions.includes("SIGN_TRANSACTION"))
+              await arweaveWallet.connect(["SIGN_TRANSACTION"]);
+          } catch (e) {
+          }
+          const signedTransaction = await arweaveWallet.sign(transaction, options);
+          transaction.setSignature({
+            id: signedTransaction.id,
+            owner: signedTransaction.owner,
+            reward: signedTransaction.reward,
+            tags: signedTransaction.tags,
+            signature: signedTransaction.signature
+          });
+        } else {
+          throw new Error(`An error occurred while signing. Check wallet is valid`);
+        }
+      }
+      async verify(transaction) {
+        const signaturePayload = await transaction.getSignatureData();
+        const rawSignature = transaction.get("signature", {
+          decode: true,
+          string: false
+        });
+        const expectedId = ArweaveUtils.bufferTob64Url(await this.crypto.hash(rawSignature));
+        if (transaction.id !== expectedId) {
+          throw new Error(`Invalid transaction signature or ID! The transaction ID doesn't match the expected SHA-256 hash of the signature.`);
+        }
+        return this.crypto.verify(transaction.owner, signaturePayload, rawSignature);
+      }
+      async post(transaction) {
+        if (typeof transaction === "string") {
+          transaction = new transaction_1.default(JSON.parse(transaction));
+        } else if (typeof transaction.readInt32BE === "function") {
+          transaction = new transaction_1.default(JSON.parse(transaction.toString()));
+        } else if (typeof transaction === "object" && !(transaction instanceof transaction_1.default)) {
+          transaction = new transaction_1.default(transaction);
+        }
+        if (!(transaction instanceof transaction_1.default)) {
+          throw new Error(`Must be Transaction object`);
+        }
+        if (!transaction.chunks) {
+          await transaction.prepareChunks(transaction.data);
+        }
+        const uploader = await this.getUploader(transaction, transaction.data);
+        try {
+          while (!uploader.isComplete) {
+            await uploader.uploadChunk();
+          }
+        } catch (e) {
+          if (uploader.lastResponseStatus > 0) {
+            return {
+              status: uploader.lastResponseStatus,
+              statusText: uploader.lastResponseError,
+              data: {
+                error: uploader.lastResponseError
+              }
+            };
+          }
+          throw e;
+        }
+        return {
+          status: 200,
+          statusText: "OK",
+          data: {}
+        };
+      }
+      /**
+       * Gets an uploader than can be used to upload a transaction chunk by chunk, giving progress
+       * and the ability to resume.
+       *
+       * Usage example:
+       *
+       * ```
+       * const uploader = arweave.transactions.getUploader(transaction);
+       * while (!uploader.isComplete) {
+       *   await uploader.uploadChunk();
+       *   console.log(`${uploader.pctComplete}%`);
+       * }
+       * ```
+       *
+       * @param upload a Transaction object, a previously save progress object, or a transaction id.
+       * @param data the data of the transaction. Required when resuming an upload.
+       */
+      async getUploader(upload, data) {
+        let uploader;
+        if (data instanceof ArrayBuffer) {
+          data = new Uint8Array(data);
+        }
+        if (upload instanceof transaction_1.default) {
+          if (!data) {
+            data = upload.data;
+          }
+          if (!(data instanceof Uint8Array)) {
+            throw new Error("Data format is invalid");
+          }
+          if (!upload.chunks) {
+            await upload.prepareChunks(data);
+          }
+          uploader = new transaction_uploader_1.TransactionUploader(this.api, upload);
+          if (!uploader.data || uploader.data.length === 0) {
+            uploader.data = data;
+          }
+        } else {
+          if (typeof upload === "string") {
+            upload = await transaction_uploader_1.TransactionUploader.fromTransactionId(this.api, upload);
+          }
+          if (!data || !(data instanceof Uint8Array)) {
+            throw new Error(`Must provide data when resuming upload`);
+          }
+          uploader = await transaction_uploader_1.TransactionUploader.fromSerialized(this.api, upload, data);
+        }
+        return uploader;
+      }
+      /**
+       * Async generator version of uploader
+       *
+       * Usage example:
+       *
+       * ```
+       * for await (const uploader of arweave.transactions.upload(tx)) {
+       *  console.log(`${uploader.pctComplete}%`);
+       * }
+       * ```
+       *
+       * @param upload a Transaction object, a previously save uploader, or a transaction id.
+       * @param data the data of the transaction. Required when resuming an upload.
+       */
+      async *upload(upload, data) {
+        const uploader = await this.getUploader(upload, data);
+        while (!uploader.isComplete) {
+          await uploader.uploadChunk();
+          yield uploader;
+        }
+        return uploader;
+      }
+    };
+    exports.default = Transactions;
+  }
+});
+
+// node_modules/arweave/web/wallets.js
+var require_wallets = __commonJS({
+  "node_modules/arweave/web/wallets.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    var ArweaveUtils = require_utils();
+    require_arconnect();
+    var Wallets = class {
+      constructor(api, crypto2) {
+        __publicField(this, "api");
+        __publicField(this, "crypto");
+        this.api = api;
+        this.crypto = crypto2;
+      }
+      /**
+       * Get the wallet balance for the given address.
+       *
+       * @param {string} address - The arweave address to get the balance for.
+       *
+       * @returns {Promise<string>} - Promise which resolves with a winston string balance.
+       */
+      getBalance(address) {
+        return this.api.get(`wallet/${address}/balance`).then((response) => {
+          return response.data;
+        });
+      }
+      /**
+       * Get the last transaction ID for the given wallet address.
+       *
+       * @param {string} address - The arweave address to get the transaction for.
+       *
+       * @returns {Promise<string>} - Promise which resolves with a transaction ID.
+       */
+      getLastTransactionID(address) {
+        return this.api.get(`wallet/${address}/last_tx`).then((response) => {
+          return response.data;
+        });
+      }
+      generate() {
+        return this.crypto.generateJWK();
+      }
+      async jwkToAddress(jwk) {
+        if (!jwk || jwk === "use_wallet") {
+          return this.getAddress();
+        } else {
+          return this.getAddress(jwk);
+        }
+      }
+      async getAddress(jwk) {
+        if (!jwk || jwk === "use_wallet") {
+          try {
+            await arweaveWallet.connect(["ACCESS_ADDRESS"]);
+          } catch (e) {
+          }
+          return arweaveWallet.getActiveAddress();
+        } else {
+          return this.ownerToAddress(jwk.n);
+        }
+      }
+      async ownerToAddress(owner) {
+        return ArweaveUtils.bufferTob64Url(await this.crypto.hash(ArweaveUtils.b64UrlToBuffer(owner)));
+      }
+    };
+    exports.default = Wallets;
+  }
+});
+
+// node_modules/arweave/web/silo.js
+var require_silo = __commonJS({
+  "node_modules/arweave/web/silo.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.SiloResource = void 0;
+    var ArweaveUtils = require_utils();
+    var Silo = class {
+      constructor(api, crypto2, transactions) {
+        __publicField(this, "api");
+        __publicField(this, "crypto");
+        __publicField(this, "transactions");
+        this.api = api;
+        this.crypto = crypto2;
+        this.transactions = transactions;
+      }
+      async get(siloURI) {
+        if (!siloURI) {
+          throw new Error(`No Silo URI specified`);
+        }
+        const resource = await this.parseUri(siloURI);
+        const ids = await this.transactions.search("Silo-Name", resource.getAccessKey());
+        if (ids.length == 0) {
+          throw new Error(`No data could be found for the Silo URI: ${siloURI}`);
+        }
+        const transaction = await this.transactions.get(ids[0]);
+        if (!transaction) {
+          throw new Error(`No data could be found for the Silo URI: ${siloURI}`);
+        }
+        const encrypted = transaction.get("data", { decode: true, string: false });
+        return this.crypto.decrypt(encrypted, resource.getEncryptionKey());
+      }
+      async readTransactionData(transaction, siloURI) {
+        if (!siloURI) {
+          throw new Error(`No Silo URI specified`);
+        }
+        const resource = await this.parseUri(siloURI);
+        const encrypted = transaction.get("data", { decode: true, string: false });
+        return this.crypto.decrypt(encrypted, resource.getEncryptionKey());
+      }
+      async parseUri(siloURI) {
+        const parsed = siloURI.match(/^([a-z0-9-_]+)\.([0-9]+)/i);
+        if (!parsed) {
+          throw new Error(`Invalid Silo name, must be a name in the format of [a-z0-9]+.[0-9]+, e.g. 'bubble.7'`);
+        }
+        const siloName = parsed[1];
+        const hashIterations = Math.pow(2, parseInt(parsed[2]));
+        const digest = await this.hash(ArweaveUtils.stringToBuffer(siloName), hashIterations);
+        const accessKey = ArweaveUtils.bufferTob64(digest.slice(0, 15));
+        const encryptionkey = await this.hash(digest.slice(16, 31), 1);
+        return new SiloResource(siloURI, accessKey, encryptionkey);
+      }
+      async hash(input, iterations) {
+        let digest = await this.crypto.hash(input);
+        for (let count = 0; count < iterations - 1; count++) {
+          digest = await this.crypto.hash(digest);
+        }
+        return digest;
+      }
+    };
+    exports.default = Silo;
+    var SiloResource = class {
+      constructor(uri, accessKey, encryptionKey) {
+        __publicField(this, "uri");
+        __publicField(this, "accessKey");
+        __publicField(this, "encryptionKey");
+        this.uri = uri;
+        this.accessKey = accessKey;
+        this.encryptionKey = encryptionKey;
+      }
+      getUri() {
+        return this.uri;
+      }
+      getAccessKey() {
+        return this.accessKey;
+      }
+      getEncryptionKey() {
+        return this.encryptionKey;
+      }
+    };
+    exports.SiloResource = SiloResource;
+  }
+});
+
+// node_modules/arweave/web/chunks.js
+var require_chunks = __commonJS({
+  "node_modules/arweave/web/chunks.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    var error_1 = require_error();
+    var ArweaveUtils = require_utils();
+    var Chunks = class {
+      constructor(api) {
+        __publicField(this, "api");
+        this.api = api;
+      }
+      async getTransactionOffset(id) {
+        const resp = await this.api.get(`tx/${id}/offset`);
+        if (resp.status === 200) {
+          return resp.data;
+        }
+        throw new Error(`Unable to get transaction offset: ${(0, error_1.getError)(resp)}`);
+      }
+      async getChunk(offset) {
+        const resp = await this.api.get(`chunk/${offset}`);
+        if (resp.status === 200) {
+          return resp.data;
+        }
+        throw new Error(`Unable to get chunk: ${(0, error_1.getError)(resp)}`);
+      }
+      async getChunkData(offset) {
+        const chunk = await this.getChunk(offset);
+        const buf = ArweaveUtils.b64UrlToBuffer(chunk.chunk);
+        return buf;
+      }
+      firstChunkOffset(offsetResponse) {
+        return parseInt(offsetResponse.offset) - parseInt(offsetResponse.size) + 1;
+      }
+      async downloadChunkedData(id) {
+        const offsetResponse = await this.getTransactionOffset(id);
+        const size = parseInt(offsetResponse.size);
+        const endOffset = parseInt(offsetResponse.offset);
+        const startOffset = endOffset - size + 1;
+        const data = new Uint8Array(size);
+        let byte = 0;
+        while (byte < size) {
+          if (this.api.config.logging) {
+            console.log(`[chunk] ${byte}/${size}`);
+          }
+          let chunkData;
+          try {
+            chunkData = await this.getChunkData(startOffset + byte);
+          } catch (error) {
+            console.error(`[chunk] Failed to fetch chunk at offset ${startOffset + byte}`);
+            console.error(`[chunk] This could indicate that the chunk wasn't uploaded or hasn't yet seeded properly to a particular gateway/node`);
+          }
+          if (chunkData) {
+            data.set(chunkData, byte);
+            byte += chunkData.length;
+          } else {
+            throw new Error(`Couldn't complete data download at ${byte}/${size}`);
+          }
+        }
+        return data;
+      }
+    };
+    exports.default = Chunks;
+  }
+});
+
+// node_modules/arweave/web/blocks.js
+var require_blocks = __commonJS({
+  "node_modules/arweave/web/blocks.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    var error_1 = require_error();
+    require_arconnect();
+    var _Blocks = class _Blocks {
+      constructor(api, network) {
+        __publicField(this, "api");
+        __publicField(this, "network");
+        this.api = api;
+        this.network = network;
+      }
+      /**
+       * Gets a block by its "indep_hash"
+       */
+      async get(indepHash) {
+        const response = await this.api.get(`${_Blocks.HASH_ENDPOINT}${indepHash}`);
+        if (response.status === 200) {
+          return response.data;
+        } else {
+          if (response.status === 404) {
+            throw new error_1.default(
+              "BLOCK_NOT_FOUND"
+              /* ArweaveErrorType.BLOCK_NOT_FOUND */
+            );
+          } else {
+            throw new Error(`Error while loading block data: ${response}`);
+          }
+        }
+      }
+      /**
+       * Gets a block by its "height"
+       */
+      async getByHeight(height) {
+        const response = await this.api.get(`${_Blocks.HEIGHT_ENDPOINT}${height}`);
+        if (response.status === 200) {
+          return response.data;
+        } else {
+          if (response.status === 404) {
+            throw new error_1.default(
+              "BLOCK_NOT_FOUND"
+              /* ArweaveErrorType.BLOCK_NOT_FOUND */
+            );
+          } else {
+            throw new Error(`Error while loading block data: ${response}`);
+          }
+        }
+      }
+      /**
+       * Gets current block data (ie. block with indep_hash = Network.getInfo().current)
+       */
+      async getCurrent() {
+        const { current } = await this.network.getInfo();
+        return await this.get(current);
+      }
+    };
+    __publicField(_Blocks, "HASH_ENDPOINT", "block/hash/");
+    __publicField(_Blocks, "HEIGHT_ENDPOINT", "block/height/");
+    var Blocks = _Blocks;
+    exports.default = Blocks;
+  }
+});
+
+// node_modules/arweave/web/common.js
+var require_common2 = __commonJS({
+  "node_modules/arweave/web/common.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    var ar_1 = require_ar();
+    var api_1 = require_api();
+    var node_driver_1 = require_webcrypto_driver();
+    var network_1 = require_network();
+    var transactions_1 = require_transactions();
+    var wallets_1 = require_wallets();
+    var transaction_1 = require_transaction();
+    var ArweaveUtils = require_utils();
+    var silo_1 = require_silo();
+    var chunks_1 = require_chunks();
+    var blocks_1 = require_blocks();
+    var _Arweave = class _Arweave {
+      constructor(apiConfig) {
+        __publicField(this, "api");
+        __publicField(this, "wallets");
+        __publicField(this, "transactions");
+        __publicField(this, "network");
+        __publicField(this, "blocks");
+        __publicField(this, "ar");
+        __publicField(this, "silo");
+        __publicField(this, "chunks");
+        this.api = new api_1.default(apiConfig);
+        this.wallets = new wallets_1.default(this.api, _Arweave.crypto);
+        this.chunks = new chunks_1.default(this.api);
+        this.transactions = new transactions_1.default(this.api, _Arweave.crypto, this.chunks);
+        this.silo = new silo_1.default(this.api, this.crypto, this.transactions);
+        this.network = new network_1.default(this.api);
+        this.blocks = new blocks_1.default(this.api, this.network);
+        this.ar = new ar_1.default();
+      }
+      /** @deprecated */
+      get crypto() {
+        return _Arweave.crypto;
+      }
+      /** @deprecated */
+      get utils() {
+        return _Arweave.utils;
+      }
+      getConfig() {
+        return {
+          api: this.api.getConfig(),
+          crypto: null
+        };
+      }
+      async createTransaction(attributes, jwk) {
+        const transaction = {};
+        Object.assign(transaction, attributes);
+        if (!attributes.data && !(attributes.target && attributes.quantity)) {
+          throw new Error(`A new Arweave transaction must have a 'data' value, or 'target' and 'quantity' values.`);
+        }
+        if (attributes.owner == void 0) {
+          if (jwk && jwk !== "use_wallet") {
+            transaction.owner = jwk.n;
+          }
+        }
+        if (attributes.last_tx == void 0) {
+          transaction.last_tx = await this.transactions.getTransactionAnchor();
+        }
+        if (typeof attributes.data === "string") {
+          attributes.data = ArweaveUtils.stringToBuffer(attributes.data);
+        }
+        if (attributes.data instanceof ArrayBuffer) {
+          attributes.data = new Uint8Array(attributes.data);
+        }
+        if (attributes.data && !(attributes.data instanceof Uint8Array)) {
+          throw new Error("Expected data to be a string, Uint8Array or ArrayBuffer");
+        }
+        if (attributes.reward == void 0) {
+          const length = attributes.data ? attributes.data.byteLength : 0;
+          transaction.reward = await this.transactions.getPrice(length, transaction.target);
+        }
+        transaction.data_root = "";
+        transaction.data_size = attributes.data ? attributes.data.byteLength.toString() : "0";
+        transaction.data = attributes.data || new Uint8Array(0);
+        const createdTransaction = new transaction_1.default(transaction);
+        await createdTransaction.getSignatureData();
+        return createdTransaction;
+      }
+      async createSiloTransaction(attributes, jwk, siloUri) {
+        const transaction = {};
+        Object.assign(transaction, attributes);
+        if (!attributes.data) {
+          throw new Error(`Silo transactions must have a 'data' value`);
+        }
+        if (!siloUri) {
+          throw new Error(`No Silo URI specified.`);
+        }
+        if (attributes.target || attributes.quantity) {
+          throw new Error(`Silo transactions can only be used for storing data, sending AR to other wallets isn't supported.`);
+        }
+        if (attributes.owner == void 0) {
+          if (!jwk || !jwk.n) {
+            throw new Error(`A new Arweave transaction must either have an 'owner' attribute, or you must provide the jwk parameter.`);
+          }
+          transaction.owner = jwk.n;
+        }
+        if (attributes.last_tx == void 0) {
+          transaction.last_tx = await this.transactions.getTransactionAnchor();
+        }
+        const siloResource = await this.silo.parseUri(siloUri);
+        if (typeof attributes.data == "string") {
+          const encrypted = await this.crypto.encrypt(ArweaveUtils.stringToBuffer(attributes.data), siloResource.getEncryptionKey());
+          transaction.reward = await this.transactions.getPrice(encrypted.byteLength);
+          transaction.data = ArweaveUtils.bufferTob64Url(encrypted);
+        }
+        if (attributes.data instanceof Uint8Array) {
+          const encrypted = await this.crypto.encrypt(attributes.data, siloResource.getEncryptionKey());
+          transaction.reward = await this.transactions.getPrice(encrypted.byteLength);
+          transaction.data = ArweaveUtils.bufferTob64Url(encrypted);
+        }
+        const siloTransaction = new transaction_1.default(transaction);
+        siloTransaction.addTag("Silo-Name", siloResource.getAccessKey());
+        siloTransaction.addTag("Silo-Version", `0.1.0`);
+        return siloTransaction;
+      }
+      arql(query) {
+        return this.api.post("/arql", query).then((response) => response.data || []);
+      }
+    };
+    __publicField(_Arweave, "init");
+    __publicField(_Arweave, "crypto", new node_driver_1.default());
+    __publicField(_Arweave, "utils", ArweaveUtils);
+    var Arweave4 = _Arweave;
+    exports.default = Arweave4;
+  }
+});
+
+// node_modules/arweave/web/net-config.js
+var require_net_config = __commonJS({
+  "node_modules/arweave/web/net-config.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.getDefaultConfig = void 0;
+    var isLocal = (protocol, hostname) => {
+      const regexLocalIp = /^127(?:\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$/;
+      const split = hostname.split(".");
+      const tld = split[split.length - 1];
+      const localStrings = ["localhost", "[::1]"];
+      return localStrings.includes(hostname) || protocol == "file" || localStrings.includes(tld) || !!hostname.match(regexLocalIp) || !!tld.match(regexLocalIp);
+    };
+    var isIpAdress = (host) => {
+      const isIpv6 = host.charAt(0) === "[";
+      const regexMatchIpv4 = /^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/;
+      return !!host.match(regexMatchIpv4) || isIpv6;
+    };
+    var getDefaultConfig = (protocol, host) => {
+      if (isLocal(protocol, host)) {
+        return {
+          protocol: "https",
+          host: "arweave.net",
+          port: 443
+        };
+      }
+      if (!isIpAdress(host)) {
+        let split = host.split(".");
+        if (split.length >= 3) {
+          split.shift();
+          const parentDomain = split.join(".");
+          return {
+            protocol,
+            host: parentDomain
+          };
+        }
+      }
+      return {
+        protocol,
+        host
+      };
+    };
+    exports.getDefaultConfig = getDefaultConfig;
+  }
+});
+
+// node_modules/arweave/web/index.js
+var require_web = __commonJS({
+  "node_modules/arweave/web/index.js"(exports) {
+    "use strict";
+    var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m2, k2, k22) {
+      if (k22 === void 0) k22 = k2;
+      var desc = Object.getOwnPropertyDescriptor(m2, k2);
+      if (!desc || ("get" in desc ? !m2.__esModule : desc.writable || desc.configurable)) {
+        desc = { enumerable: true, get: function() {
+          return m2[k2];
+        } };
+      }
+      Object.defineProperty(o, k22, desc);
+    } : function(o, m2, k2, k22) {
+      if (k22 === void 0) k22 = k2;
+      o[k22] = m2[k2];
+    });
+    var __exportStar = exports && exports.__exportStar || function(m2, exports2) {
+      for (var p2 in m2) if (p2 !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p2)) __createBinding(exports2, m2, p2);
+    };
+    Object.defineProperty(exports, "__esModule", { value: true });
+    var common_1 = require_common2();
+    var net_config_1 = require_net_config();
+    common_1.default.init = function(apiConfig = {}) {
+      const defaults = {
+        host: "arweave.net",
+        port: 443,
+        protocol: "https"
+      };
+      if (typeof location !== "object" || !location.protocol || !location.hostname) {
+        return new common_1.default({
+          ...apiConfig,
+          ...defaults
+        });
+      }
+      const locationProtocol = location.protocol.replace(":", "");
+      const locationHost = location.hostname;
+      const locationPort = location.port ? parseInt(location.port) : locationProtocol == "https" ? 443 : 80;
+      const defaultConfig = (0, net_config_1.getDefaultConfig)(locationProtocol, locationHost);
+      const protocol = apiConfig.protocol || defaultConfig.protocol;
+      const host = apiConfig.host || defaultConfig.host;
+      const port = apiConfig.port || defaultConfig.port || locationPort;
+      return new common_1.default({
+        ...apiConfig,
+        host,
+        protocol,
+        port
+      });
+    };
+    if (typeof globalThis === "object") {
+      globalThis.Arweave = common_1.default;
+    } else if (typeof self === "object") {
+      self.Arweave = common_1.default;
+    }
+    __exportStar(require_common2(), exports);
+    exports.default = common_1.default;
+  }
+});
+
 // node_modules/process/browser.js
 var require_browser2 = __commonJS({
   "node_modules/process/browser.js"(exports, module2) {
@@ -12060,7 +12060,7 @@ __export(main_exports, {
   default: () => ArweaveSync
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian8 = require("obsidian");
+var import_obsidian7 = require("obsidian");
 
 // node_modules/@permaweb/aoconnect/dist/browser.js
 var __create2 = Object.create;
@@ -25104,6 +25104,38 @@ var GRAPHQL_RETRY_BACKOFF = globalThis.GRAPHQL_RETRY_BACKOFF || void 0;
 var { result, results, message, spawn, monitor, unmonitor, dryrun, assign } = connect({ GATEWAY_URL, MU_URL, CU_URL, GRAPHQL_URL, GRAPHQL_MAX_RETRIES, GRAPHQL_RETRY_BACKOFF });
 var createDataItemSigner2 = wallet_exports.createDataItemSigner;
 
+// src/utils/encryption.ts
+var import_crypto_js = __toESM(require_crypto_js());
+var import_buffer2 = __toESM(require_buffer2());
+function encrypt(data, password, isBinary = false) {
+  let dataToEncrypt;
+  if (isBinary) {
+    dataToEncrypt = import_buffer2.Buffer.isBuffer(data) ? data.toString("base64") : import_buffer2.Buffer.from(data, "binary").toString("base64");
+  } else {
+    dataToEncrypt = import_buffer2.Buffer.isBuffer(data) ? data.toString("utf8") : data;
+  }
+  const encrypted = import_crypto_js.default.AES.encrypt(dataToEncrypt, password).toString();
+  return isBinary ? `binary:${encrypted}` : `text:${encrypted}`;
+}
+function decrypt(encryptedData, password) {
+  const [type3, data] = encryptedData.split(":", 2);
+  const isBinary = type3 === "binary";
+  try {
+    const bytes = import_crypto_js.default.AES.decrypt(data, password);
+    const decryptedText = bytes.toString(import_crypto_js.default.enc.Utf8);
+    if (isBinary) {
+      return import_buffer2.Buffer.from(decryptedText, "base64");
+    } else {
+      return decryptedText;
+    }
+  } catch (error) {
+    console.error("Decryption error:", error);
+    throw new Error(
+      "Failed to decrypt data. Please check your encryption password."
+    );
+  }
+}
+
 // node_modules/warp-arbundles/build/web/esm/bundle.js
 var bundle_exports2 = {};
 __export(bundle_exports2, {
@@ -26648,7 +26680,7 @@ var AOManager = class {
       process: this.processId,
       tags: [{ name: "Action", value: action }],
       signer: this.signer,
-      data: JSON.stringify(data)
+      data
     });
     const messageResult = await result({
       process: this.processId,
@@ -26671,51 +26703,42 @@ var AOManager = class {
     if (result2.Error) throw new Error(result2.Error);
     return (_b2 = (_a7 = result2.Messages) == null ? void 0 : _a7[0]) == null ? void 0 : _b2.Data;
   }
-  async renameUploadConfig(oldPath, newPath) {
-    await this.sendMessage("RenameUploadConfig", { oldPath, newPath });
+  encryptUploadConfig(uploadConfig, password) {
+    const jsonString = JSON.stringify(uploadConfig);
+    return encrypt(jsonString, password, false);
+  }
+  decryptUploadConfig(encryptedData, password) {
+    const decryptedData = decrypt(encryptedData, password);
+    if (typeof decryptedData !== "string") {
+      throw new Error("Decrypted data is not a string");
+    }
+    return JSON.parse(decryptedData);
   }
   async updateUploadConfig(uploadConfig) {
-    try {
-      const uploadConfigArray = Object.entries(uploadConfig).map(
-        ([key, value]) => ({ key, value })
-      );
-      console.log(
-        "Sending upload config to AO:",
-        JSON.stringify(uploadConfigArray, null, 2)
-      );
-      const result2 = await this.sendMessage("UpdateUploadConfig", {
-        uploadConfig: uploadConfigArray
-      });
-      console.log("Raw AO response for UpdateUploadConfig:", result2);
-      const parsedResult = typeof result2 === "object" ? result2 : JSON.parse(result2);
-      console.log("Parsed AO response for UpdateUploadConfig:", parsedResult);
-      if (parsedResult.uploadConfig) {
-        console.log("AO upload config updated successfully");
-        return;
-      } else {
-        console.warn("Unexpected AO response format:", parsedResult);
-      }
-    } catch (error) {
-      console.error("Error during AO upload config update:", error);
-    }
+    const encryptedConfig = this.encryptUploadConfig(
+      uploadConfig,
+      this.plugin.settings.encryptionPassword
+    );
+    await this.sendMessage("UpdateEncryptedUploadConfig", encryptedConfig);
+    await this.plugin.vaultSyncManager.updateRemoteConfig();
+    this.plugin.updateSyncUI();
   }
   async getUploadConfig() {
-    const result2 = await this.dryRun("GetUploadConfig");
-    if (result2) {
-      const parsedResult = JSON.parse(result2);
-      console.log("Parsed AO response for GetUploadConfig:", parsedResult);
-      return parsedResult.reduce((acc, { key, value }) => {
-        acc[key] = value;
-        return acc;
-      }, {});
+    try {
+      const encryptedConfig = await this.dryRun("GetEncryptedUploadConfig");
+      if (encryptedConfig) {
+        return this.decryptUploadConfig(
+          encryptedConfig,
+          this.plugin.settings.encryptionPassword
+        );
+      }
+    } catch (error) {
+      console.error("Error fetching remote upload config:", error);
     }
     return null;
   }
-  async deleteUploadConfig(filePath) {
-    await this.sendMessage("DeleteUploadConfig", { Key: filePath });
-  }
   async getState() {
-    const result2 = await this.sendMessage("GetState");
+    const result2 = await this.dryRun("GetState");
     return result2 ? JSON.parse(result2) : null;
   }
   async updateHandlers() {
@@ -26752,182 +26775,52 @@ local json = require("json")
 
 -- Initialize state
 State = State or {}
-State.uploadConfig = State.uploadConfig or {}
+State.encryptedUploadConfig = State.encryptedUploadConfig or ""
 
-
--- CRUD Handlers for upload config
+-- Handler for updating the encrypted upload config
 Handlers.add(
-    "CreateUploadConfig",
-    Handlers.utils.hasMatchingTag("Action", "CreateUploadConfig"),
+    "UpdateEncryptedUploadConfig",
+    Handlers.utils.hasMatchingTag("Action", "UpdateEncryptedUploadConfig"),
     function(msg)
-        local data = json.decode(msg.Data)
-        if data and type(data) == "table" then
-            for key, value in pairs(data) do
-                if value.txId and value.txId ~= "" then
-                    State.uploadConfig[key] = value
-                    print("Added/Updated upload config for: " .. key)
-                end
-            end
+        local encryptedData = msg.Data
+        if encryptedData and encryptedData ~= "" then
+            State.encryptedUploadConfig = encryptedData
+            print("Updated encrypted upload config")
             ao.send({
                 Target = msg.From,
-                Action = "CreateUploadConfigResponse",
-                Data = json.encode({ success = true, message = "Upload config created/updated" })
+                Action = "UpdateEncryptedUploadConfigResponse",
+                Data = json.encode({ success = true, message = "Encrypted upload config updated" })
             })
         else
-            print("Error: Invalid data format in CreateUploadConfig")
+            print("Error: Invalid encrypted data")
             ao.send({
                 Target = msg.From,
-                Action = "CreateUploadConfigResponse",
-                Data = json.encode({ success = false, message = "Error: Invalid data format" })
+                Action = "UpdateEncryptedUploadConfigResponse",
+                Data = json.encode({ success = false, message = "Error: Invalid encrypted data" })
             })
         end
     end
 )
 
+-- Handler for retrieving the encrypted upload config
 Handlers.add(
-    "RenameUploadConfig",
-    Handlers.utils.hasMatchingTag("Action", "RenameUploadConfig"),
+    "GetEncryptedUploadConfig",
+    Handlers.utils.hasMatchingTag("Action", "GetEncryptedUploadConfig"),
     function(msg)
-        local data = json.decode(msg.Data)
-        if data and type(data) == "table" and data.oldPath and data.newPath then
-            if State.uploadConfig[data.oldPath] then
-                State.uploadConfig[data.newPath] = State.uploadConfig[data.oldPath]
-                State.uploadConfig[data.newPath].filePath = data.newPath
-                State.uploadConfig[data.oldPath] = nil
-                print("Renamed upload config from " .. data.oldPath .. " to " .. data.newPath)
-
-                ao.send({
-                    Target = msg.From,
-                    Action = "RenameUploadConfigResponse",
-                    Data = json.encode({ success = true, message = "Upload config renamed" })
-                })
-            else
-                print("Error: Old path not found in upload config - " .. data.oldPath)
-                ao.send({
-                    Target = msg.From,
-                    Action = "RenameUploadConfigResponse",
-                    Data = json.encode({ success = false, message = "Error: Old path not found in upload config" })
-                })
-            end
-        else
-            print("Error: Invalid data format in RenameUploadConfig")
-            ao.send({
-                Target = msg.From,
-                Action = "RenameUploadConfigResponse",
-                Data = json.encode({ success = false, message = "Error: Invalid data format" })
-            })
+        print("Sending encrypted upload config")
+        local configData = State.encryptedUploadConfig
+        if configData:sub(1, 1) == '"' and configData:sub(-1) == '"' then
+            configData = configData:sub(2, -2)
         end
+        ao.send({
+            Target = msg.From,
+            Action = "GetEncryptedUploadConfigResponse",
+            Data = configData
+        })
     end
 )
 
-Handlers.add(
-    "GetUploadConfig",
-    Handlers.utils.hasMatchingTag("Action", "GetUploadConfig"),
-    function(msg)
-        local key = msg.Tags.Key
-        if key then
-            local value = State.uploadConfig[key]
-            if value then
-                print("Retrieved upload config for: " .. key)
-                ao.send({
-                    Target = msg.From,
-                    Action = "GetUploadConfigResponse",
-                    Data = json.encode(value)
-                })
-            else
-                print("Error: Upload config not found for key - " .. key)
-                ao.send({
-                    Target = msg.From,
-                    Action = "GetUploadConfigResponse",
-                    Data = json.encode({ success = false, message = "Error: Upload config not found" })
-                })
-            end
-        else
-            print("Sending full upload config")
-            local result = {}
-            for key, value in pairs(State.uploadConfig) do
-                table.insert(result, { key = key, value = value })
-            end
-            ao.send({
-                Target = msg.From,
-                Action = "GetUploadConfigResponse",
-                Data = json.encode(result)
-            })
-        end
-    end
-)
-
-Handlers.add(
-    "UpdateUploadConfig",
-    Handlers.utils.hasMatchingTag("Action", "UpdateUploadConfig"),
-    function(msg)
-        local data = json.decode(msg.Data)
-        if data and type(data) == "table" and data.uploadConfig then
-            for _, item in ipairs(data.uploadConfig) do
-                local key = item.key
-                local value = item.value
-                if value.txId and value.txId ~= "" then
-                    State.uploadConfig[key] = value
-                    print("Updated upload config for: " .. key)
-                else
-                    State.uploadConfig[key] = nil
-                    print("Removed upload config for: " .. key)
-                end
-            end
-            ao.send({
-                Target = msg.From,
-                Action = "UpdateUploadConfigResponse",
-                Data = json.encode({ success = true, message = "Upload config updated" })
-            })
-        else
-            print("Error: Invalid data format in UpdateUploadConfig")
-            ao.send({
-                Target = msg.From,
-                Action = "UpdateUploadConfigResponse",
-                Data = json.encode({ success = false, message = "Error: Invalid data format" })
-            })
-        end
-    end
-)
-
-Handlers.add(
-    "DeleteUploadConfig",
-    Handlers.utils.hasMatchingTag("Action", "DeleteUploadConfig"),
-    function(msg)
-        local data = json.decode(msg.Data)
-        local key = data.Key
-        if key then
-            if State.uploadConfig[key] then
-                State.uploadConfig[key] = nil
-                print("Deleted upload config for: " .. key)
-                ao.send({
-                    Target = msg.From,
-                    Action = "DeleteUploadConfigResponse",
-                    Data = json.encode({ success = true, message = "Upload config deleted" })
-                })
-            else
-                print("Warning: Upload config not found for deletion - " .. key)
-                ao.send({
-                    Target = msg.From,
-                    Action = "DeleteUploadConfigResponse",
-                    Data = json.encode({
-                        success = true,
-                        message =
-                        "Warning: Upload config not found, but operation completed"
-                    })
-                })
-            end
-        else
-            print("Error: Missing key in DeleteUploadConfig")
-            ao.send({
-                Target = msg.From,
-                Action = "DeleteUploadConfigResponse",
-                Data = json.encode({ success = false, message = "Error: Missing key" })
-            })
-        end
-    end
-)
-
+-- Handler for getting the full state (for debugging purposes)
 Handlers.add(
     "GetState",
     Handlers.utils.hasMatchingTag("Action", "GetState"),
@@ -27061,40 +26954,6 @@ function initializeWalletManager() {
 // src/managers/vaultSyncManager.ts
 var import_arweave2 = __toESM(require_web());
 var import_obsidian2 = require("obsidian");
-
-// src/utils/encryption.ts
-var import_crypto_js = __toESM(require_crypto_js());
-var import_buffer2 = __toESM(require_buffer2());
-function encrypt(data, password, isBinary = false) {
-  let dataToEncrypt;
-  if (isBinary) {
-    dataToEncrypt = import_buffer2.Buffer.isBuffer(data) ? data.toString("base64") : import_buffer2.Buffer.from(data, "binary").toString("base64");
-  } else {
-    dataToEncrypt = import_buffer2.Buffer.isBuffer(data) ? data.toString("utf8") : data;
-  }
-  const encrypted = import_crypto_js.default.AES.encrypt(dataToEncrypt, password).toString();
-  return isBinary ? `binary:${encrypted}` : `text:${encrypted}`;
-}
-function decrypt(encryptedData, password) {
-  const [type3, data] = encryptedData.split(":", 2);
-  const isBinary = type3 === "binary";
-  try {
-    const bytes = import_crypto_js.default.AES.decrypt(data, password);
-    const decryptedText = bytes.toString(import_crypto_js.default.enc.Utf8);
-    if (isBinary) {
-      return import_buffer2.Buffer.from(decryptedText, "base64");
-    } else {
-      return decryptedText;
-    }
-  } catch (error) {
-    console.error("Decryption error:", error);
-    throw new Error(
-      "Failed to decrypt data. Please check your encryption password."
-    );
-  }
-}
-
-// src/managers/vaultSyncManager.ts
 var import_crypto_js2 = __toESM(require_crypto_js());
 var import_ar_gql2 = __toESM(require_dist());
 var import_buffer3 = __toESM(require_buffer2());
@@ -27119,13 +26978,14 @@ var VaultSyncManager = class {
     return walletManager.isConnected();
   }
   async syncFile(file) {
+    await this.updateRemoteConfig();
     const { syncState, localNewerVersion, fileHash } = await this.checkFileSync(file);
     if (syncState === "synced") {
       console.log(`File ${file.path} is already synced.`);
       return;
     }
     if (localNewerVersion) {
-      await this.exportFileToArweave(file, fileHash);
+      await this.exportFilesToArweave([file.path]);
     } else {
       await this.importFileFromArweave(file.path);
     }
@@ -27249,22 +27109,35 @@ var VaultSyncManager = class {
       versionNumber
     };
     this.localUploadConfig[file.path] = newFileInfo;
-    this.remoteUploadConfig[file.path] = newFileInfo;
     this.plugin.updateLocalConfig(file.path, newFileInfo);
-    this.plugin.updateRemoteConfig(file.path, newFileInfo);
     console.log(
       `File ${file.path} exported to Arweave. Transaction ID: ${transaction.id}`
     );
+    return newFileInfo;
   }
   async exportFilesToArweave(filePaths) {
+    const updatedFiles = [];
     for (const filePath of filePaths) {
       const file = this.vault.getAbstractFileByPath(filePath);
       if (file instanceof import_obsidian2.TFile) {
         const { syncState, fileHash } = await this.checkFileSync(file);
         if (syncState !== "synced") {
-          await this.exportFileToArweave(file, fileHash);
+          const newFileInfo = await this.exportFileToArweave(file, fileHash);
+          updatedFiles.push(newFileInfo);
         }
       }
+    }
+    if (updatedFiles.length > 0) {
+      await this.plugin.aoManager.updateUploadConfig(this.localUploadConfig);
+    }
+  }
+  async updateRemoteConfig() {
+    const remoteConfig = await this.plugin.aoManager.getUploadConfig();
+    console.log(remoteConfig);
+    if (remoteConfig) {
+      this.remoteUploadConfig = remoteConfig;
+      this.plugin.settings.remoteUploadConfig = remoteConfig;
+      await this.plugin.saveSettings();
     }
   }
   async checkFileSync(file) {
@@ -27396,7 +27269,8 @@ var DEFAULT_SETTINGS = {
   lastConfigUploadTxId: "",
   customProcessId: "",
   localUploadConfig: {},
-  remoteUploadConfig: {}
+  remoteUploadConfig: {},
+  autoImportUnsyncedChanges: false
 };
 
 // src/components/WalletConnectModal.ts
@@ -27482,6 +27356,12 @@ var ArweaveSyncSettingTab = class extends import_obsidian4.PluginSettingTab {
     new import_obsidian4.Setting(containerEl).setName("Encryption Password").setDesc("Set the encryption password for your synced files").addText(
       (text) => text.setPlaceholder("Enter your password").setValue(this.plugin.settings.encryptionPassword).onChange(async (value) => {
         this.plugin.settings.encryptionPassword = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian4.Setting(containerEl).setName("Auto-import Unsynced Changes").setDesc("Automatically import unsynced changes when connecting wallet").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.autoImportUnsyncedChanges).onChange(async (value) => {
+        this.plugin.settings.autoImportUnsyncedChanges = value;
         await this.plugin.saveSettings();
       })
     );
@@ -28039,6 +27919,9 @@ Version: ${node.fileInfo.versionNumber}`
       } else {
         await this.importFiles(filesToSync);
       }
+      await this.plugin.vaultSyncManager.updateRemoteConfig();
+      await this.initializeFiles();
+      await this.renderContent();
       new import_obsidian5.Notice(
         `${this.currentTab === "export" ? "Export" : "Import"} completed successfully.`
       );
@@ -28046,8 +27929,6 @@ Version: ${node.fileInfo.versionNumber}`
       console.error("Error during submission:", error);
       new import_obsidian5.Notice(`Error during ${this.currentTab}: ${error.message}`);
     } finally {
-      await this.initializeFiles();
-      await this.renderContent();
       submitButton.setAttribute("data-state", "ready");
       submitButton.disabled = false;
       submitButton.setText(
@@ -28429,48 +28310,8 @@ Version: ${node.fileInfo.versionNumber}`
   }
 };
 
-// src/utils/testEncryption.ts
-var import_obsidian6 = require("obsidian");
-var import_buffer4 = __toESM(require_buffer2());
-async function testEncryptionWithSpecificFile(plugin, filePath) {
-  var _a7, _b2;
-  const password = "testPassword123";
-  try {
-    const file = plugin.app.vault.getAbstractFileByPath(filePath);
-    if (!file || !(file instanceof import_obsidian6.TFile)) {
-      new import_obsidian6.Notice(`File not found: ${filePath}`);
-      return;
-    }
-    const isBinary = plugin.vaultSyncManager.isBinaryFile(file);
-    const fileContent = isBinary ? await plugin.app.vault.readBinary(file) : await plugin.app.vault.read(file);
-    console.log(`Testing encryption for file: ${file.path}`);
-    console.log("Original file size:", fileContent.length, "bytes");
-    console.log("Is Binary:", isBinary);
-    const encrypted = encrypt(fileContent, password, isBinary);
-    console.log("Encrypted data:", encrypted.substring(0, 50) + "...");
-    const decrypted = decrypt(encrypted, password);
-    if (import_buffer4.Buffer.isBuffer(decrypted)) {
-      console.log("Decrypted file size:", decrypted.length, "bytes");
-      console.log("Match:", import_buffer4.Buffer.from(fileContent).equals(decrypted));
-    } else {
-      console.log("Decrypted file size:", decrypted.length, "characters");
-      console.log("Match:", fileContent === decrypted);
-    }
-    const decryptedFilePath = `${(_b2 = (_a7 = file.parent) == null ? void 0 : _a7.path) != null ? _b2 : ""}/decrypted${file.name}`;
-    if (import_buffer4.Buffer.isBuffer(decrypted)) {
-      await plugin.app.vault.createBinary(decryptedFilePath, decrypted);
-    } else {
-      await plugin.app.vault.create(decryptedFilePath, decrypted);
-    }
-    new import_obsidian6.Notice(`Decrypted file saved as ${decryptedFilePath}`);
-  } catch (error) {
-    console.error("Error during file encryption test:", error);
-    new import_obsidian6.Notice("Error during file encryption test. Check console for details.");
-  }
-}
-
 // src/managers/arPublishManager.ts
-var import_obsidian7 = require("obsidian");
+var import_obsidian6 = require("obsidian");
 
 // src/utils/path.ts
 function join2(...parts) {
@@ -28503,7 +28344,7 @@ var ArPublishManager = class {
     const markdownFiles = this.getMarkdownFiles(folder);
     const indexFile = markdownFiles.find((file) => file.name === "index.md");
     if (!indexFile) {
-      new import_obsidian7.Notice("Error: index.md file is required in the root of the folder.");
+      new import_obsidian6.Notice("Error: index.md file is required in the root of the folder.");
       return;
     }
     const outputDir = await this.createOutputDirectory(folder.name);
@@ -28544,8 +28385,14 @@ var ArPublishManager = class {
       JSON.stringify(pathManifest),
       "application/x.arweave-manifest+json"
     );
-    console.log("Manifest uploaded: https://arweave.net/" + manifestTxId);
-    new import_obsidian7.Notice(`Website published to Arweave. Manifest TX ID: ${manifestTxId}`);
+    const arweaveLink = `https://arweave.net/${manifestTxId}`;
+    console.log("Manifest uploaded:", arweaveLink);
+    navigator.clipboard.writeText(arweaveLink).then(() => {
+      new import_obsidian6.Notice(`Website link copied to clipboard: ${arweaveLink}`);
+    }).catch((err) => {
+      console.error("Failed to copy to clipboard:", err);
+      new import_obsidian6.Notice(`Website published to Arweave. Link: ${arweaveLink}`);
+    });
   }
   getRelativePath(folderPath, filePath) {
     const relativePath = relative(folderPath, filePath);
@@ -28571,9 +28418,9 @@ var ArPublishManager = class {
   getMarkdownFiles(folder) {
     const files = [];
     const collectFiles = (item) => {
-      if (item instanceof import_obsidian7.TFolder) {
+      if (item instanceof import_obsidian6.TFolder) {
         item.children.forEach(collectFiles);
-      } else if (item instanceof import_obsidian7.TFile && item.extension === "md") {
+      } else if (item instanceof import_obsidian6.TFile && item.extension === "md") {
         files.push(item);
       }
     };
@@ -28599,7 +28446,7 @@ var ArPublishManager = class {
   async convertMarkdownToHtml(markdown, allFiles, currentFile) {
     markdown = this.convertWikiLinks(markdown, currentFile);
     const tempDiv = createDiv();
-    await import_obsidian7.MarkdownRenderer.renderMarkdown(
+    await import_obsidian6.MarkdownRenderer.renderMarkdown(
       markdown,
       tempDiv,
       currentFile.path,
@@ -28676,10 +28523,11 @@ var ArPublishManager = class {
   }
   convertWikiLinks(markdown, currentFile) {
     return markdown.replace(
-      /\[\[([^\]]+)\]\](\([^\)]+\))?/g,
-      (_4, linkText, linkUrl) => {
+      /\[\[([^\]|]+)(\|[^\]]+)?\]\](\([^\)]+\))?/g,
+      (match, linkText, displayText, linkUrl) => {
+        const display = displayText ? displayText.slice(1) : linkText;
         const url = linkUrl ? linkUrl.slice(1, -1) : `${linkText}.html`;
-        return `[${linkText}](${url})`;
+        return `[${display}](${url})`;
       }
     );
   }
@@ -28979,7 +28827,7 @@ var ArPublishManager = class {
           folderTitles.forEach(folderTitle => {
             folderTitle.addEventListener('click', (e) => {
               e.preventDefault();
-              e.stopPropagation(); // Prevent event bubbling
+              e.stopPropagation();
               const folder = folderTitle.closest('.nav-folder');
               folder.classList.toggle('is-collapsed');
 
@@ -29214,9 +29062,9 @@ var ArPublishManager = class {
 };
 
 // src/main.ts
-var import_buffer5 = __toESM(require_buffer2());
+var import_buffer4 = __toESM(require_buffer2());
 var import_process = __toESM(require_browser2());
-var ArweaveSync = class extends import_obsidian8.Plugin {
+var ArweaveSync = class extends import_obsidian7.Plugin {
   constructor() {
     super(...arguments);
     this.walletAddress = null;
@@ -29291,19 +29139,12 @@ var ArweaveSync = class extends import_obsidian8.Plugin {
   setupSyncButton() {
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
-        menu.addItem((item) => {
-          item.setTitle("Sync with Arweave").setIcon("sync").onClick(() => this.syncFile(file));
-        });
-      })
-    );
-    this.registerEvent(
-      this.app.workspace.on("file-menu", (menu, file) => {
-        if (file instanceof import_obsidian8.TFile) {
+        if (file instanceof import_obsidian7.TFile) {
           menu.addItem((item) => {
             item.setTitle("Sync with Arweave").setIcon("sync").onClick(() => this.syncFile(file));
           });
         }
-        if (file instanceof import_obsidian8.TFolder) {
+        if (file instanceof import_obsidian7.TFolder) {
           menu.addItem((item) => {
             item.setTitle("Publish as Website to Arweave").setIcon("globe").onClick(() => this.publishToArweave(file));
           });
@@ -29320,17 +29161,6 @@ var ArweaveSync = class extends import_obsidian8.Plugin {
   }
   addCommands() {
     this.addCommand({
-      id: "run-specific-file-encryption-test",
-      name: "Run Specific File Encryption Test",
-      callback: async () => {
-        const filePath = "Assets/mobileTest.png";
-        await testEncryptionWithSpecificFile(this, filePath);
-        new import_obsidian8.Notice(
-          "Specific file encryption test completed. Check console for results."
-        );
-      }
-    });
-    this.addCommand({
       id: "open-arweave-sync-sidebar",
       name: "Open Arweave Sync Sidebar",
       callback: () => this.activateSyncSidebar()
@@ -29343,7 +29173,10 @@ var ArweaveSync = class extends import_obsidian8.Plugin {
     this.addCommand({
       id: "force-refresh-sidebar-files",
       name: "Force Refresh Sidebar Files",
-      callback: () => this.forceRefreshSidebarFiles()
+      callback: () => {
+        this.refreshSyncSidebar();
+        new import_obsidian7.Notice("Sidebar files refreshed");
+      }
     });
   }
   getArweave() {
@@ -29391,17 +29224,17 @@ var ArweaveSync = class extends import_obsidian8.Plugin {
   async copyWalletAddress() {
     if (this.walletAddress) {
       await navigator.clipboard.writeText(this.walletAddress);
-      new import_obsidian8.Notice("Wallet address copied to clipboard");
+      new import_obsidian7.Notice("Wallet address copied to clipboard");
     }
   }
   async disconnectWallet() {
     await walletManager.disconnect();
     this.updateStatusBar();
-    new import_obsidian8.Notice("Wallet disconnected");
+    new import_obsidian7.Notice("Wallet disconnected");
   }
   async addSyncButtonToLeaf(leaf) {
     const view = leaf.view;
-    if (view instanceof import_obsidian8.MarkdownView) {
+    if (view instanceof import_obsidian7.MarkdownView) {
       await this.addSyncButton(view);
     }
   }
@@ -29480,7 +29313,7 @@ var ArweaveSync = class extends import_obsidian8.Plugin {
       if (!syncButton.hasAttribute("disabled")) {
         syncButton.addClass("uploading");
         await this.syncFile(file);
-        await this.refreshRemoteConfig();
+        await this.vaultSyncManager.updateRemoteConfig();
         syncButton.removeClass("uploading");
       }
     });
@@ -29493,6 +29326,11 @@ var ArweaveSync = class extends import_obsidian8.Plugin {
     }
     rightIconsContainer.appendChild(syncButton);
   }
+  updateSyncUI() {
+    this.updateStatusBar();
+    this.updateActiveSyncButton();
+    this.refreshSyncSidebar();
+  }
   async handleWalletConnection(walletJson) {
     if (this.isConnecting) {
       return;
@@ -29503,11 +29341,25 @@ var ArweaveSync = class extends import_obsidian8.Plugin {
       this.walletAddress = walletManager.getAddress();
       await this.aoManager.initialize(walletManager.getJWK());
       this.updateStatusBar();
-      await this.updateConfigsFromAO();
-      await this.checkForNewFiles();
+      this.vaultSyncManager.updateRemoteConfig();
+      const newOrModifiedFiles = await this.checkForNewFiles();
+      if (this.settings.autoImportUnsyncedChanges && newOrModifiedFiles.length > 0) {
+        await this.importFilesFromArweave(newOrModifiedFiles);
+        new import_obsidian7.Notice(
+          `Automatically imported ${newOrModifiedFiles.length} new or modified files.`
+        );
+      } else if (newOrModifiedFiles.length > 0) {
+        new import_obsidian7.Notice(
+          `${newOrModifiedFiles.length} new or modified files available for import.`
+        );
+        this.refreshSyncSidebar();
+        await this.openSyncSidebarWithImportTab();
+      } else {
+        new import_obsidian7.Notice("Wallet connected. No new files to import.");
+      }
     } catch (error) {
       console.error("Error during wallet connection:", error);
-      new import_obsidian8.Notice(
+      new import_obsidian7.Notice(
         `Error: ${error.message}
 Check the console for more details.`
       );
@@ -29515,18 +29367,11 @@ Check the console for more details.`
       this.isConnecting = false;
     }
   }
-  async updateConfigsFromAO() {
-    const aoUploadConfig = await this.aoManager.getUploadConfig();
-    if (aoUploadConfig) {
-      this.settings.remoteUploadConfig = aoUploadConfig;
-      this.mergeUploadConfigs();
-    }
-    this.vaultSyncManager = new VaultSyncManager(
-      this,
-      this.settings.encryptionPassword,
-      this.settings.remoteUploadConfig,
-      this.settings.localUploadConfig
-    );
+  async handleWalletDisconnection() {
+    this.walletAddress = null;
+    await this.aoManager.initialize(null);
+    this.updateStatusBar();
+    new import_obsidian7.Notice("Wallet disconnected successfully");
   }
   async checkForNewFiles() {
     const newOrModifiedFiles = [];
@@ -29536,7 +29381,7 @@ Check the console for more details.`
       const localFile = this.app.vault.getAbstractFileByPath(filePath);
       if (!localFile) {
         newOrModifiedFiles.push(filePath);
-      } else if (localFile instanceof import_obsidian8.TFile) {
+      } else if (localFile instanceof import_obsidian7.TFile) {
         const localFileHash = await this.vaultSyncManager.getFileHash(localFile);
         const localFileTimestamp = localFile.stat.mtime;
         if (remoteFileInfo.fileHash !== localFileHash && remoteFileInfo.timestamp > localFileTimestamp) {
@@ -29545,61 +29390,37 @@ Check the console for more details.`
       }
     }
     if (newOrModifiedFiles.length > 0) {
-      new import_obsidian8.Notice(
+      new import_obsidian7.Notice(
         `Wallet connected. ${newOrModifiedFiles.length} new or modified files available for import.`
       );
-      this.forceRefreshSidebarFiles();
-      await this.openSyncSidebarWithImportTab();
-    } else {
-      new import_obsidian8.Notice("Wallet connected. No new files to import.");
+      this.refreshSyncSidebar();
+      if (!this.settings.autoImportUnsyncedChanges)
+        await this.openSyncSidebarWithImportTab();
     }
     return newOrModifiedFiles;
   }
-  async getNewOrModifiedRemoteFiles() {
-    const newOrModifiedFiles = [];
-    for (const [filePath, remoteFileInfo] of Object.entries(
-      this.settings.remoteUploadConfig
-    )) {
-      const file = this.app.vault.getAbstractFileByPath(filePath);
-      if (file instanceof import_obsidian8.TFile) {
-        const { syncState } = await this.vaultSyncManager.checkFileSync(file);
-        if (syncState !== "synced") {
-          newOrModifiedFiles.push(filePath);
-        }
-      } else {
-        newOrModifiedFiles.push(filePath);
-      }
+  async initializeLocalUploadConfig(plugin) {
+    const localUploadConfig = {};
+    const files = plugin.app.vault.getFiles();
+    for (const file of files) {
+      const filePath = file.path;
+      const fileHash = await plugin.vaultSyncManager.getFileHash(file);
+      const existingConfig = plugin.settings.localUploadConfig[filePath];
+      localUploadConfig[filePath] = {
+        txId: (existingConfig == null ? void 0 : existingConfig.txId) || "",
+        timestamp: file.stat.mtime,
+        fileHash,
+        encrypted: true,
+        // Assuming all files are encrypted
+        filePath,
+        previousVersionTxId: (existingConfig == null ? void 0 : existingConfig.previousVersionTxId) || null,
+        versionNumber: (existingConfig == null ? void 0 : existingConfig.versionNumber) || 1
+      };
     }
-    return newOrModifiedFiles;
-  }
-  async handleWalletDisconnection() {
-    this.walletAddress = null;
-    await this.aoManager.initialize(null);
-    this.updateStatusBar();
-    new import_obsidian8.Notice("Wallet disconnected successfully");
+    return localUploadConfig;
   }
   updateLocalConfig(filePath, fileInfo) {
     this.settings.localUploadConfig[filePath] = fileInfo;
-    this.saveSettings();
-  }
-  updateRemoteConfig(filePath, fileInfo) {
-    this.settings.remoteUploadConfig[filePath] = fileInfo;
-    this.saveSettings();
-    this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
-  }
-  syncConfigs() {
-    this.mergeUploadConfigs();
-    this.saveSettings();
-    this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
-  }
-  mergeUploadConfigs() {
-    for (const [filePath, fileInfo] of Object.entries(
-      this.settings.remoteUploadConfig
-    )) {
-      if (!this.settings.localUploadConfig[filePath] || fileInfo.timestamp > this.settings.localUploadConfig[filePath].timestamp) {
-        this.settings.localUploadConfig[filePath] = fileInfo;
-      }
-    }
     this.saveSettings();
   }
   async importFilesFromArweave(selectedFiles) {
@@ -29607,42 +29428,27 @@ Check the console for more details.`
       await this.vaultSyncManager.importFilesFromArweave(selectedFiles);
     } catch (error) {
       console.error("Error during file import:", error);
-      new import_obsidian8.Notice(
+      new import_obsidian7.Notice(
         `Error: ${error.message}
 Check the console for more details.`
       );
     }
   }
-  async fetchUploadConfigFromAO() {
-    try {
-      const aoUploadConfig = await this.aoManager.getUploadConfig();
-      if (aoUploadConfig) {
-        this.settings.remoteUploadConfig = aoUploadConfig;
-        this.mergeUploadConfigs();
-        await this.saveSettings();
-      }
-    } catch (error) {
-      console.error("Failed to fetch upload config from AO:", error);
-      new import_obsidian8.Notice("Failed to fetch upload config from AO");
-    }
-  }
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     this.settings.localUploadConfig = this.settings.localUploadConfig || {};
-    this.settings.remoteUploadConfig = this.settings.remoteUploadConfig || {};
   }
   async saveSettings() {
     await this.saveData(this.settings);
     console.log("Settings saved");
   }
   async syncFile(file) {
-    const syncButton = this.getSyncButtonForFile(file);
+    const syncButton = this.getSyncButtonForFile();
     if (syncButton) {
       syncButton.addClass("uploading");
     }
     try {
       await this.vaultSyncManager.syncFile(file);
-      this.updateUIAfterSync(file);
     } catch (error) {
       this.handleSyncError(file, error);
     } finally {
@@ -29650,112 +29456,68 @@ Check the console for more details.`
         syncButton.removeClass("uploading");
       }
     }
-    this.forceRefreshSidebarFiles();
+    await this.aoManager.updateUploadConfig(this.settings.localUploadConfig);
+    this.updateSyncUI();
   }
-  getSyncButtonForFile(file) {
-    const view = this.app.workspace.getActiveViewOfType(import_obsidian8.MarkdownView);
+  getSyncButtonForFile() {
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian7.MarkdownView);
     return view == null ? void 0 : view.containerEl.querySelector(
       ".arweave-sync-button"
     );
   }
-  async refreshRemoteConfig() {
-    try {
-      const remoteConfig = await this.aoManager.getUploadConfig();
-      if (remoteConfig) {
-        this.settings.remoteUploadConfig = remoteConfig;
-        await this.saveSettings();
-        console.log(
-          "Remote config refreshed:",
-          this.settings.remoteUploadConfig
-        );
-      }
-    } catch (error) {
-      console.error("Failed to refresh remote config:", error);
-    }
-  }
-  updateUIAfterSync(file) {
-    this.modifiedFiles.delete(file.path);
-    new import_obsidian8.Notice(`File ${file.name} synced to Arweave (encrypted)`);
-    const syncButton = this.getSyncButtonForFile(file);
-    if (syncButton) {
-      this.updateSyncButtonState(syncButton, file);
-    }
-  }
   handleSyncError(file, error) {
-    new import_obsidian8.Notice(`Failed to sync file: ${error.message}`);
-    this.modifiedFiles.add(file.path);
+    new import_obsidian7.Notice(`Failed to sync file: ${error.message}`);
   }
   async handleFileModify(file) {
     const { syncState, fileHash } = await this.vaultSyncManager.checkFileSync(file);
     if (syncState !== "synced") {
       const currentConfig = this.settings.localUploadConfig[file.path];
       this.settings.localUploadConfig[file.path] = {
-        txId: (currentConfig == null ? void 0 : currentConfig.txId) || "",
-        timestamp: Date.now(),
-        fileHash,
         encrypted: true,
+        timestamp: Date.now(),
+        txId: (currentConfig == null ? void 0 : currentConfig.txId) || "",
         filePath: file.path,
+        fileHash,
         previousVersionTxId: (currentConfig == null ? void 0 : currentConfig.txId) || null,
         versionNumber: ((currentConfig == null ? void 0 : currentConfig.versionNumber) || 0) + 1
       };
-      this.modifiedFiles.add(file.path);
       await this.saveSettings();
     }
-    this.updateSyncButtonForActiveFile(file);
-    this.updateSyncSidebarFile(file);
-  }
-  updateSyncButtonForActiveFile(file) {
-    const activeView = this.app.workspace.getActiveViewOfType(import_obsidian8.MarkdownView);
-    if (activeView && activeView.file === file) {
-      const syncButton = activeView.containerEl.querySelector(
-        ".arweave-sync-button"
-      );
-      if (syncButton) {
-        this.updateSyncButtonState(syncButton, file);
-      } else {
-      }
-    }
+    this.updateSyncUI();
   }
   async handleFileRename(file, oldPath) {
-    if (this.settings.localUploadConfig[oldPath] || this.settings.remoteUploadConfig[oldPath]) {
-      console.log(`File renamed from ${oldPath} to ${file.path}`);
-      this.updateConfigsAfterRename(oldPath, file.path);
-      this.modifiedFiles.add(file.path);
-      this.modifiedFiles.delete(oldPath);
-      await this.saveSettings();
-      await this.aoManager.renameUploadConfig(oldPath, file.path);
-      this.updateSyncButtonForActiveFile(file);
-      this.updateSyncSidebarFile(file);
+    if (this.settings.localUploadConfig[oldPath]) {
+      this.settings.localUploadConfig[file.path] = {
+        ...this.settings.localUploadConfig[oldPath],
+        filePath: file.path
+      };
+      delete this.settings.localUploadConfig[oldPath];
     }
-  }
-  updateConfigsAfterRename(oldPath, newPath) {
-    const updateConfig = (config) => {
-      if (config[oldPath]) {
-        config[newPath] = { ...config[oldPath], filePath: newPath };
-        delete config[oldPath];
-      }
-    };
-    updateConfig(this.settings.localUploadConfig);
-    updateConfig(this.settings.remoteUploadConfig);
+    console.log(`File renamed from ${oldPath} to ${file.path}`);
+    await this.saveSettings();
+    try {
+      await this.aoManager.updateUploadConfig(this.settings.localUploadConfig);
+    } catch (error) {
+      console.error("Error updating remote config after file rename:", error);
+      new import_obsidian7.Notice(
+        `Failed to update remote config after rename ${file.path}. Please try again later.`
+      );
+    }
+    this.updateSyncUI();
   }
   async handleFileDelete(file) {
-    if (this.settings.localUploadConfig[file.path] || this.settings.remoteUploadConfig[file.path]) {
-      console.log("File deleted:", file.path);
-      delete this.settings.localUploadConfig[file.path];
-      delete this.settings.remoteUploadConfig[file.path];
-      this.modifiedFiles.delete(file.path);
-      await this.saveSettings();
-      try {
-        await this.aoManager.deleteUploadConfig(file.path);
-      } catch (error) {
-        console.error("Error deleting file from remote config:", error);
-        new import_obsidian8.Notice(
-          `Failed to delete ${file.path} from remote config. Please try again later.`
-        );
-      }
-      this.removeSyncSidebarFile(file.path);
-      this.forceRefreshSidebarFiles();
+    delete this.settings.localUploadConfig[file.path];
+    console.log("File deleted:", file.path);
+    try {
+      await this.aoManager.updateUploadConfig(this.settings.localUploadConfig);
+    } catch (error) {
+      console.error("Error updating remote config after file deletion:", error);
+      new import_obsidian7.Notice(
+        `Failed to update remote config after deleting ${file.path}. Please try again later.`
+      );
     }
+    this.removeSyncSidebarFile(file.path);
+    this.updateSyncUI();
   }
   // private async handleEditorChange(
   //   editor: Editor,
@@ -29789,34 +29551,8 @@ Check the console for more details.`
       view.removeFile(filePath);
     });
   }
-  async exportFilesToArweave(filesToExport) {
-    const totalFiles = filesToExport.length;
-    let exportedFiles = 0;
-    for (const filePath of filesToExport) {
-      const file = this.app.vault.getAbstractFileByPath(filePath);
-      if (file instanceof import_obsidian8.TFile) {
-        try {
-          await this.vaultSyncManager.syncFile(file);
-          exportedFiles++;
-          new import_obsidian8.Notice(`Exported ${exportedFiles}/${totalFiles} files`);
-        } catch (error) {
-          console.error(`Error exporting file ${filePath}:`, error);
-          new import_obsidian8.Notice(`Failed to export ${filePath}. Error: ${error.message}`);
-        }
-      }
-    }
-    await this.saveSettings();
-    await this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
-    new import_obsidian8.Notice(`Exported ${exportedFiles}/${totalFiles} files to Arweave`);
-    this.updateActiveSyncButton();
-    this.refreshSyncSidebar();
-  }
-  async forceRefreshSidebarFiles() {
-    this.refreshSyncSidebar();
-    new import_obsidian8.Notice("Sidebar files refreshed");
-  }
   updateActiveSyncButton() {
-    const activeView = this.app.workspace.getActiveViewOfType(import_obsidian8.MarkdownView);
+    const activeView = this.app.workspace.getActiveViewOfType(import_obsidian7.MarkdownView);
     if (activeView && activeView.file) {
       const syncButton = activeView.containerEl.querySelector(
         ".arweave-sync-button"
@@ -29896,13 +29632,13 @@ Check the console for more details.`
   async publishToArweave(folder) {
     try {
       await this.arPublishManager.publishWebsiteToArweave(folder);
-      new import_obsidian8.Notice(`Folder "${folder.name}" published to Arweave as a website.`);
+      new import_obsidian7.Notice(`Folder "${folder.name}" published to Arweave as a website.`);
     } catch (error) {
       console.error(
         `Error publishing folder ${folder.name} to Arweave:`,
         error
       );
-      new import_obsidian8.Notice(
+      new import_obsidian7.Notice(
         `Failed to publish ${folder.name} to Arweave. Error: ${error.message}`
       );
     }

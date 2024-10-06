@@ -36,6 +36,8 @@ export class VaultSyncManager {
   }
 
   async syncFile(file: TFile): Promise<void> {
+    await this.updateRemoteConfig();
+
     const { syncState, localNewerVersion, fileHash } =
       await this.checkFileSync(file);
 
@@ -45,7 +47,7 @@ export class VaultSyncManager {
     }
 
     if (localNewerVersion) {
-      await this.exportFileToArweave(file, fileHash);
+      await this.exportFilesToArweave([file.path]);
     } else {
       await this.importFileFromArweave(file.path);
     }
@@ -141,7 +143,7 @@ export class VaultSyncManager {
   private async exportFileToArweave(
     file: TFile,
     fileHash: string,
-  ): Promise<void> {
+  ): Promise<FileUploadInfo> {
     if (!walletManager.isConnected()) {
       throw new Error(
         "Wallet not connected. Please connect a wallet before uploading.",
@@ -200,25 +202,43 @@ export class VaultSyncManager {
     };
 
     this.localUploadConfig[file.path] = newFileInfo;
-    this.remoteUploadConfig[file.path] = newFileInfo;
 
     this.plugin.updateLocalConfig(file.path, newFileInfo);
-    this.plugin.updateRemoteConfig(file.path, newFileInfo);
 
     console.log(
       `File ${file.path} exported to Arweave. Transaction ID: ${transaction.id}`,
     );
+
+    return newFileInfo;
   }
 
   async exportFilesToArweave(filePaths: string[]): Promise<void> {
+    const updatedFiles: FileUploadInfo[] = [];
+
     for (const filePath of filePaths) {
       const file = this.vault.getAbstractFileByPath(filePath);
       if (file instanceof TFile) {
         const { syncState, fileHash } = await this.checkFileSync(file);
         if (syncState !== "synced") {
-          await this.exportFileToArweave(file, fileHash);
+          const newFileInfo = await this.exportFileToArweave(file, fileHash);
+          updatedFiles.push(newFileInfo);
         }
       }
+    }
+
+    // Update the AO process with all changes at once
+    if (updatedFiles.length > 0) {
+      await this.plugin.aoManager.updateUploadConfig(this.localUploadConfig);
+    }
+  }
+
+  public async updateRemoteConfig(): Promise<void> {
+    const remoteConfig = await this.plugin.aoManager.getUploadConfig();
+    console.log(remoteConfig);
+    if (remoteConfig) {
+      this.remoteUploadConfig = remoteConfig;
+      this.plugin.settings.remoteUploadConfig = remoteConfig;
+      await this.plugin.saveSettings();
     }
   }
 

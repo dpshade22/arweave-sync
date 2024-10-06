@@ -678,6 +678,11 @@ export class SyncSidebar extends ItemView {
         await this.importFiles(filesToSync);
       }
 
+      // After syncing, update the remote config and refresh the file list
+      await this.plugin.vaultSyncManager.updateRemoteConfig();
+      await this.initializeFiles();
+      await this.renderContent();
+
       new Notice(
         `${this.currentTab === "export" ? "Export" : "Import"} completed successfully.`,
       );
@@ -685,9 +690,6 @@ export class SyncSidebar extends ItemView {
       console.error("Error during submission:", error);
       new Notice(`Error during ${this.currentTab}: ${error.message}`);
     } finally {
-      await this.initializeFiles();
-      await this.renderContent();
-
       submitButton.setAttribute("data-state", "ready");
       submitButton.disabled = false;
       submitButton.setText(
