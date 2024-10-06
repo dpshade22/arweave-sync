@@ -27827,26 +27827,6 @@ var SyncSidebar = class extends import_obsidian5.ItemView {
       "click",
       () => this.toggleFileSelection(node, isSource)
     );
-    if (node.localNewerVersion) {
-      contentEl.addClass("has-local-newer-version");
-      const indicatorContainer = contentEl.createEl("div", {
-        cls: "tree-item nav-file local-newer-version-container"
-      });
-      indicatorContainer.createEl("div", {
-        cls: "tree-item-self local-newer-version",
-        text: "Newer local version"
-      });
-    }
-    if (node.localOlderVersion) {
-      contentEl.addClass("has-local-older-version");
-      const indicatorContainer = contentEl.createEl("div", {
-        cls: "tree-item nav-file local-older-version-container"
-      });
-      indicatorContainer.createEl("div", {
-        cls: "tree-item-self local-older-version",
-        text: "Older local version"
-      });
-    }
   }
   async setFileNodeAttributes(contentEl, node) {
     if (node.fileInfo) {
@@ -28108,7 +28088,7 @@ Version: ${node.fileInfo.versionNumber}`
       } else {
         continue;
       }
-      if (syncState !== "synced" && syncState !== "new-local" && syncState !== "local-newer") {
+      if (syncState !== "synced" && syncState !== "new-local" && syncState !== "local-newer" && syncState !== "decrypt-failed") {
         const fileNode = this.createFileNode(
           filePath,
           remoteFileInfo,

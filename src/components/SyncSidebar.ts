@@ -420,7 +420,7 @@ export class SyncSidebar extends ItemView {
     contentEl: HTMLElement,
     isSource: boolean,
   ) {
-    contentEl.empty(); // Clear existing content
+    contentEl.empty();
 
     // Add base classes
     contentEl.addClass("tree-item-self", "is-clickable", "nav-file-title");
@@ -442,27 +442,6 @@ export class SyncSidebar extends ItemView {
     contentEl.addEventListener("click", () =>
       this.toggleFileSelection(node, isSource),
     );
-
-    if (node.localNewerVersion) {
-      contentEl.addClass("has-local-newer-version");
-      const indicatorContainer = contentEl.createEl("div", {
-        cls: "tree-item nav-file local-newer-version-container",
-      });
-      indicatorContainer.createEl("div", {
-        cls: "tree-item-self local-newer-version",
-        text: "Newer local version",
-      });
-    }
-    if (node.localOlderVersion) {
-      contentEl.addClass("has-local-older-version");
-      const indicatorContainer = contentEl.createEl("div", {
-        cls: "tree-item nav-file local-older-version-container",
-      });
-      indicatorContainer.createEl("div", {
-        cls: "tree-item-self local-older-version",
-        text: "Older local version",
-      });
-    }
   }
 
   private async setFileNodeAttributes(contentEl: HTMLElement, node: FileNode) {
@@ -781,7 +760,8 @@ export class SyncSidebar extends ItemView {
         | "new-remote"
         | "local-newer"
         | "remote-newer"
-        | "synced";
+        | "synced"
+        | "decrypt-failed";
 
       if (!file) {
         syncState = "new-remote";
@@ -795,7 +775,8 @@ export class SyncSidebar extends ItemView {
       if (
         syncState !== "synced" &&
         syncState !== "new-local" &&
-        syncState !== "local-newer"
+        syncState !== "local-newer" &&
+        syncState !== "decrypt-failed"
       ) {
         const fileNode = this.createFileNode(
           filePath,
