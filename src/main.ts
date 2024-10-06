@@ -158,17 +158,6 @@ export default class ArweaveSync extends Plugin {
 
   private addCommands() {
     this.addCommand({
-      id: "run-specific-file-encryption-test",
-      name: "Run Specific File Encryption Test",
-      callback: async () => {
-        const filePath = "Assets/mobileTest.png";
-        await testEncryptionWithSpecificFile(this, filePath);
-        new Notice(
-          "Specific file encryption test completed. Check console for results.",
-        );
-      },
-    });
-    this.addCommand({
       id: "open-arweave-sync-sidebar",
       name: "Open Arweave Sync Sidebar",
       callback: () => this.activateSyncSidebar(),
@@ -404,8 +393,8 @@ export default class ArweaveSync extends Plugin {
       this.updateStatusBar();
 
       // this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
-      const newOrModifiedFiles = await this.checkForNewFiles();
       this.vaultSyncManager.updateRemoteConfig();
+      const newOrModifiedFiles = await this.checkForNewFiles();
 
       if (
         this.settings.autoImportUnsyncedChanges &&
