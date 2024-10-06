@@ -483,9 +483,9 @@ export class SyncSidebar extends ItemView {
         const syncState =
           await this.plugin.vaultSyncManager.checkFileSync(file);
         contentEl.addClass(syncState.syncState);
-        // console.log(
-        //   `File name: ${file.name}, Sync state: ${syncState.syncState}`,
-        // );
+        console.log(
+          `File name: ${file.name}, Sync state: ${syncState.syncState}`,
+        );
       }
     }
   }
