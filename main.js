@@ -26979,16 +26979,36 @@ var VaultSyncManager = class {
   }
   async syncFile(file) {
     await this.updateRemoteConfig();
-    const { syncState, localNewerVersion, fileHash } = await this.checkFileSync(file);
+    const { syncState, fileHash } = await this.checkFileSync(file);
     if (syncState === "synced") {
       console.log(`File ${file.path} is already synced.`);
       return;
     }
-    if (localNewerVersion) {
-      await this.exportFilesToArweave([file.path]);
-    } else {
-      await this.importFileFromArweave(file.path);
+    switch (syncState) {
+      case "new-local":
+      case "local-newer":
+        console.log(`Exporting local changes for ${file.path}`);
+        await this.exportFilesToArweave([file.path]);
+        break;
+      case "new-remote":
+      case "remote-newer":
+        console.log(`Importing remote changes for ${file.path}`);
+        await this.importFileFromArweave(file.path);
+        const remoteFileInfo = this.remoteUploadConfig[file.path];
+        if (remoteFileInfo) {
+          this.localUploadConfig[file.path] = {
+            ...remoteFileInfo,
+            timestamp: Date.now()
+            // Use current timestamp for local version
+          };
+        }
+        break;
+      default:
+        console.warn(`Unexpected sync state for ${file.path}: ${syncState}`);
+        return;
     }
+    await this.plugin.saveSettings();
+    console.log(`File ${file.path} synced successfully.`);
   }
   isWalletConnected() {
     return walletManager.isConnected();
@@ -27046,6 +27066,8 @@ var VaultSyncManager = class {
           throw new Error(`Unexpected decrypted content type for ${filePath}`);
         }
       }
+      this.plugin.updateLocalConfig(filePath, remoteFileInfo);
+      await this.plugin.saveSettings();
       console.log(`Imported file: ${normalizedPath}`);
     } catch (error) {
       console.error(`Failed to import file: ${filePath}`, error);
@@ -27124,44 +27146,45 @@ var VaultSyncManager = class {
         if (syncState !== "synced") {
           const newFileInfo = await this.exportFileToArweave(file, fileHash);
           updatedFiles.push(newFileInfo);
+          this.localUploadConfig[file.path] = newFileInfo;
         }
       }
     }
     if (updatedFiles.length > 0) {
-      await this.plugin.aoManager.updateUploadConfig(this.localUploadConfig);
+      const updatedConfig = {};
+      updatedFiles.forEach((fileInfo) => {
+        updatedConfig[fileInfo.filePath] = fileInfo;
+      });
+      await this.plugin.aoManager.updateUploadConfig(updatedConfig);
     }
+    await this.plugin.saveSettings();
   }
   async updateRemoteConfig() {
     const remoteConfig = await this.plugin.aoManager.getUploadConfig();
     console.log(remoteConfig);
-    if (remoteConfig) {
-      this.remoteUploadConfig = remoteConfig;
-      this.plugin.settings.remoteUploadConfig = remoteConfig;
-      await this.plugin.saveSettings();
-    }
+    this.remoteUploadConfig = remoteConfig || {};
+    this.plugin.settings.remoteUploadConfig = remoteConfig || {};
+    await this.plugin.saveSettings();
   }
   async checkFileSync(file) {
-    this.updateRemoteConfig();
     const currentFileHash = await this.getFileHash(file);
     const remoteFileInfo = this.remoteUploadConfig[file.path];
     const localFileInfo = this.localUploadConfig[file.path];
     let syncState;
-    let localNewerVersion = false;
-    if (!remoteFileInfo) {
-      syncState = "new-file";
-      localNewerVersion = true;
-    } else if (currentFileHash !== remoteFileInfo.fileHash) {
-      if (remoteFileInfo.timestamp > file.stat.mtime) {
+    if (!remoteFileInfo && localFileInfo) {
+      syncState = "new-local";
+    } else if (!localFileInfo && remoteFileInfo) {
+      syncState = "new-remote";
+    } else if (currentFileHash !== (remoteFileInfo == null ? void 0 : remoteFileInfo.fileHash)) {
+      if (remoteFileInfo && remoteFileInfo.timestamp > file.stat.mtime) {
         syncState = "remote-newer";
-        localNewerVersion = false;
       } else {
-        syncState = "updated-file";
-        localNewerVersion = true;
+        syncState = "local-newer";
       }
     } else {
       syncState = "synced";
     }
-    return { syncState, localNewerVersion, fileHash: currentFileHash };
+    return { syncState, fileHash: currentFileHash };
   }
   async getFileHash(file) {
     const isBinary = this.isBinaryFile(file);
@@ -27501,19 +27524,6 @@ var SyncSidebar = class extends import_obsidian5.ItemView {
     this.filesToSync[this.currentTab] = this.removeFileFromTree(
       this.filesToSync[this.currentTab],
       oldPath
-    );
-    const newFileNode = this.createFileNode(file.path, {
-      txId: "",
-      timestamp: file.stat.mtime,
-      fileHash: "",
-      encrypted: false,
-      filePath: file.path,
-      previousVersionTxId: null,
-      versionNumber: 1
-    });
-    this.files[this.currentTab] = this.addFileToTree(
-      this.files[this.currentTab],
-      newFileNode
     );
     this.renderContent();
   }
@@ -27921,6 +27931,10 @@ Version: ${node.fileInfo.versionNumber}`
       const filesToSync = this.flattenFileTree(
         this.filesToSync[this.currentTab]
       );
+      if (filesToSync.length === 0) {
+        new import_obsidian5.Notice("No files selected for sync.");
+        return;
+      }
       if (this.currentTab === "export") {
         await this.plugin.vaultSyncManager.exportFilesToArweave(filesToSync);
       } else {
@@ -27974,8 +27988,8 @@ Version: ${node.fileInfo.versionNumber}`
     const newOrModifiedFiles = [];
     const files = this.plugin.app.vault.getFiles();
     for (const file of files) {
-      const { syncState, localNewerVersion, fileHash } = await this.plugin.vaultSyncManager.checkFileSync(file);
-      if (syncState !== "synced" && localNewerVersion) {
+      const { syncState, fileHash } = await this.plugin.vaultSyncManager.checkFileSync(file);
+      if (syncState === "new-local" || syncState === "local-newer") {
         const localFileInfo = this.plugin.settings.localUploadConfig[file.path];
         const fileNode = this.createFileNode(
           file.path,
@@ -27990,8 +28004,6 @@ Version: ${node.fileInfo.versionNumber}`
           },
           syncState
         );
-        fileNode.syncState = syncState;
-        fileNode.localNewerVersion = localNewerVersion;
         newOrModifiedFiles.push(fileNode);
       }
     }
@@ -27999,33 +28011,24 @@ Version: ${node.fileInfo.versionNumber}`
   }
   async getRemoteFilesForImport() {
     const remoteConfig = this.plugin.settings.remoteUploadConfig;
-    const localConfig = this.plugin.settings.localUploadConfig;
     const newOrModifiedFiles = [];
     for (const [filePath, remoteFileInfo] of Object.entries(remoteConfig)) {
       const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
-      const localFileInfo = localConfig[filePath];
       let syncState;
-      let localNewerVersion = false;
-      let localOlderVersion = false;
       if (!file) {
-        syncState = "new-file";
+        syncState = "new-remote";
       } else if (file instanceof import_obsidian5.TFile) {
-        const {
-          syncState: fileSyncState,
-          localNewerVersion: fileLocalNewerVersion
-        } = await this.plugin.vaultSyncManager.checkFileSync(file);
-        syncState = fileSyncState;
-        localNewerVersion = fileLocalNewerVersion;
-        localOlderVersion = !localNewerVersion && syncState === "remote-newer";
+        const result2 = await this.plugin.vaultSyncManager.checkFileSync(file);
+        syncState = result2.syncState;
+      } else {
+        continue;
       }
-      if (syncState !== "synced") {
+      if (syncState !== "synced" && syncState !== "new-local" && syncState !== "local-newer") {
         const fileNode = this.createFileNode(
           filePath,
           remoteFileInfo,
           syncState
         );
-        fileNode.localNewerVersion = localNewerVersion;
-        fileNode.localOlderVersion = localOlderVersion;
         newOrModifiedFiles.push(fileNode);
       }
     }
@@ -28040,9 +28043,7 @@ Version: ${node.fileInfo.versionNumber}`
       isFolder: false,
       children: [],
       expanded: false,
-      syncState,
-      localNewerVersion: false,
-      localOlderVersion: false
+      syncState
     };
   }
   buildFileTree(files) {
@@ -29268,16 +29269,20 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
   async updateSyncButtonState(syncButton, file) {
     const { syncState } = await this.vaultSyncManager.checkFileSync(file);
     const stateConfig = {
-      "new-file": {
-        color: "var(--text-error)",
-        title: "New file, click to sync"
+      "new-local": {
+        color: "var(--text-accent)",
+        title: "New local file, click to sync"
       },
-      "updated-file": {
+      "new-remote": {
+        color: "var(--text-accent-hover)",
+        title: "New remote file, click to sync"
+      },
+      "local-newer": {
         color: "var(--text-warning)",
-        title: "File updated, click to sync"
+        title: "Local version is newer, click to sync"
       },
       "remote-newer": {
-        color: "var(--text-accent)",
+        color: "var(--text-error)",
         title: "Remote version is newer, click to sync"
       },
       synced: {
@@ -29286,7 +29291,11 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
         disabled: true
       }
     };
-    const config = stateConfig[syncState];
+    const config = stateConfig[syncState] || {
+      color: "var(--text-muted)",
+      title: "Unknown sync state",
+      disabled: true
+    };
     this.setSyncButtonState(
       syncButton,
       syncState,
@@ -29416,7 +29425,6 @@ Check the console for more details.`
         timestamp: file.stat.mtime,
         fileHash,
         encrypted: true,
-        // Assuming all files are encrypted
         filePath,
         previousVersionTxId: (existingConfig == null ? void 0 : existingConfig.previousVersionTxId) || null,
         versionNumber: (existingConfig == null ? void 0 : existingConfig.versionNumber) || 1

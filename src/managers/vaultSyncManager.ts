@@ -38,19 +38,42 @@ export class VaultSyncManager {
   async syncFile(file: TFile): Promise<void> {
     await this.updateRemoteConfig();
 
-    const { syncState, localNewerVersion, fileHash } =
-      await this.checkFileSync(file);
+    const { syncState, fileHash } = await this.checkFileSync(file);
 
     if (syncState === "synced") {
       console.log(`File ${file.path} is already synced.`);
       return;
     }
 
-    if (localNewerVersion) {
-      await this.exportFilesToArweave([file.path]);
-    } else {
-      await this.importFileFromArweave(file.path);
+    switch (syncState) {
+      case "new-local":
+      case "local-newer":
+        console.log(`Exporting local changes for ${file.path}`);
+        await this.exportFilesToArweave([file.path]);
+        // No need to update localUploadConfig here as exportFilesToArweave does it
+        break;
+      case "new-remote":
+      case "remote-newer":
+        console.log(`Importing remote changes for ${file.path}`);
+        await this.importFileFromArweave(file.path);
+        // Update localUploadConfig after import
+        const remoteFileInfo = this.remoteUploadConfig[file.path];
+        if (remoteFileInfo) {
+          this.localUploadConfig[file.path] = {
+            ...remoteFileInfo,
+            timestamp: Date.now(), // Use current timestamp for local version
+          };
+        }
+        break;
+      default:
+        console.warn(`Unexpected sync state for ${file.path}: ${syncState}`);
+        return; // Exit without saving settings for unexpected states
     }
+
+    // Save settings after sync operations
+    await this.plugin.saveSettings();
+
+    console.log(`File ${file.path} synced successfully.`);
   }
 
   isWalletConnected(): boolean {
@@ -120,6 +143,11 @@ export class VaultSyncManager {
           throw new Error(`Unexpected decrypted content type for ${filePath}`);
         }
       }
+
+      this.plugin.updateLocalConfig(filePath, remoteFileInfo);
+
+      // Save updated local config
+      await this.plugin.saveSettings();
 
       console.log(`Imported file: ${normalizedPath}`);
     } catch (error) {
@@ -222,55 +250,68 @@ export class VaultSyncManager {
         if (syncState !== "synced") {
           const newFileInfo = await this.exportFileToArweave(file, fileHash);
           updatedFiles.push(newFileInfo);
+          // Update local config for this file
+          this.localUploadConfig[file.path] = newFileInfo;
         }
       }
     }
 
-    // Update the AO process with all changes at once
+    // Update the AO process with only the changes
     if (updatedFiles.length > 0) {
-      await this.plugin.aoManager.updateUploadConfig(this.localUploadConfig);
+      const updatedConfig: UploadConfig = {};
+      updatedFiles.forEach((fileInfo) => {
+        updatedConfig[fileInfo.filePath] = fileInfo;
+      });
+      await this.plugin.aoManager.updateUploadConfig(updatedConfig);
     }
+
+    // Save the updated local config
+    await this.plugin.saveSettings();
   }
 
   public async updateRemoteConfig(): Promise<void> {
     const remoteConfig = await this.plugin.aoManager.getUploadConfig();
     console.log(remoteConfig);
-    if (remoteConfig) {
-      this.remoteUploadConfig = remoteConfig;
-      this.plugin.settings.remoteUploadConfig = remoteConfig;
-      await this.plugin.saveSettings();
-    }
+    this.remoteUploadConfig = remoteConfig || {};
+    this.plugin.settings.remoteUploadConfig = remoteConfig || {};
+    await this.plugin.saveSettings();
   }
 
   async checkFileSync(file: TFile): Promise<{
-    syncState: "new-file" | "updated-file" | "synced" | "remote-newer";
-    localNewerVersion: boolean;
+    syncState:
+      | "new-local"
+      | "new-remote"
+      | "local-newer"
+      | "remote-newer"
+      | "synced";
     fileHash: string;
   }> {
-    this.updateRemoteConfig();
     const currentFileHash = await this.getFileHash(file);
     const remoteFileInfo = this.remoteUploadConfig[file.path];
     const localFileInfo = this.localUploadConfig[file.path];
 
-    let syncState: "new-file" | "updated-file" | "synced" | "remote-newer";
-    let localNewerVersion = false;
+    let syncState:
+      | "new-local"
+      | "new-remote"
+      | "local-newer"
+      | "remote-newer"
+      | "synced";
 
-    if (!remoteFileInfo) {
-      syncState = "new-file";
-      localNewerVersion = true;
-    } else if (currentFileHash !== remoteFileInfo.fileHash) {
-      if (remoteFileInfo.timestamp > file.stat.mtime) {
+    if (!remoteFileInfo && localFileInfo) {
+      syncState = "new-local";
+    } else if (!localFileInfo && remoteFileInfo) {
+      syncState = "new-remote";
+    } else if (currentFileHash !== remoteFileInfo?.fileHash) {
+      if (remoteFileInfo && remoteFileInfo.timestamp > file.stat.mtime) {
         syncState = "remote-newer";
-        localNewerVersion = false;
       } else {
-        syncState = "updated-file";
-        localNewerVersion = true;
+        syncState = "local-newer";
       }
     } else {
       syncState = "synced";
     }
 
-    return { syncState, localNewerVersion, fileHash: currentFileHash };
+    return { syncState, fileHash: currentFileHash };
   }
 
   public async getFileHash(file: TFile): Promise<string> {

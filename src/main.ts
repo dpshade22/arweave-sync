@@ -278,23 +278,27 @@ export default class ArweaveSync extends Plugin {
     return syncButton;
   }
 
-  private async updateSyncButtonState(syncButton: HTMLElement, file: TFile) {
+  async updateSyncButtonState(syncButton: HTMLElement, file: TFile) {
     const { syncState } = await this.vaultSyncManager.checkFileSync(file);
 
     const stateConfig: Record<
       string,
       { color: string; title: string; disabled?: boolean }
     > = {
-      "new-file": {
-        color: "var(--text-error)",
-        title: "New file, click to sync",
+      "new-local": {
+        color: "var(--text-accent)",
+        title: "New local file, click to sync",
       },
-      "updated-file": {
+      "new-remote": {
+        color: "var(--text-accent-hover)",
+        title: "New remote file, click to sync",
+      },
+      "local-newer": {
         color: "var(--text-warning)",
-        title: "File updated, click to sync",
+        title: "Local version is newer, click to sync",
       },
       "remote-newer": {
-        color: "var(--text-accent)",
+        color: "var(--text-error)",
         title: "Remote version is newer, click to sync",
       },
       synced: {
@@ -304,7 +308,12 @@ export default class ArweaveSync extends Plugin {
       },
     };
 
-    const config = stateConfig[syncState];
+    const config = stateConfig[syncState] || {
+      color: "var(--text-muted)",
+      title: "Unknown sync state",
+      disabled: true,
+    };
+
     this.setSyncButtonState(
       syncButton,
       syncState,
@@ -485,7 +494,7 @@ export default class ArweaveSync extends Plugin {
         txId: existingConfig?.txId || "",
         timestamp: file.stat.mtime,
         fileHash: fileHash,
-        encrypted: true, // Assuming all files are encrypted
+        encrypted: true,
         filePath: filePath,
         previousVersionTxId: existingConfig?.previousVersionTxId || null,
         versionNumber: existingConfig?.versionNumber || 1,

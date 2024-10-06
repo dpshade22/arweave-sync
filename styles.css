@@ -17,8 +17,20 @@
     color: var(--text-muted);
 }
 
-.arweave-sync-icon.synced {
+.new-local {
     color: var(--text-accent);
+}
+.new-remote {
+    color: var(--text-accent-hover);
+}
+.local-newer {
+    color: var(--text-warning);
+}
+.remote-newer {
+    color: var(--text-error);
+}
+.synced {
+    color: var(--text-success);
 }
 
 .view-header {
