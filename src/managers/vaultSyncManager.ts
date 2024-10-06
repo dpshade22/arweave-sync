@@ -243,22 +243,29 @@ export class VaultSyncManager {
   }
 
   async checkFileSync(file: TFile): Promise<{
-    syncState: "new-file" | "updated-file" | "synced";
+    syncState: "new-file" | "updated-file" | "synced" | "remote-newer";
     localNewerVersion: boolean;
     fileHash: string;
   }> {
+    this.updateRemoteConfig();
     const currentFileHash = await this.getFileHash(file);
     const remoteFileInfo = this.remoteUploadConfig[file.path];
+    const localFileInfo = this.localUploadConfig[file.path];
 
-    let syncState: "new-file" | "updated-file" | "synced";
+    let syncState: "new-file" | "updated-file" | "synced" | "remote-newer";
     let localNewerVersion = false;
 
     if (!remoteFileInfo) {
       syncState = "new-file";
       localNewerVersion = true;
     } else if (currentFileHash !== remoteFileInfo.fileHash) {
-      syncState = "updated-file";
-      localNewerVersion = file.stat.mtime > remoteFileInfo.timestamp;
+      if (remoteFileInfo.timestamp > file.stat.mtime) {
+        syncState = "remote-newer";
+        localNewerVersion = false;
+      } else {
+        syncState = "updated-file";
+        localNewerVersion = true;
+      }
     } else {
       syncState = "synced";
     }

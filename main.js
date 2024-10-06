@@ -27141,16 +27141,23 @@ var VaultSyncManager = class {
     }
   }
   async checkFileSync(file) {
+    this.updateRemoteConfig();
     const currentFileHash = await this.getFileHash(file);
     const remoteFileInfo = this.remoteUploadConfig[file.path];
+    const localFileInfo = this.localUploadConfig[file.path];
     let syncState;
     let localNewerVersion = false;
     if (!remoteFileInfo) {
       syncState = "new-file";
       localNewerVersion = true;
     } else if (currentFileHash !== remoteFileInfo.fileHash) {
-      syncState = "updated-file";
-      localNewerVersion = file.stat.mtime > remoteFileInfo.timestamp;
+      if (remoteFileInfo.timestamp > file.stat.mtime) {
+        syncState = "remote-newer";
+        localNewerVersion = false;
+      } else {
+        syncState = "updated-file";
+        localNewerVersion = true;
+      }
     } else {
       syncState = "synced";
     }
@@ -28003,24 +28010,22 @@ Version: ${node.fileInfo.versionNumber}`
       if (!file) {
         syncState = "new-file";
       } else if (file instanceof import_obsidian5.TFile) {
-        syncState = await this.plugin.getFileSyncState(file);
-        const localTimestamp = file.stat.mtime;
-        const remoteTimestamp = remoteFileInfo.timestamp;
-        if (localTimestamp > remoteTimestamp) {
-          localNewerVersion = true;
-          continue;
-        } else if (localTimestamp < remoteTimestamp) {
-          localOlderVersion = true;
-        }
+        const {
+          syncState: fileSyncState,
+          localNewerVersion: fileLocalNewerVersion
+        } = await this.plugin.vaultSyncManager.checkFileSync(file);
+        syncState = fileSyncState;
+        localNewerVersion = fileLocalNewerVersion;
+        localOlderVersion = !localNewerVersion && syncState === "remote-newer";
       }
-      if (syncState && syncState !== "synced") {
+      if (syncState !== "synced") {
         const fileNode = this.createFileNode(
           filePath,
           remoteFileInfo,
           syncState
         );
-        fileNode.localNewerVersion = localNewerVersion || syncState === "updated-file" && !localOlderVersion;
-        fileNode.localOlderVersion = localOlderVersion || syncState === "updated-file" && !localNewerVersion;
+        fileNode.localNewerVersion = localNewerVersion;
+        fileNode.localOlderVersion = localOlderVersion;
         newOrModifiedFiles.push(fileNode);
       }
     }

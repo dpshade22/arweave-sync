@@ -775,48 +775,36 @@ export class SyncSidebar extends ItemView {
       const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
       const localFileInfo = localConfig[filePath];
 
-      let syncState: any;
+      let syncState: string;
       let localNewerVersion = false;
       let localOlderVersion = false;
 
       if (!file) {
         syncState = "new-file";
       } else if (file instanceof TFile) {
-        syncState = await this.plugin.getFileSyncState(file);
+        const {
+          syncState: fileSyncState,
+          localNewerVersion: fileLocalNewerVersion,
+        } = await this.plugin.vaultSyncManager.checkFileSync(file);
 
-        // Add timestamp comparison
-        const localTimestamp = file.stat.mtime;
-        const remoteTimestamp = remoteFileInfo.timestamp;
-
-        if (localTimestamp > remoteTimestamp) {
-          localNewerVersion = true;
-          continue;
-        } else if (localTimestamp < remoteTimestamp) {
-          localOlderVersion = true;
-        }
+        syncState = fileSyncState;
+        localNewerVersion = fileLocalNewerVersion;
+        localOlderVersion = !localNewerVersion && syncState === "remote-newer";
       }
 
-      if (syncState && syncState !== "synced") {
+      if (syncState !== "synced") {
         const fileNode = this.createFileNode(
           filePath,
           remoteFileInfo,
           syncState,
         );
-
-        // Set the version flags based on both the existing conditions and the new timestamp comparison
-        fileNode.localNewerVersion =
-          localNewerVersion ||
-          (syncState === "updated-file" && !localOlderVersion);
-        fileNode.localOlderVersion =
-          localOlderVersion ||
-          (syncState === "updated-file" && !localNewerVersion);
-
+        fileNode.localNewerVersion = localNewerVersion;
+        fileNode.localOlderVersion = localOlderVersion;
         newOrModifiedFiles.push(fileNode);
       }
     }
 
     const fileTree = this.buildFileTree(newOrModifiedFiles);
-
     return fileTree;
   }
 
