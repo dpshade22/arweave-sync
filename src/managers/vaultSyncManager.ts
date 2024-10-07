@@ -50,7 +50,12 @@ export class VaultSyncManager {
       case "new-local":
       case "local-newer":
         console.log(`Exporting local changes for ${file.path}`);
-        await this.exportFileToArweave(file, fileHash);
+        let newFileInfo = await this.exportFileToArweave(file, fileHash);
+        let updatedRemoteConfig = {
+          ...this.plugin.settings.remoteUploadConfig,
+          [newFileInfo.filePath]: newFileInfo,
+        };
+        await this.plugin.aoManager.updateUploadConfig(updatedRemoteConfig);
         break;
       case "new-remote":
       case "remote-newer":
@@ -60,7 +65,6 @@ export class VaultSyncManager {
         if (remoteFileInfo) {
           this.localUploadConfig[file.path] = {
             ...remoteFileInfo,
-            timestamp: Date.now(),
           };
         }
         break;
@@ -346,8 +350,6 @@ export class VaultSyncManager {
       previousVersionTxId,
       versionNumber,
     };
-
-    this.localUploadConfig[file.path] = newFileInfo;
 
     this.plugin.updateLocalConfig(file.path, newFileInfo);
 
