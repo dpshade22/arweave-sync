@@ -12060,7 +12060,7 @@ __export(main_exports, {
   default: () => ArweaveSync
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian7 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 
 // node_modules/@permaweb/aoconnect/dist/browser.js
 var __create2 = Object.create;
@@ -27191,12 +27191,26 @@ var VaultSyncManager = class {
           `Failed to decrypt ${file.path}. Please check your encryption password.`
         );
       }
-      if (import_buffer3.Buffer.isBuffer(decryptedContent)) {
-        await this.plugin.app.vault.modifyBinary(file, decryptedContent.buffer);
-      } else if (typeof decryptedContent === "string") {
-        await this.plugin.app.vault.modify(file, decryptedContent);
+      if (await this.plugin.app.vault.adapter.exists(file.path)) {
+        if (import_buffer3.Buffer.isBuffer(decryptedContent)) {
+          await this.plugin.app.vault.modifyBinary(
+            file,
+            decryptedContent.buffer
+          );
+        } else if (typeof decryptedContent === "string") {
+          await this.plugin.app.vault.modify(file, decryptedContent);
+        } else {
+          throw new Error(`Unexpected decrypted content type for ${file.path}`);
+        }
       } else {
-        throw new Error(`Unexpected decrypted content type for ${file.path}`);
+        if (import_buffer3.Buffer.isBuffer(decryptedContent)) {
+          await this.plugin.app.vault.createBinary(
+            file.path,
+            decryptedContent.buffer
+          );
+        } else if (typeof decryptedContent === "string") {
+          await this.plugin.app.vault.create(file.path, decryptedContent);
+        }
       }
       this.plugin.updateLocalConfig(file.path, remoteFileInfo);
       await this.plugin.saveSettings();
@@ -27216,6 +27230,13 @@ var VaultSyncManager = class {
     new import_obsidian2.Notice(
       `Failed to decrypt ${filePath}. It has been removed from the sync list.`
     );
+  }
+  async deleteRemoteFile(filePath) {
+    console.log(`Removing ${filePath} from remote upload config`);
+    let updatedRemoteConfig = this.remoteUploadConfig;
+    delete updatedRemoteConfig[filePath];
+    await this.plugin.aoManager.updateUploadConfig(updatedRemoteConfig);
+    new import_obsidian2.Notice(`Deleting ${filePath}. It has been removed from the sync list.`);
   }
   async ensureDirectoryExists(filePath) {
     const dir = dirname(filePath);
@@ -27559,12 +27580,55 @@ var WalletConnectModal = class extends import_obsidian3.Modal {
   }
 };
 
+// src/components/ConfirmationModal.ts
+var import_obsidian4 = require("obsidian");
+var ConfirmationModal = class extends import_obsidian4.Modal {
+  constructor(app, title, message2, confirmButtonText = "Confirm", cancelButtonText = "Cancel", isDestructiveAction = false) {
+    super(app);
+    this.title = title;
+    this.message = message2;
+    this.confirmButtonText = confirmButtonText;
+    this.cancelButtonText = cancelButtonText;
+    this.isDestructiveAction = isDestructiveAction;
+  }
+  onOpen() {
+    const { contentEl, titleEl } = this;
+    titleEl.setText(this.title);
+    contentEl.empty();
+    contentEl.addClass("confirmation-modal");
+    const messageEl = contentEl.createDiv("confirmation-message");
+    messageEl.innerHTML = this.message;
+    const buttonContainer = contentEl.createDiv("confirmation-buttons");
+    new import_obsidian4.ButtonComponent(buttonContainer).setButtonText(this.cancelButtonText).onClick(() => {
+      this.close();
+      this.resolvePromise(false);
+    });
+    const confirmButton = new import_obsidian4.ButtonComponent(buttonContainer).setButtonText(this.confirmButtonText).setCta().onClick(() => {
+      this.close();
+      this.resolvePromise(true);
+    });
+    if (this.isDestructiveAction) {
+      confirmButton.setClass("mod-warning");
+    }
+  }
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+  async awaitUserConfirmation() {
+    return new Promise((resolve) => {
+      this.resolvePromise = resolve;
+      this.open();
+    });
+  }
+};
+
 // src/main.ts
 var import_arweave3 = __toESM(require_web());
 
 // src/settings/settings.ts
-var import_obsidian4 = require("obsidian");
-var ArweaveSyncSettingTab = class extends import_obsidian4.PluginSettingTab {
+var import_obsidian5 = require("obsidian");
+var ArweaveSyncSettingTab = class extends import_obsidian5.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -27573,19 +27637,19 @@ var ArweaveSyncSettingTab = class extends import_obsidian4.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "ArweaveSync Settings" });
-    new import_obsidian4.Setting(containerEl).setName("Encryption Password").setDesc("Set the encryption password for your synced files").addText(
+    new import_obsidian5.Setting(containerEl).setName("Encryption Password").setDesc("Set the encryption password for your synced files").addText(
       (text) => text.setPlaceholder("Enter your password").setValue(this.plugin.settings.encryptionPassword).onChange(async (value) => {
         this.plugin.settings.encryptionPassword = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Auto-import Unsynced Changes").setDesc("Automatically import unsynced changes when connecting wallet").addToggle(
+    new import_obsidian5.Setting(containerEl).setName("Auto-import Unsynced Changes").setDesc("Automatically import unsynced changes when connecting wallet").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.autoImportUnsyncedChanges).onChange(async (value) => {
         this.plugin.settings.autoImportUnsyncedChanges = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Custom Process ID").setDesc("Optionally provide a custom AO process ID").addText(
+    new import_obsidian5.Setting(containerEl).setName("Custom Process ID").setDesc("Optionally provide a custom AO process ID").addText(
       (text) => text.setPlaceholder("Enter custom process ID").setValue(this.plugin.settings.customProcessId).onChange(async (value) => {
         this.plugin.settings.customProcessId = value;
         await this.plugin.saveSettings();
@@ -27609,9 +27673,9 @@ function debounce(func, wait) {
 }
 
 // src/components/SyncSidebar.ts
-var import_obsidian5 = require("obsidian");
+var import_obsidian6 = require("obsidian");
 var SYNC_SIDEBAR_VIEW = "arweave-sync-view";
-var SyncSidebar = class extends import_obsidian5.ItemView {
+var SyncSidebar = class extends import_obsidian6.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.currentTab = "export";
@@ -27944,16 +28008,55 @@ var SyncSidebar = class extends import_obsidian5.ItemView {
     if (node.syncState) {
       contentEl.addClass(node.syncState);
     }
-    const innerEl = contentEl.createEl("div", {
+    contentEl.createEl("div", {
       cls: "tree-item-inner nav-file-title-content",
       text: this.displayFileName(node.name)
     });
     if (node.fileInfo) {
       this.setFileNodeAttributes(contentEl, node);
     }
+    let longPressTimer;
+    let isLongPress = false;
+    const handleLongPress = (e) => {
+      isLongPress = true;
+      this.createContextMenu(node, e);
+    };
+    const handleMouseDown = (e) => {
+      if (e.button === 2) {
+        e.preventDefault();
+        this.createContextMenu(node, e);
+      } else if (e.button === 0) {
+        longPressTimer = window.setTimeout(() => handleLongPress(e), 500);
+      }
+    };
+    const handleTouchStart = (e) => {
+      longPressTimer = window.setTimeout(() => handleLongPress(e), 500);
+    };
+    const handleMouseUp = (e) => {
+      clearTimeout(longPressTimer);
+      if (!isLongPress && e.button === 0) {
+        this.toggleFileSelection(node, isSource);
+      }
+      isLongPress = false;
+    };
+    const handleTouchEnd = (e) => {
+      clearTimeout(longPressTimer);
+      if (!isLongPress) {
+        this.toggleFileSelection(node, isSource);
+      }
+      isLongPress = false;
+    };
+    contentEl.addEventListener("mousedown", handleMouseDown);
+    contentEl.addEventListener("touchstart", handleTouchStart);
+    contentEl.addEventListener("mouseup", handleMouseUp);
+    contentEl.addEventListener("touchend", handleTouchEnd);
     contentEl.addEventListener(
-      "click",
-      () => this.toggleFileSelection(node, isSource)
+      "mouseleave",
+      () => clearTimeout(longPressTimer)
+    );
+    contentEl.addEventListener(
+      "touchcancel",
+      () => clearTimeout(longPressTimer)
     );
   }
   async setFileNodeAttributes(contentEl, node) {
@@ -27968,7 +28071,7 @@ Version: ${node.fileInfo.versionNumber}`
       const file = this.plugin.app.vault.getAbstractFileByPath(
         node.path
       );
-      if (file instanceof import_obsidian5.TFile) {
+      if (file instanceof import_obsidian6.TFile) {
         const syncState = await this.plugin.vaultSyncManager.checkFileSync(file);
         contentEl.addClass(syncState.syncState);
         console.log(
@@ -28128,7 +28231,7 @@ Version: ${node.fileInfo.versionNumber}`
   async submitChanges() {
     var _a7;
     if (!this.plugin.vaultSyncManager.isWalletConnected()) {
-      new import_obsidian5.Notice("Please connect a wallet before syncing.");
+      new import_obsidian6.Notice("Please connect a wallet before syncing.");
       return;
     }
     const submitButton = this.contentContainer.querySelector(
@@ -28148,7 +28251,7 @@ Version: ${node.fileInfo.versionNumber}`
         this.filesToSync[this.currentTab]
       );
       if (filesToSync.length === 0) {
-        new import_obsidian5.Notice("No files selected for sync.");
+        new import_obsidian6.Notice("No files selected for sync.");
         return;
       }
       if (this.currentTab === "export") {
@@ -28159,12 +28262,12 @@ Version: ${node.fileInfo.versionNumber}`
       await this.plugin.vaultSyncManager.updateRemoteConfig();
       await this.initializeFiles();
       await this.renderContent();
-      new import_obsidian5.Notice(
+      new import_obsidian6.Notice(
         `${this.currentTab === "export" ? "Export" : "Import"} completed successfully.`
       );
     } catch (error) {
       console.error("Error during submission:", error);
-      new import_obsidian5.Notice(`Error during ${this.currentTab}: ${error.message}`);
+      new import_obsidian6.Notice(`Error during ${this.currentTab}: ${error.message}`);
     } finally {
       submitButton.setAttribute("data-state", "ready");
       submitButton.disabled = false;
@@ -28233,7 +28336,7 @@ Version: ${node.fileInfo.versionNumber}`
       let syncState;
       if (!file) {
         syncState = "new-remote";
-      } else if (file instanceof import_obsidian5.TFile) {
+      } else if (file instanceof import_obsidian6.TFile) {
         const result2 = await this.plugin.vaultSyncManager.checkFileSync(file);
         syncState = result2.syncState;
       } else {
@@ -28435,6 +28538,91 @@ Version: ${node.fileInfo.versionNumber}`
       }
     });
   }
+  createContextMenu(file, event) {
+    const menu = new import_obsidian6.Menu();
+    const actualFile = this.plugin.app.vault.getAbstractFileByPath(file.path);
+    if (this.currentTab === "import") {
+      if (actualFile instanceof import_obsidian6.TFile) {
+        menu.addItem((item) => {
+          item.setTitle("Replace remote file with local").setIcon("upload-cloud").onClick(() => this.replaceRemoteWithLocal(file));
+        });
+      }
+      menu.addItem((item) => {
+        item.setTitle("Delete file from Arweave").setIcon("trash").onClick(() => this.deleteRemoteFile(file));
+      });
+      if (actualFile instanceof import_obsidian6.TFile) {
+        menu.addSeparator();
+        this.plugin.app.workspace.trigger(
+          "file-menu",
+          menu,
+          actualFile,
+          "file-explorer"
+        );
+      }
+    } else {
+      if (actualFile instanceof import_obsidian6.TFile) {
+        menu.addItem((item) => {
+          item.setTitle("Delete").setIcon("trash").onClick(() => {
+            this.plugin.app.fileManager.trashFile(actualFile);
+          });
+        });
+        menu.addSeparator();
+        this.plugin.app.workspace.trigger(
+          "file-menu",
+          menu,
+          actualFile,
+          "file-explorer"
+        );
+      }
+    }
+    if (event instanceof MouseEvent) {
+      menu.showAtPosition({ x: event.clientX, y: event.clientY });
+    } else if (event instanceof TouchEvent) {
+      const touch = event.touches[0];
+      menu.showAtPosition({ x: touch.clientX, y: touch.clientY });
+    }
+  }
+  async replaceRemoteWithLocal(file) {
+    try {
+      const actualFile = this.plugin.app.vault.getAbstractFileByPath(file.path);
+      if (actualFile instanceof import_obsidian6.TFile) {
+        await this.plugin.vaultSyncManager.syncFile(actualFile);
+        new import_obsidian6.Notice(
+          `Replaced remote version of ${file.name} with local version.`
+        );
+        this.refresh();
+      } else {
+        new import_obsidian6.Notice(`Error: ${file.name} not found in local vault.`);
+      }
+    } catch (error) {
+      console.error("Error replacing remote file with local:", error);
+      new import_obsidian6.Notice(`Failed to replace remote file: ${error.message}`);
+    }
+  }
+  async deleteRemoteFile(file) {
+    try {
+      const confirmed = await this.confirmDeletion(file.name);
+      if (confirmed) {
+        await this.plugin.vaultSyncManager.deleteRemoteFile(file.path);
+        new import_obsidian6.Notice(`Deleted remote file: ${file.name}`);
+        this.refresh();
+      }
+    } catch (error) {
+      console.error("Error deleting remote file:", error);
+      new import_obsidian6.Notice(`Failed to delete remote file: ${error.message}`);
+    }
+  }
+  async confirmDeletion(fileName) {
+    const modal = new ConfirmationModal(
+      this.app,
+      "Confirm Deletion",
+      `<p>Are you sure you want to delete the remote version of <strong>${fileName}</strong>?</p><p class="warning">This action cannot be undone.</p>`,
+      "Delete",
+      "Cancel",
+      true
+    );
+    return await modal.awaitUserConfirmation();
+  }
   async refresh() {
     await this.initializeFiles();
     this.renderContent();
@@ -28445,7 +28633,7 @@ Version: ${node.fileInfo.versionNumber}`
     if (!file.isFolder) {
       const filePath = file.path;
       const abstractFile = this.plugin.app.vault.getAbstractFileByPath(filePath);
-      if (!(abstractFile instanceof import_obsidian5.TFile)) {
+      if (!(abstractFile instanceof import_obsidian6.TFile)) {
         console.error(`File not found: ${filePath}`);
         return;
       }
@@ -28470,7 +28658,7 @@ Version: ${node.fileInfo.versionNumber}`
     if (this.totalExportSize > 0) {
       try {
         const url = `https://arweave.net/price/${this.totalExportSize}`;
-        const response = await (0, import_obsidian5.request)({
+        const response = await (0, import_obsidian6.request)({
           url,
           method: "GET"
         });
@@ -28533,7 +28721,7 @@ Version: ${node.fileInfo.versionNumber}`
 };
 
 // src/managers/arPublishManager.ts
-var import_obsidian6 = require("obsidian");
+var import_obsidian7 = require("obsidian");
 var ArPublishManager = class {
   constructor(app, plugin) {
     this.app = app;
@@ -28543,7 +28731,7 @@ var ArPublishManager = class {
     const markdownFiles = this.getMarkdownFiles(folder);
     const indexFile = markdownFiles.find((file) => file.name === "index.md");
     if (!indexFile) {
-      new import_obsidian6.Notice("Error: index.md file is required in the root of the folder.");
+      new import_obsidian7.Notice("Error: index.md file is required in the root of the folder.");
       return;
     }
     const outputDir = await this.createOutputDirectory(folder.name);
@@ -28587,10 +28775,10 @@ var ArPublishManager = class {
     const arweaveLink = `https://arweave.net/${manifestTxId}`;
     console.log("Manifest uploaded:", arweaveLink);
     navigator.clipboard.writeText(arweaveLink).then(() => {
-      new import_obsidian6.Notice(`Website link copied to clipboard: ${arweaveLink}`);
+      new import_obsidian7.Notice(`Website link copied to clipboard: ${arweaveLink}`);
     }).catch((err) => {
       console.error("Failed to copy to clipboard:", err);
-      new import_obsidian6.Notice(`Website published to Arweave. Link: ${arweaveLink}`);
+      new import_obsidian7.Notice(`Website published to Arweave. Link: ${arweaveLink}`);
     });
   }
   getRelativePath(folderPath, filePath) {
@@ -28617,9 +28805,9 @@ var ArPublishManager = class {
   getMarkdownFiles(folder) {
     const files = [];
     const collectFiles = (item) => {
-      if (item instanceof import_obsidian6.TFolder) {
+      if (item instanceof import_obsidian7.TFolder) {
         item.children.forEach(collectFiles);
-      } else if (item instanceof import_obsidian6.TFile && item.extension === "md") {
+      } else if (item instanceof import_obsidian7.TFile && item.extension === "md") {
         files.push(item);
       }
     };
@@ -28645,7 +28833,7 @@ var ArPublishManager = class {
   async convertMarkdownToHtml(markdown, allFiles, currentFile) {
     markdown = this.convertWikiLinks(markdown, currentFile);
     const tempDiv = createDiv();
-    await import_obsidian6.MarkdownRenderer.renderMarkdown(
+    await import_obsidian7.MarkdownRenderer.renderMarkdown(
       markdown,
       tempDiv,
       currentFile.path,
@@ -29263,7 +29451,7 @@ var ArPublishManager = class {
 // src/main.ts
 var import_buffer4 = __toESM(require_buffer2());
 var import_process = __toESM(require_browser2());
-var ArweaveSync = class extends import_obsidian7.Plugin {
+var ArweaveSync = class extends import_obsidian8.Plugin {
   constructor() {
     super(...arguments);
     this.walletAddress = null;
@@ -29339,7 +29527,7 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
   setupSyncButton() {
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
-        if (file instanceof import_obsidian7.TFile) {
+        if (file instanceof import_obsidian8.TFile) {
           menu.addItem((item) => {
             item.setTitle("Sync with Arweave").setIcon("sync").onClick(() => this.syncFile(file));
           });
@@ -29347,7 +29535,7 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
             item.setTitle("Force Pull from Arweave").setIcon("download-cloud").onClick(() => this.forcePullCurrentFile(file));
           });
         }
-        if (file instanceof import_obsidian7.TFolder) {
+        if (file instanceof import_obsidian8.TFolder) {
           menu.addItem((item) => {
             item.setTitle("Publish as Website to Arweave").setIcon("globe").onClick(() => this.publishToArweave(file));
           });
@@ -29392,7 +29580,7 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
       name: "Force Refresh Sidebar Files",
       callback: () => {
         this.refreshSyncSidebar();
-        new import_obsidian7.Notice("Sidebar files refreshed");
+        new import_obsidian8.Notice("Sidebar files refreshed");
       }
     });
   }
@@ -29441,16 +29629,16 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
   async copyWalletAddress() {
     if (this.walletAddress) {
       await navigator.clipboard.writeText(this.walletAddress);
-      new import_obsidian7.Notice("Wallet address copied to clipboard");
+      new import_obsidian8.Notice("Wallet address copied to clipboard");
     }
   }
   async disconnectWallet() {
     await walletManager.disconnect();
     this.updateStatusBar();
-    new import_obsidian7.Notice("Wallet disconnected");
+    new import_obsidian8.Notice("Wallet disconnected");
   }
   async addSyncButtonToLeaf(leaf) {
-    if (leaf.view instanceof import_obsidian7.MarkdownView) {
+    if (leaf.view instanceof import_obsidian8.MarkdownView) {
       await this.addSyncButton(leaf.view);
     }
   }
@@ -29569,21 +29757,21 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
       const newOrModifiedFiles = await this.checkForNewFiles();
       if (this.settings.autoImportUnsyncedChanges && newOrModifiedFiles.length > 0) {
         await this.importFilesFromArweave(newOrModifiedFiles);
-        new import_obsidian7.Notice(
+        new import_obsidian8.Notice(
           `Automatically imported ${newOrModifiedFiles.length} new or modified files.`
         );
       } else if (newOrModifiedFiles.length > 0) {
-        new import_obsidian7.Notice(
+        new import_obsidian8.Notice(
           `${newOrModifiedFiles.length} new or modified files available for import.`
         );
         this.refreshSyncSidebar();
         await this.openSyncSidebarWithImportTab();
       } else {
-        new import_obsidian7.Notice("Wallet connected. No new files to import.");
+        new import_obsidian8.Notice("Wallet connected. No new files to import.");
       }
     } catch (error) {
       console.error("Error during wallet connection:", error);
-      new import_obsidian7.Notice(
+      new import_obsidian8.Notice(
         `Error: ${error.message}
 Check the console for more details.`
       );
@@ -29595,7 +29783,7 @@ Check the console for more details.`
     this.walletAddress = null;
     await this.aoManager.initialize(null);
     this.updateStatusBar();
-    new import_obsidian7.Notice("Wallet disconnected successfully");
+    new import_obsidian8.Notice("Wallet disconnected successfully");
   }
   async checkForNewFiles() {
     const newOrModifiedFiles = [];
@@ -29605,7 +29793,7 @@ Check the console for more details.`
       const localFile = this.app.vault.getAbstractFileByPath(filePath);
       if (!localFile) {
         newOrModifiedFiles.push(filePath);
-      } else if (localFile instanceof import_obsidian7.TFile) {
+      } else if (localFile instanceof import_obsidian8.TFile) {
         const localFileHash = await this.vaultSyncManager.getFileHash(localFile);
         const localFileTimestamp = localFile.stat.mtime;
         if (remoteFileInfo.fileHash !== localFileHash && remoteFileInfo.timestamp > localFileTimestamp) {
@@ -29614,7 +29802,7 @@ Check the console for more details.`
       }
     }
     if (newOrModifiedFiles.length > 0) {
-      new import_obsidian7.Notice(
+      new import_obsidian8.Notice(
         `Wallet connected. ${newOrModifiedFiles.length} new or modified files available for import.`
       );
       this.refreshSyncSidebar();
@@ -29652,7 +29840,7 @@ Check the console for more details.`
       await this.vaultSyncManager.importFilesFromArweave(selectedFiles);
     } catch (error) {
       console.error("Error during file import:", error);
-      new import_obsidian7.Notice(
+      new import_obsidian8.Notice(
         `Error: ${error.message}
 Check the console for more details.`
       );
@@ -29683,13 +29871,13 @@ Check the console for more details.`
     this.updateSyncUI();
   }
   getSyncButtonForFile() {
-    const view = this.app.workspace.getActiveViewOfType(import_obsidian7.MarkdownView);
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian8.MarkdownView);
     return view == null ? void 0 : view.containerEl.querySelector(
       ".arweave-sync-button"
     );
   }
   handleSyncError(file, error) {
-    new import_obsidian7.Notice(`Failed to sync file: ${error.message}`);
+    new import_obsidian8.Notice(`Failed to sync file: ${error.message}`);
   }
   async handleFileModify(file) {
     const { syncState, fileHash } = await this.vaultSyncManager.checkFileSync(file);
@@ -29731,7 +29919,7 @@ Check the console for more details.`
         await this.aoManager.updateUploadConfig(remoteConfig);
       } catch (error) {
         console.error("Error updating remote config after file rename:", error);
-        new import_obsidian7.Notice(
+        new import_obsidian8.Notice(
           `Failed to update remote config after rename ${file.path}. Please try again later.`
         );
       }
@@ -29752,7 +29940,7 @@ Check the console for more details.`
           "Error updating remote config after file deletion:",
           error
         );
-        new import_obsidian7.Notice(
+        new import_obsidian8.Notice(
           `Failed to update remote config after deleting ${file.path}. Please try again later.`
         );
       }
@@ -29793,7 +29981,7 @@ Check the console for more details.`
     });
   }
   updateActiveSyncButton() {
-    const activeView = this.app.workspace.getActiveViewOfType(import_obsidian7.MarkdownView);
+    const activeView = this.app.workspace.getActiveViewOfType(import_obsidian8.MarkdownView);
     if (activeView && activeView.file) {
       const syncButton = activeView.containerEl.querySelector(
         ".arweave-sync-button"
@@ -29827,14 +30015,19 @@ Check the console for more details.`
   }
   async forcePullCurrentFile(file) {
     try {
+      const confirmed = await this.confirmForcePull(file.name);
+      if (!confirmed) {
+        new import_obsidian8.Notice("Force pull cancelled.");
+        return;
+      }
       await this.vaultSyncManager.forcePullFile(file);
-      new import_obsidian7.Notice(
+      new import_obsidian8.Notice(
         `Successfully pulled the latest version of ${file.name} from Arweave`
       );
       this.updateSyncUI();
     } catch (error) {
       console.error("Error force pulling file:", error);
-      new import_obsidian7.Notice(`Failed to pull ${file.name} from Arweave: ${error.message}`);
+      new import_obsidian8.Notice(`Failed to pull ${file.name} from Arweave: ${error.message}`);
     }
   }
   async activateSyncSidebar() {
@@ -29895,13 +30088,13 @@ Check the console for more details.`
   async publishToArweave(folder) {
     try {
       await this.arPublishManager.publishWebsiteToArweave(folder);
-      new import_obsidian7.Notice(`Folder "${folder.name}" published to Arweave as a website.`);
+      new import_obsidian8.Notice(`Folder "${folder.name}" published to Arweave as a website.`);
     } catch (error) {
       console.error(
         `Error publishing folder ${folder.name} to Arweave:`,
         error
       );
-      new import_obsidian7.Notice(
+      new import_obsidian8.Notice(
         `Failed to publish ${folder.name} to Arweave. Error: ${error.message}`
       );
     }
@@ -29915,6 +30108,17 @@ Check the console for more details.`
       }
     }
     return null;
+  }
+  async confirmForcePull(fileName) {
+    const modal = new ConfirmationModal(
+      this.app,
+      "Confirm Force Pull",
+      `<p>Are you sure you want to force pull <strong>${fileName}</strong> from Arweave? This will overwrite your local copy.</p>`,
+      "Force Pull",
+      "Cancel",
+      false
+    );
+    return await modal.awaitUserConfirmation();
   }
   onunload() {
     console.log("Unloading ArweaveSync plugin");

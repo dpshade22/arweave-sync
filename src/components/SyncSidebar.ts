@@ -1,4 +1,13 @@
-import { ItemView, WorkspaceLeaf, TFile, Notice, request } from "obsidian";
+import {
+  ItemView,
+  WorkspaceLeaf,
+  TFile,
+  Notice,
+  Menu,
+  Modal,
+  request,
+} from "obsidian";
+import { ConfirmationModal } from "./ConfirmationModal";
 import ArweaveSync from "../main";
 import { FileUploadInfo, UploadConfig } from "../types";
 
@@ -462,7 +471,7 @@ export class SyncSidebar extends ItemView {
       contentEl.addClass(node.syncState);
     }
 
-    const innerEl = contentEl.createEl("div", {
+    contentEl.createEl("div", {
       cls: "tree-item-inner nav-file-title-content",
       text: this.displayFileName(node.name),
     });
@@ -471,8 +480,54 @@ export class SyncSidebar extends ItemView {
       this.setFileNodeAttributes(contentEl, node);
     }
 
-    contentEl.addEventListener("click", () =>
-      this.toggleFileSelection(node, isSource),
+    let longPressTimer: number;
+    let isLongPress = false;
+
+    const handleLongPress = (e: MouseEvent | TouchEvent) => {
+      isLongPress = true;
+      this.createContextMenu(node, e);
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.button === 2) {
+        // Right click
+        e.preventDefault();
+        this.createContextMenu(node, e);
+      } else if (e.button === 0) {
+        // Left click
+        longPressTimer = window.setTimeout(() => handleLongPress(e), 500);
+      }
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      longPressTimer = window.setTimeout(() => handleLongPress(e), 500);
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      clearTimeout(longPressTimer);
+      if (!isLongPress && e.button === 0) {
+        this.toggleFileSelection(node, isSource);
+      }
+      isLongPress = false;
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      clearTimeout(longPressTimer);
+      if (!isLongPress) {
+        this.toggleFileSelection(node, isSource);
+      }
+      isLongPress = false;
+    };
+
+    contentEl.addEventListener("mousedown", handleMouseDown);
+    contentEl.addEventListener("touchstart", handleTouchStart);
+    contentEl.addEventListener("mouseup", handleMouseUp);
+    contentEl.addEventListener("touchend", handleTouchEnd);
+    contentEl.addEventListener("mouseleave", () =>
+      clearTimeout(longPressTimer),
+    );
+    contentEl.addEventListener("touchcancel", () =>
+      clearTimeout(longPressTimer),
     );
   }
 
@@ -1079,6 +1134,113 @@ export class SyncSidebar extends ItemView {
         }
       }
     });
+  }
+
+  private createContextMenu(file: FileNode, event: MouseEvent | TouchEvent) {
+    const menu = new Menu();
+    const actualFile = this.plugin.app.vault.getAbstractFileByPath(file.path);
+
+    if (this.currentTab === "import") {
+      // Options for import tab
+      if (actualFile instanceof TFile) {
+        menu.addItem((item) => {
+          item
+            .setTitle("Replace remote file with local")
+            .setIcon("upload-cloud")
+            .onClick(() => this.replaceRemoteWithLocal(file));
+        });
+      }
+
+      menu.addItem((item) => {
+        item
+          .setTitle("Delete file from Arweave")
+          .setIcon("trash")
+          .onClick(() => this.deleteRemoteFile(file));
+      });
+
+      if (actualFile instanceof TFile) {
+        menu.addSeparator();
+        this.plugin.app.workspace.trigger(
+          "file-menu",
+          menu,
+          actualFile,
+          "file-explorer",
+        );
+      }
+    } else {
+      // Existing options for export tab
+      if (actualFile instanceof TFile) {
+        menu.addItem((item) => {
+          item
+            .setTitle("Delete")
+            .setIcon("trash")
+            .onClick(() => {
+              this.plugin.app.fileManager.trashFile(actualFile);
+            });
+        });
+
+        menu.addSeparator();
+
+        this.plugin.app.workspace.trigger(
+          "file-menu",
+          menu,
+          actualFile,
+          "file-explorer",
+        );
+      }
+    }
+
+    // Handle the different event types
+    if (event instanceof MouseEvent) {
+      menu.showAtPosition({ x: event.clientX, y: event.clientY });
+    } else if (event instanceof TouchEvent) {
+      const touch = event.touches[0];
+      menu.showAtPosition({ x: touch.clientX, y: touch.clientY });
+    }
+  }
+
+  private async replaceRemoteWithLocal(file: FileNode) {
+    try {
+      const actualFile = this.plugin.app.vault.getAbstractFileByPath(file.path);
+      if (actualFile instanceof TFile) {
+        await this.plugin.vaultSyncManager.syncFile(actualFile);
+        new Notice(
+          `Replaced remote version of ${file.name} with local version.`,
+        );
+        this.refresh();
+      } else {
+        new Notice(`Error: ${file.name} not found in local vault.`);
+      }
+    } catch (error) {
+      console.error("Error replacing remote file with local:", error);
+      new Notice(`Failed to replace remote file: ${error.message}`);
+    }
+  }
+
+  private async deleteRemoteFile(file: FileNode) {
+    try {
+      const confirmed = await this.confirmDeletion(file.name);
+      if (confirmed) {
+        await this.plugin.vaultSyncManager.deleteRemoteFile(file.path);
+        new Notice(`Deleted remote file: ${file.name}`);
+        this.refresh();
+      }
+    } catch (error) {
+      console.error("Error deleting remote file:", error);
+      new Notice(`Failed to delete remote file: ${error.message}`);
+    }
+  }
+
+  private async confirmDeletion(fileName: string): Promise<boolean> {
+    const modal = new ConfirmationModal(
+      this.app,
+      "Confirm Deletion",
+      `<p>Are you sure you want to delete the remote version of <strong>${fileName}</strong>?</p><p class="warning">This action cannot be undone.</p>`,
+      "Delete",
+      "Cancel",
+      true,
+    );
+    return await modal.awaitUserConfirmation();
   }
 
   async refresh() {

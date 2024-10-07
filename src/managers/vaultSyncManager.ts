@@ -237,12 +237,28 @@ export class VaultSyncManager {
         );
       }
 
-      if (Buffer.isBuffer(decryptedContent)) {
-        await this.plugin.app.vault.modifyBinary(file, decryptedContent.buffer);
-      } else if (typeof decryptedContent === "string") {
-        await this.plugin.app.vault.modify(file, decryptedContent);
+      if (await this.plugin.app.vault.adapter.exists(file.path)) {
+        // File exists, update it
+        if (Buffer.isBuffer(decryptedContent)) {
+          await this.plugin.app.vault.modifyBinary(
+            file,
+            decryptedContent.buffer,
+          );
+        } else if (typeof decryptedContent === "string") {
+          await this.plugin.app.vault.modify(file, decryptedContent);
+        } else {
+          throw new Error(`Unexpected decrypted content type for ${file.path}`);
+        }
       } else {
-        throw new Error(`Unexpected decrypted content type for ${file.path}`);
+        // File doesn't exist, create it
+        if (Buffer.isBuffer(decryptedContent)) {
+          await this.plugin.app.vault.createBinary(
+            file.path,
+            decryptedContent.buffer,
+          );
+        } else if (typeof decryptedContent === "string") {
+          await this.plugin.app.vault.create(file.path, decryptedContent);
+        }
       }
 
       this.plugin.updateLocalConfig(file.path, remoteFileInfo);
@@ -268,6 +284,17 @@ export class VaultSyncManager {
     new Notice(
       `Failed to decrypt ${filePath}. It has been removed from the sync list.`,
     );
+  }
+
+  public async deleteRemoteFile(filePath: string): Promise<void> {
+    console.log(`Removing ${filePath} from remote upload config`);
+
+    let updatedRemoteConfig = this.remoteUploadConfig;
+    delete updatedRemoteConfig[filePath];
+
+    await this.plugin.aoManager.updateUploadConfig(updatedRemoteConfig);
+
+    new Notice(`Deleting ${filePath}. It has been removed from the sync list.`);
   }
 
   private async ensureDirectoryExists(filePath: string): Promise<void> {

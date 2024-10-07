@@ -5,6 +5,7 @@ import {
   Notice,
   WorkspaceLeaf,
   TFolder,
+  Modal,
 } from "obsidian";
 import { AOManager } from "./managers/aoManager";
 import {
@@ -19,6 +20,7 @@ import {
   DEFAULT_SETTINGS,
 } from "./types";
 import { WalletConnectModal } from "./components/WalletConnectModal";
+import { ConfirmationModal } from "./components/ConfirmationModal";
 import Arweave from "arweave";
 import { ArweaveSyncSettingTab } from "./settings/settings";
 import { encrypt, decrypt } from "./utils/encryption";
@@ -745,8 +747,14 @@ export default class ArweaveSync extends Plugin {
     return syncState !== "synced";
   }
 
-  private async forcePullCurrentFile(file: TFile) {
+  public async forcePullCurrentFile(file: TFile) {
     try {
+      const confirmed = await this.confirmForcePull(file.name);
+      if (!confirmed) {
+        new Notice("Force pull cancelled.");
+        return;
+      }
+
       await this.vaultSyncManager.forcePullFile(file);
       new Notice(
         `Successfully pulled the latest version of ${file.name} from Arweave`,
@@ -760,7 +768,7 @@ export default class ArweaveSync extends Plugin {
 
   public async activateSyncSidebar() {
     const { workspace } = this.app;
-    let leaf = workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
+    let leaf: any = workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
 
     if (!leaf) {
       leaf = workspace.getLeftLeaf(false);
@@ -853,6 +861,18 @@ export default class ArweaveSync extends Plugin {
       }
     }
     return null;
+  }
+
+  private async confirmForcePull(fileName: string): Promise<boolean> {
+    const modal = new ConfirmationModal(
+      this.app,
+      "Confirm Force Pull",
+      `<p>Are you sure you want to force pull <strong>${fileName}</strong> from Arweave? This will overwrite your local copy.</p>`,
+      "Force Pull",
+      "Cancel",
+      false,
+    );
+    return await modal.awaitUserConfirmation();
   }
 
   onunload() {
