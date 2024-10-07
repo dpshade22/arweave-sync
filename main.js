@@ -12060,7 +12060,7 @@ __export(main_exports, {
   default: () => ArweaveSync
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian8 = require("obsidian");
+var import_obsidian9 = require("obsidian");
 
 // node_modules/@permaweb/aoconnect/dist/browser.js
 var __create2 = Object.create;
@@ -27404,60 +27404,64 @@ var VaultSyncManager = class {
     }
     throw new Error("Unexpected error in fetchEncryptedContent");
   }
-  async fetchPreviousVersion(filePath, n) {
-    const query = `
-      query($id: ID!) {
-        transaction(id: $id) {
-          id
-          tags {
-            name
-            value
-          }
-          block {
-            height
-            timestamp
+  async fetchFileVersions(filePath, limit = 10) {
+    const versions = [];
+    let currentTxId = this.getCurrentTransactionId(filePath);
+    const fetchVersion = async (txId) => {
+      var _a7, _b2, _c3;
+      if (versions.length >= limit || !txId) {
+        return;
+      }
+      const query = `
+        query($id: ID!) {
+          transaction(id: $id) {
+            id
+            tags {
+              name
+              value
+            }
+            block {
+              height
+              timestamp
+            }
           }
         }
-      }
-    `;
-    try {
-      let currentTxId = this.getCurrentTransactionId(filePath);
-      if (!currentTxId) {
-        console.error(`No transaction ID found for file: ${filePath}`);
-        return null;
-      }
-      for (let i = 0; i < n; i++) {
-        if (!currentTxId) {
-          return null;
-        }
-        const variables = { id: currentTxId };
+      `;
+      try {
+        const variables = { id: txId };
         const results2 = await this.argql.run(query, variables);
         const transaction = results2.data.transaction;
         if (!transaction) {
-          return null;
+          return;
         }
-        const previousVersionTag = transaction.tags.find(
-          (tag) => tag.name === "Previous-Version"
-        );
-        currentTxId = previousVersionTag ? previousVersionTag.value : null;
-        if (i === n - 1) {
-          const data = await this.plugin.getArweave().transactions.getData(transaction.id, {
-            decode: true,
-            string: true
-          });
-          const content = typeof data === "string" ? data : new TextDecoder().decode(data);
-          const decryptedContent = decrypt(content, this.encryptionPassword);
-          return {
-            content: typeof decryptedContent === "string" ? decryptedContent : decryptedContent.toString("utf-8"),
-            timestamp: transaction.block.timestamp
-          };
-        }
+        const data = await this.plugin.getArweave().transactions.getData(txId, {
+          decode: true,
+          string: true
+        });
+        const content = typeof data === "string" ? data : new TextDecoder().decode(data);
+        const decryptedContent = decrypt(content, this.encryptionPassword);
+        const fileHash = (_a7 = transaction.tags.find(
+          (tag) => tag.name === "File-Hash"
+        )) == null ? void 0 : _a7.value;
+        const versionNumber = (_b2 = transaction.tags.find(
+          (tag) => tag.name === "Version-Number"
+        )) == null ? void 0 : _b2.value;
+        const previousVersionTxId = ((_c3 = transaction.tags.find((tag) => tag.name === "Previous-Version")) == null ? void 0 : _c3.value) || null;
+        versions.push({
+          txId,
+          content: typeof decryptedContent === "string" ? decryptedContent : decryptedContent.toString("utf-8"),
+          timestamp: transaction.block.timestamp,
+          fileHash,
+          versionNumber: parseInt(versionNumber || "1"),
+          previousVersionTxId
+        });
+        await fetchVersion(previousVersionTxId);
+      } catch (error) {
+        console.error("Error fetching version:", error);
       }
-      return null;
-    } catch (error) {
-      console.error("Error fetching previous version:", error);
-      return null;
-    }
+    };
+    await fetchVersion(currentTxId);
+    return versions;
   }
   async remoteRename(filePath, remoteFileInfo) {
     if (remoteFileInfo.oldFilePath) {
@@ -27623,12 +27627,281 @@ var ConfirmationModal = class extends import_obsidian4.Modal {
   }
 };
 
+// src/components/FileHistoryModal.ts
+var import_obsidian5 = require("obsidian");
+var FileHistoryModal = class extends import_obsidian5.Modal {
+  constructor(app, plugin, file) {
+    super(app);
+    this.plugin = plugin;
+    this.file = file;
+    this.versions = [];
+    this.currentPage = 1;
+    this.versionsPerPage = 10;
+    this.selectedVersion = null;
+  }
+  async onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("file-history-modal");
+    this.addStyle();
+    const header = contentEl.createEl("div", { cls: "modal-header" });
+    header.createEl("h2", {
+      text: `File History: ${this.file.name}`,
+      cls: "modal-title"
+    });
+    const closeButton = header.createEl("button", {
+      cls: "modal-close-button"
+    });
+    (0, import_obsidian5.setIcon)(closeButton, "x");
+    closeButton.addEventListener("click", () => this.close());
+    const content = contentEl.createEl("div", { cls: "modal-content" });
+    this.versions = await this.plugin.fetchFileVersions(this.file.path);
+    await this.renderVersionList(content);
+  }
+  addStyle() {
+    const style = document.createElement("style");
+    style.textContent = `
+      .modal-container.mod-dim .modal {
+        width: auto;
+      }
+      .file-history-modal {
+        max-width: 800px;
+        width: 90vw;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+        border-radius: 6px;
+        box-shadow: 0 2px 8px var(--background-modifier-box-shadow);
+        background-color: var(--background-primary);
+        overflow: hidden;
+      }
+      .modal-header {
+        padding: 16px;
+        border-bottom: 1px solid var(--background-modifier-border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .modal-title {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text-normal);
+      }
+      .modal-close-button {
+        background-color: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 4px;
+        color: var(--text-muted);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .modal-close-button:hover {
+        color: var(--text-normal);
+      }
+      .modal-content {
+        flex-grow: 1;
+        width: auto;
+        overflow-y: auto;
+        padding: 16px;
+      }
+      .version-list {
+        list-style-type: none;
+        padding: 0;
+        margin: 0;
+      }
+      .version-list-item {
+        padding: 8px 12px;
+        border-radius: 4px;
+        margin-bottom: 8px;
+        background-color: var(--background-secondary);
+        transition: background-color 0.2s ease;
+      }
+      .version-list-item:hover {
+        background-color: var(--background-modifier-hover);
+      }
+      .version-link {
+        color: var(--text-normal);
+        text-decoration: none;
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .pagination-container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid var(--background-modifier-border);
+      }
+      .version-info {
+        background-color: var(--background-secondary);
+        padding: 16px;
+        border-radius: 4px;
+        margin-bottom: 16px;
+      }
+      .version-info p {
+        margin: 0 0 8px 0;
+        color: var(--text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .version-info p:last-child {
+        margin-bottom: 0;
+      }
+      .version-content {
+        background-color: var(--background-primary);
+        padding: 16px;
+        border-radius: 4px;
+        border: 1px solid var(--background-modifier-border);
+        margin-top: 16px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        user-select: text;
+        font-family: var(--font-monospace);
+        font-size: 14px;
+        line-height: 1.5;
+        overflow-x: hidden;
+      }
+      .button-container {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 16px;
+      }
+      .back-button,
+      .restore-button {
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background-color 0.2s ease;
+        cursor: pointer;
+        border: none;
+      }
+      .back-button {
+        background-color: var(--interactive-normal);
+        color: var(--text-normal);
+      }
+      .back-button:hover {
+        background-color: var(--interactive-hover);
+      }
+      .restore-button {
+        color: var(--text-on-accent);
+      }
+      .restore-button:hover {
+        background-color: var(--interactive-accent-hover);
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  async renderVersionList(container) {
+    container.empty();
+    const versionList = container.createEl("ul", { cls: "version-list" });
+    const startIndex = (this.currentPage - 1) * this.versionsPerPage;
+    const endIndex = startIndex + this.versionsPerPage;
+    const pageVersions = this.versions.slice(startIndex, endIndex);
+    pageVersions.forEach((version) => {
+      const listItem = versionList.createEl("li", { cls: "version-list-item" });
+      const link = listItem.createEl("a", {
+        cls: "version-link",
+        href: "#",
+        text: `${new Date(version.timestamp * 1e3).toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          hour: "numeric",
+          minute: "numeric",
+          second: "numeric"
+        })}`
+      });
+      link.addEventListener("click", (e) => {
+        e.preventDefault();
+        this.selectedVersion = version;
+        this.showVersion(version, container);
+      });
+    });
+    this.renderPagination(container);
+  }
+  renderPagination(container) {
+    const paginationContainer = container.createEl("div", {
+      cls: "pagination-container"
+    });
+    const totalPages = Math.ceil(this.versions.length / this.versionsPerPage);
+    if (this.currentPage > 1) {
+      new import_obsidian5.ButtonComponent(paginationContainer).setButtonText("Previous").onClick(() => {
+        this.currentPage--;
+        this.renderVersionList(container);
+      });
+    }
+    paginationContainer.createSpan(`Page ${this.currentPage} of ${totalPages}`);
+    if (this.currentPage < totalPages) {
+      new import_obsidian5.ButtonComponent(paginationContainer).setButtonText("Next").onClick(() => {
+        this.currentPage++;
+        this.renderVersionList(container);
+      });
+    }
+  }
+  async showVersion(version, container) {
+    container.empty();
+    const versionInfo = container.createEl("div", { cls: "version-info" });
+    versionInfo.createEl("p", {
+      text: `Date: ${new Date(version.timestamp * 1e3).toLocaleString(
+        "en-US",
+        {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          hour: "numeric",
+          minute: "numeric",
+          second: "numeric"
+        }
+      )}`
+    });
+    if (version.previousVersionTxId) {
+      versionInfo.createEl("p", {
+        text: `Previous Version: ${version.previousVersionTxId}`
+      });
+    }
+    const contentContainer = container.createEl("div", {
+      cls: "version-content"
+    });
+    await import_obsidian5.MarkdownRenderer.renderMarkdown(
+      version.content,
+      contentContainer,
+      this.file.path,
+      this.plugin
+    );
+    const buttonContainer = container.createEl("div", {
+      cls: "button-container"
+    });
+    new import_obsidian5.ButtonComponent(buttonContainer).setButtonText("Back to Version List").setClass("back-button").onClick(() => this.renderVersionList(container));
+    new import_obsidian5.ButtonComponent(buttonContainer).setButtonText("Restore This Version").setClass("restore-button").onClick(() => this.restoreVersion(version));
+  }
+  async restoreVersion(version) {
+    const confirmed = await this.plugin.confirmRestore(this.file.name);
+    if (confirmed) {
+      await this.app.vault.modify(this.file, version.content);
+      new import_obsidian5.Notice(`Restored version ${version.txId} of ${this.file.name}`);
+      this.close();
+    }
+  }
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+};
+
 // src/main.ts
 var import_arweave3 = __toESM(require_web());
 
 // src/settings/settings.ts
-var import_obsidian5 = require("obsidian");
-var ArweaveSyncSettingTab = class extends import_obsidian5.PluginSettingTab {
+var import_obsidian6 = require("obsidian");
+var ArweaveSyncSettingTab = class extends import_obsidian6.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -27637,19 +27910,19 @@ var ArweaveSyncSettingTab = class extends import_obsidian5.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "ArweaveSync Settings" });
-    new import_obsidian5.Setting(containerEl).setName("Encryption Password").setDesc("Set the encryption password for your synced files").addText(
+    new import_obsidian6.Setting(containerEl).setName("Encryption Password").setDesc("Set the encryption password for your synced files").addText(
       (text) => text.setPlaceholder("Enter your password").setValue(this.plugin.settings.encryptionPassword).onChange(async (value) => {
         this.plugin.settings.encryptionPassword = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian5.Setting(containerEl).setName("Auto-import Unsynced Changes").setDesc("Automatically import unsynced changes when connecting wallet").addToggle(
+    new import_obsidian6.Setting(containerEl).setName("Auto-import Unsynced Changes").setDesc("Automatically import unsynced changes when connecting wallet").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.autoImportUnsyncedChanges).onChange(async (value) => {
         this.plugin.settings.autoImportUnsyncedChanges = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian5.Setting(containerEl).setName("Custom Process ID").setDesc("Optionally provide a custom AO process ID").addText(
+    new import_obsidian6.Setting(containerEl).setName("Custom Process ID").setDesc("Optionally provide a custom AO process ID").addText(
       (text) => text.setPlaceholder("Enter custom process ID").setValue(this.plugin.settings.customProcessId).onChange(async (value) => {
         this.plugin.settings.customProcessId = value;
         await this.plugin.saveSettings();
@@ -27673,9 +27946,9 @@ function debounce(func, wait) {
 }
 
 // src/components/SyncSidebar.ts
-var import_obsidian6 = require("obsidian");
+var import_obsidian7 = require("obsidian");
 var SYNC_SIDEBAR_VIEW = "arweave-sync-view";
-var SyncSidebar = class extends import_obsidian6.ItemView {
+var SyncSidebar = class extends import_obsidian7.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.currentTab = "export";
@@ -27735,11 +28008,11 @@ var SyncSidebar = class extends import_obsidian6.ItemView {
   }
   renderRootFolders(container) {
     const filesToExportFolder = this.createRootFolder(
-      "Files to Export",
+      `Files to ${this.currentTab}`,
       this.filesToSync[this.currentTab]
     );
     const unsyncedFilesFolder = this.createRootFolder(
-      "Unsynced Files",
+      "Unsynced files",
       this.files[this.currentTab]
     );
     container.appendChild(unsyncedFilesFolder);
@@ -28071,7 +28344,7 @@ Version: ${node.fileInfo.versionNumber}`
       const file = this.plugin.app.vault.getAbstractFileByPath(
         node.path
       );
-      if (file instanceof import_obsidian6.TFile) {
+      if (file instanceof import_obsidian7.TFile) {
         const syncState = await this.plugin.vaultSyncManager.checkFileSync(file);
         contentEl.addClass(syncState.syncState);
         console.log(
@@ -28231,7 +28504,7 @@ Version: ${node.fileInfo.versionNumber}`
   async submitChanges() {
     var _a7;
     if (!this.plugin.vaultSyncManager.isWalletConnected()) {
-      new import_obsidian6.Notice("Please connect a wallet before syncing.");
+      new import_obsidian7.Notice("Please connect a wallet before syncing.");
       return;
     }
     const submitButton = this.contentContainer.querySelector(
@@ -28251,7 +28524,7 @@ Version: ${node.fileInfo.versionNumber}`
         this.filesToSync[this.currentTab]
       );
       if (filesToSync.length === 0) {
-        new import_obsidian6.Notice("No files selected for sync.");
+        new import_obsidian7.Notice("No files selected for sync.");
         return;
       }
       if (this.currentTab === "export") {
@@ -28262,12 +28535,12 @@ Version: ${node.fileInfo.versionNumber}`
       await this.plugin.vaultSyncManager.updateRemoteConfig();
       await this.initializeFiles();
       await this.renderContent();
-      new import_obsidian6.Notice(
+      new import_obsidian7.Notice(
         `${this.currentTab === "export" ? "Export" : "Import"} completed successfully.`
       );
     } catch (error) {
       console.error("Error during submission:", error);
-      new import_obsidian6.Notice(`Error during ${this.currentTab}: ${error.message}`);
+      new import_obsidian7.Notice(`Error during ${this.currentTab}: ${error.message}`);
     } finally {
       submitButton.setAttribute("data-state", "ready");
       submitButton.disabled = false;
@@ -28336,7 +28609,7 @@ Version: ${node.fileInfo.versionNumber}`
       let syncState;
       if (!file) {
         syncState = "new-remote";
-      } else if (file instanceof import_obsidian6.TFile) {
+      } else if (file instanceof import_obsidian7.TFile) {
         const result2 = await this.plugin.vaultSyncManager.checkFileSync(file);
         syncState = result2.syncState;
       } else {
@@ -28539,10 +28812,10 @@ Version: ${node.fileInfo.versionNumber}`
     });
   }
   createContextMenu(file, event) {
-    const menu = new import_obsidian6.Menu();
+    const menu = new import_obsidian7.Menu();
     const actualFile = this.plugin.app.vault.getAbstractFileByPath(file.path);
     if (this.currentTab === "import") {
-      if (actualFile instanceof import_obsidian6.TFile) {
+      if (actualFile instanceof import_obsidian7.TFile) {
         menu.addItem((item) => {
           item.setTitle("Replace remote file with local").setIcon("upload-cloud").onClick(() => this.replaceRemoteWithLocal(file));
         });
@@ -28550,7 +28823,7 @@ Version: ${node.fileInfo.versionNumber}`
       menu.addItem((item) => {
         item.setTitle("Delete file from Arweave").setIcon("trash").onClick(() => this.deleteRemoteFile(file));
       });
-      if (actualFile instanceof import_obsidian6.TFile) {
+      if (actualFile instanceof import_obsidian7.TFile) {
         menu.addSeparator();
         this.plugin.app.workspace.trigger(
           "file-menu",
@@ -28560,7 +28833,7 @@ Version: ${node.fileInfo.versionNumber}`
         );
       }
     } else {
-      if (actualFile instanceof import_obsidian6.TFile) {
+      if (actualFile instanceof import_obsidian7.TFile) {
         menu.addItem((item) => {
           item.setTitle("Delete").setIcon("trash").onClick(() => {
             this.plugin.app.fileManager.trashFile(actualFile);
@@ -28585,18 +28858,18 @@ Version: ${node.fileInfo.versionNumber}`
   async replaceRemoteWithLocal(file) {
     try {
       const actualFile = this.plugin.app.vault.getAbstractFileByPath(file.path);
-      if (actualFile instanceof import_obsidian6.TFile) {
+      if (actualFile instanceof import_obsidian7.TFile) {
         await this.plugin.vaultSyncManager.syncFile(actualFile);
-        new import_obsidian6.Notice(
+        new import_obsidian7.Notice(
           `Replaced remote version of ${file.name} with local version.`
         );
         this.refresh();
       } else {
-        new import_obsidian6.Notice(`Error: ${file.name} not found in local vault.`);
+        new import_obsidian7.Notice(`Error: ${file.name} not found in local vault.`);
       }
     } catch (error) {
       console.error("Error replacing remote file with local:", error);
-      new import_obsidian6.Notice(`Failed to replace remote file: ${error.message}`);
+      new import_obsidian7.Notice(`Failed to replace remote file: ${error.message}`);
     }
   }
   async deleteRemoteFile(file) {
@@ -28604,12 +28877,12 @@ Version: ${node.fileInfo.versionNumber}`
       const confirmed = await this.confirmDeletion(file.name);
       if (confirmed) {
         await this.plugin.vaultSyncManager.deleteRemoteFile(file.path);
-        new import_obsidian6.Notice(`Deleted remote file: ${file.name}`);
+        new import_obsidian7.Notice(`Deleted remote file: ${file.name}`);
         this.refresh();
       }
     } catch (error) {
       console.error("Error deleting remote file:", error);
-      new import_obsidian6.Notice(`Failed to delete remote file: ${error.message}`);
+      new import_obsidian7.Notice(`Failed to delete remote file: ${error.message}`);
     }
   }
   async confirmDeletion(fileName) {
@@ -28633,7 +28906,7 @@ Version: ${node.fileInfo.versionNumber}`
     if (!file.isFolder) {
       const filePath = file.path;
       const abstractFile = this.plugin.app.vault.getAbstractFileByPath(filePath);
-      if (!(abstractFile instanceof import_obsidian6.TFile)) {
+      if (!(abstractFile instanceof import_obsidian7.TFile)) {
         console.error(`File not found: ${filePath}`);
         return;
       }
@@ -28658,7 +28931,7 @@ Version: ${node.fileInfo.versionNumber}`
     if (this.totalExportSize > 0) {
       try {
         const url = `https://arweave.net/price/${this.totalExportSize}`;
-        const response = await (0, import_obsidian6.request)({
+        const response = await (0, import_obsidian7.request)({
           url,
           method: "GET"
         });
@@ -28721,7 +28994,7 @@ Version: ${node.fileInfo.versionNumber}`
 };
 
 // src/managers/arPublishManager.ts
-var import_obsidian7 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 var ArPublishManager = class {
   constructor(app, plugin) {
     this.app = app;
@@ -28731,7 +29004,7 @@ var ArPublishManager = class {
     const markdownFiles = this.getMarkdownFiles(folder);
     const indexFile = markdownFiles.find((file) => file.name === "index.md");
     if (!indexFile) {
-      new import_obsidian7.Notice("Error: index.md file is required in the root of the folder.");
+      new import_obsidian8.Notice("Error: index.md file is required in the root of the folder.");
       return;
     }
     const outputDir = await this.createOutputDirectory(folder.name);
@@ -28775,10 +29048,10 @@ var ArPublishManager = class {
     const arweaveLink = `https://arweave.net/${manifestTxId}`;
     console.log("Manifest uploaded:", arweaveLink);
     navigator.clipboard.writeText(arweaveLink).then(() => {
-      new import_obsidian7.Notice(`Website link copied to clipboard: ${arweaveLink}`);
+      new import_obsidian8.Notice(`Website link copied to clipboard: ${arweaveLink}`);
     }).catch((err) => {
       console.error("Failed to copy to clipboard:", err);
-      new import_obsidian7.Notice(`Website published to Arweave. Link: ${arweaveLink}`);
+      new import_obsidian8.Notice(`Website published to Arweave. Link: ${arweaveLink}`);
     });
   }
   getRelativePath(folderPath, filePath) {
@@ -28805,9 +29078,9 @@ var ArPublishManager = class {
   getMarkdownFiles(folder) {
     const files = [];
     const collectFiles = (item) => {
-      if (item instanceof import_obsidian7.TFolder) {
+      if (item instanceof import_obsidian8.TFolder) {
         item.children.forEach(collectFiles);
-      } else if (item instanceof import_obsidian7.TFile && item.extension === "md") {
+      } else if (item instanceof import_obsidian8.TFile && item.extension === "md") {
         files.push(item);
       }
     };
@@ -28833,7 +29106,7 @@ var ArPublishManager = class {
   async convertMarkdownToHtml(markdown, allFiles, currentFile) {
     markdown = this.convertWikiLinks(markdown, currentFile);
     const tempDiv = createDiv();
-    await import_obsidian7.MarkdownRenderer.renderMarkdown(
+    await import_obsidian8.MarkdownRenderer.renderMarkdown(
       markdown,
       tempDiv,
       currentFile.path,
@@ -29451,7 +29724,7 @@ var ArPublishManager = class {
 // src/main.ts
 var import_buffer4 = __toESM(require_buffer2());
 var import_process = __toESM(require_browser2());
-var ArweaveSync = class extends import_obsidian8.Plugin {
+var ArweaveSync = class extends import_obsidian9.Plugin {
   constructor() {
     super(...arguments);
     this.walletAddress = null;
@@ -29527,7 +29800,7 @@ var ArweaveSync = class extends import_obsidian8.Plugin {
   setupSyncButton() {
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
-        if (file instanceof import_obsidian8.TFile) {
+        if (file instanceof import_obsidian9.TFile) {
           menu.addItem((item) => {
             item.setTitle("Sync with Arweave").setIcon("sync").onClick(() => this.syncFile(file));
           });
@@ -29535,7 +29808,7 @@ var ArweaveSync = class extends import_obsidian8.Plugin {
             item.setTitle("Force Pull from Arweave").setIcon("download-cloud").onClick(() => this.forcePullCurrentFile(file));
           });
         }
-        if (file instanceof import_obsidian8.TFolder) {
+        if (file instanceof import_obsidian9.TFolder) {
           menu.addItem((item) => {
             item.setTitle("Publish as Website to Arweave").setIcon("globe").onClick(() => this.publishToArweave(file));
           });
@@ -29551,6 +29824,20 @@ var ArweaveSync = class extends import_obsidian8.Plugin {
     );
   }
   addCommands() {
+    this.addCommand({
+      id: "open-file-history",
+      name: "Open File History",
+      checkCallback: (checking) => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile) {
+          if (!checking) {
+            this.openFileHistory(activeFile);
+          }
+          return true;
+        }
+        return false;
+      }
+    });
     this.addCommand({
       id: "open-arweave-sync-sidebar",
       name: "Open Arweave Sync Sidebar",
@@ -29580,7 +29867,7 @@ var ArweaveSync = class extends import_obsidian8.Plugin {
       name: "Force Refresh Sidebar Files",
       callback: () => {
         this.refreshSyncSidebar();
-        new import_obsidian8.Notice("Sidebar files refreshed");
+        new import_obsidian9.Notice("Sidebar files refreshed");
       }
     });
   }
@@ -29629,16 +29916,16 @@ var ArweaveSync = class extends import_obsidian8.Plugin {
   async copyWalletAddress() {
     if (this.walletAddress) {
       await navigator.clipboard.writeText(this.walletAddress);
-      new import_obsidian8.Notice("Wallet address copied to clipboard");
+      new import_obsidian9.Notice("Wallet address copied to clipboard");
     }
   }
   async disconnectWallet() {
     await walletManager.disconnect();
     this.updateStatusBar();
-    new import_obsidian8.Notice("Wallet disconnected");
+    new import_obsidian9.Notice("Wallet disconnected");
   }
   async addSyncButtonToLeaf(leaf) {
-    if (leaf.view instanceof import_obsidian8.MarkdownView) {
+    if (leaf.view instanceof import_obsidian9.MarkdownView) {
       await this.addSyncButton(leaf.view);
     }
   }
@@ -29757,21 +30044,21 @@ var ArweaveSync = class extends import_obsidian8.Plugin {
       const newOrModifiedFiles = await this.checkForNewFiles();
       if (this.settings.autoImportUnsyncedChanges && newOrModifiedFiles.length > 0) {
         await this.importFilesFromArweave(newOrModifiedFiles);
-        new import_obsidian8.Notice(
+        new import_obsidian9.Notice(
           `Automatically imported ${newOrModifiedFiles.length} new or modified files.`
         );
       } else if (newOrModifiedFiles.length > 0) {
-        new import_obsidian8.Notice(
+        new import_obsidian9.Notice(
           `${newOrModifiedFiles.length} new or modified files available for import.`
         );
         this.refreshSyncSidebar();
         await this.openSyncSidebarWithImportTab();
       } else {
-        new import_obsidian8.Notice("Wallet connected. No new files to import.");
+        new import_obsidian9.Notice("Wallet connected. No new files to import.");
       }
     } catch (error) {
       console.error("Error during wallet connection:", error);
-      new import_obsidian8.Notice(
+      new import_obsidian9.Notice(
         `Error: ${error.message}
 Check the console for more details.`
       );
@@ -29783,7 +30070,7 @@ Check the console for more details.`
     this.walletAddress = null;
     await this.aoManager.initialize(null);
     this.updateStatusBar();
-    new import_obsidian8.Notice("Wallet disconnected successfully");
+    new import_obsidian9.Notice("Wallet disconnected successfully");
   }
   async checkForNewFiles() {
     const newOrModifiedFiles = [];
@@ -29793,7 +30080,7 @@ Check the console for more details.`
       const localFile = this.app.vault.getAbstractFileByPath(filePath);
       if (!localFile) {
         newOrModifiedFiles.push(filePath);
-      } else if (localFile instanceof import_obsidian8.TFile) {
+      } else if (localFile instanceof import_obsidian9.TFile) {
         const localFileHash = await this.vaultSyncManager.getFileHash(localFile);
         const localFileTimestamp = localFile.stat.mtime;
         if (remoteFileInfo.fileHash !== localFileHash && remoteFileInfo.timestamp > localFileTimestamp) {
@@ -29802,7 +30089,7 @@ Check the console for more details.`
       }
     }
     if (newOrModifiedFiles.length > 0) {
-      new import_obsidian8.Notice(
+      new import_obsidian9.Notice(
         `Wallet connected. ${newOrModifiedFiles.length} new or modified files available for import.`
       );
       this.refreshSyncSidebar();
@@ -29840,7 +30127,7 @@ Check the console for more details.`
       await this.vaultSyncManager.importFilesFromArweave(selectedFiles);
     } catch (error) {
       console.error("Error during file import:", error);
-      new import_obsidian8.Notice(
+      new import_obsidian9.Notice(
         `Error: ${error.message}
 Check the console for more details.`
       );
@@ -29871,13 +30158,13 @@ Check the console for more details.`
     this.updateSyncUI();
   }
   getSyncButtonForFile() {
-    const view = this.app.workspace.getActiveViewOfType(import_obsidian8.MarkdownView);
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian9.MarkdownView);
     return view == null ? void 0 : view.containerEl.querySelector(
       ".arweave-sync-button"
     );
   }
   handleSyncError(file, error) {
-    new import_obsidian8.Notice(`Failed to sync file: ${error.message}`);
+    new import_obsidian9.Notice(`Failed to sync file: ${error.message}`);
   }
   async handleFileModify(file) {
     const { syncState, fileHash } = await this.vaultSyncManager.checkFileSync(file);
@@ -29919,7 +30206,7 @@ Check the console for more details.`
         await this.aoManager.updateUploadConfig(remoteConfig);
       } catch (error) {
         console.error("Error updating remote config after file rename:", error);
-        new import_obsidian8.Notice(
+        new import_obsidian9.Notice(
           `Failed to update remote config after rename ${file.path}. Please try again later.`
         );
       }
@@ -29940,7 +30227,7 @@ Check the console for more details.`
           "Error updating remote config after file deletion:",
           error
         );
-        new import_obsidian8.Notice(
+        new import_obsidian9.Notice(
           `Failed to update remote config after deleting ${file.path}. Please try again later.`
         );
       }
@@ -29981,7 +30268,7 @@ Check the console for more details.`
     });
   }
   updateActiveSyncButton() {
-    const activeView = this.app.workspace.getActiveViewOfType(import_obsidian8.MarkdownView);
+    const activeView = this.app.workspace.getActiveViewOfType(import_obsidian9.MarkdownView);
     if (activeView && activeView.file) {
       const syncButton = activeView.containerEl.querySelector(
         ".arweave-sync-button"
@@ -30017,18 +30304,34 @@ Check the console for more details.`
     try {
       const confirmed = await this.confirmForcePull(file.name);
       if (!confirmed) {
-        new import_obsidian8.Notice("Force pull cancelled.");
+        new import_obsidian9.Notice("Force pull cancelled.");
         return;
       }
       await this.vaultSyncManager.forcePullFile(file);
-      new import_obsidian8.Notice(
+      new import_obsidian9.Notice(
         `Successfully pulled the latest version of ${file.name} from Arweave`
       );
       this.updateSyncUI();
     } catch (error) {
       console.error("Error force pulling file:", error);
-      new import_obsidian8.Notice(`Failed to pull ${file.name} from Arweave: ${error.message}`);
+      new import_obsidian9.Notice(`Failed to pull ${file.name} from Arweave: ${error.message}`);
     }
+  }
+  async openFileHistory(file) {
+    new FileHistoryModal(this.app, this, file).open();
+  }
+  async fetchFileVersions(filePath, limit = 10) {
+    return await this.vaultSyncManager.fetchFileVersions(filePath, limit);
+  }
+  async confirmRestore(fileName) {
+    const modal = new ConfirmationModal(
+      this.app,
+      "Confirm Restore",
+      `Are you sure you want to restore this version of ${fileName}? This will overwrite the current version.`,
+      "Restore",
+      "Cancel"
+    );
+    return await modal.awaitUserConfirmation();
   }
   async activateSyncSidebar() {
     const { workspace } = this.app;
@@ -30088,13 +30391,13 @@ Check the console for more details.`
   async publishToArweave(folder) {
     try {
       await this.arPublishManager.publishWebsiteToArweave(folder);
-      new import_obsidian8.Notice(`Folder "${folder.name}" published to Arweave as a website.`);
+      new import_obsidian9.Notice(`Folder "${folder.name}" published to Arweave as a website.`);
     } catch (error) {
       console.error(
         `Error publishing folder ${folder.name} to Arweave:`,
         error
       );
-      new import_obsidian8.Notice(
+      new import_obsidian9.Notice(
         `Failed to publish ${folder.name} to Arweave. Error: ${error.message}`
       );
     }

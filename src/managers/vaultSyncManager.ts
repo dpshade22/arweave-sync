@@ -521,77 +521,81 @@ export class VaultSyncManager {
     throw new Error("Unexpected error in fetchEncryptedContent");
   }
 
-  async fetchPreviousVersion(
+  async fetchFileVersions(
     filePath: string,
-    n: number,
-  ): Promise<{ content: string; timestamp: number } | null> {
-    const query = `
-      query($id: ID!) {
-        transaction(id: $id) {
-          id
-          tags {
-            name
-            value
-          }
-          block {
-            height
-            timestamp
-          }
-        }
-      }
-    `;
+    limit: number = 10,
+  ): Promise<FileVersion[]> {
+    const versions: FileVersion[] = [];
+    let currentTxId = this.getCurrentTransactionId(filePath);
 
-    try {
-      let currentTxId = this.getCurrentTransactionId(filePath);
-
-      if (!currentTxId) {
-        console.error(`No transaction ID found for file: ${filePath}`);
-        return null;
+    const fetchVersion = async (txId: string): Promise<void> => {
+      if (versions.length >= limit || !txId) {
+        return;
       }
 
-      for (let i = 0; i < n; i++) {
-        if (!currentTxId) {
-          return null;
+      const query = `
+        query($id: ID!) {
+          transaction(id: $id) {
+            id
+            tags {
+              name
+              value
+            }
+            block {
+              height
+              timestamp
+            }
+          }
         }
+      `;
 
-        const variables = { id: currentTxId };
+      try {
+        const variables = { id: txId };
         const results = await this.argql.run(query, variables);
         const transaction = results.data.transaction;
 
         if (!transaction) {
-          return null;
+          return;
         }
 
-        const previousVersionTag = transaction.tags.find(
-          (tag) => tag.name === "Previous-Version",
-        );
-        currentTxId = previousVersionTag ? previousVersionTag.value : null;
+        const data = await this.plugin.getArweave().transactions.getData(txId, {
+          decode: true,
+          string: true,
+        });
+        const content =
+          typeof data === "string" ? data : new TextDecoder().decode(data);
+        const decryptedContent = decrypt(content, this.encryptionPassword);
 
-        if (i === n - 1) {
-          const data = await this.plugin
-            .getArweave()
-            .transactions.getData(transaction.id, {
-              decode: true,
-              string: true,
-            });
-          const content =
-            typeof data === "string" ? data : new TextDecoder().decode(data);
-          const decryptedContent = decrypt(content, this.encryptionPassword);
-          return {
-            content:
-              typeof decryptedContent === "string"
-                ? decryptedContent
-                : decryptedContent.toString("utf-8"),
-            timestamp: transaction.block.timestamp,
-          };
-        }
+        const fileHash = transaction.tags.find(
+          (tag) => tag.name === "File-Hash",
+        )?.value;
+        const versionNumber = transaction.tags.find(
+          (tag) => tag.name === "Version-Number",
+        )?.value;
+        const previousVersionTxId =
+          transaction.tags.find((tag) => tag.name === "Previous-Version")
+            ?.value || null;
+
+        versions.push({
+          txId,
+          content:
+            typeof decryptedContent === "string"
+              ? decryptedContent
+              : decryptedContent.toString("utf-8"),
+          timestamp: transaction.block.timestamp,
+          fileHash,
+          versionNumber: parseInt(versionNumber || "1"),
+          previousVersionTxId,
+        });
+
+        await fetchVersion(previousVersionTxId);
+      } catch (error) {
+        console.error("Error fetching version:", error);
       }
+    };
 
-      return null;
-    } catch (error) {
-      console.error("Error fetching previous version:", error);
-      return null;
-    }
+    await fetchVersion(currentTxId);
+    return versions;
   }
 
   private async remoteRename(

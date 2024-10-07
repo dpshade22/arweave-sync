@@ -16,11 +16,13 @@ import { VaultSyncManager } from "./managers/vaultSyncManager";
 import {
   UploadConfig,
   FileUploadInfo,
+  FileVersion,
   ArweaveSyncSettings,
   DEFAULT_SETTINGS,
 } from "./types";
 import { WalletConnectModal } from "./components/WalletConnectModal";
 import { ConfirmationModal } from "./components/ConfirmationModal";
+import { FileHistoryModal } from "./components/FileHistoryModal";
 import Arweave from "arweave";
 import { ArweaveSyncSettingTab } from "./settings/settings";
 import { encrypt, decrypt } from "./utils/encryption";
@@ -167,6 +169,21 @@ export default class ArweaveSync extends Plugin {
   }
 
   private addCommands() {
+    this.addCommand({
+      id: "open-file-history",
+      name: "Open File History",
+      checkCallback: (checking: boolean) => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile) {
+          if (!checking) {
+            this.openFileHistory(activeFile);
+          }
+          return true;
+        }
+        return false;
+      },
+    });
+
     this.addCommand({
       id: "open-arweave-sync-sidebar",
       name: "Open Arweave Sync Sidebar",
@@ -764,6 +781,28 @@ export default class ArweaveSync extends Plugin {
       console.error("Error force pulling file:", error);
       new Notice(`Failed to pull ${file.name} from Arweave: ${error.message}`);
     }
+  }
+
+  async openFileHistory(file: TFile) {
+    new FileHistoryModal(this.app, this, file).open();
+  }
+
+  async fetchFileVersions(
+    filePath: string,
+    limit: number = 10,
+  ): Promise<FileVersion[]> {
+    return await this.vaultSyncManager.fetchFileVersions(filePath, limit);
+  }
+
+  async confirmRestore(fileName: string): Promise<boolean> {
+    const modal = new ConfirmationModal(
+      this.app,
+      "Confirm Restore",
+      `Are you sure you want to restore this version of ${fileName}? This will overwrite the current version.`,
+      "Restore",
+      "Cancel",
+    );
+    return await modal.awaitUserConfirmation();
   }
 
   public async activateSyncSidebar() {

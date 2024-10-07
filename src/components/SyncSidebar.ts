@@ -100,11 +100,11 @@ export class SyncSidebar extends ItemView {
 
   private renderRootFolders(container: HTMLElement) {
     const filesToExportFolder = this.createRootFolder(
-      "Files to Export",
+      `Files to ${this.currentTab}`,
       this.filesToSync[this.currentTab],
     );
     const unsyncedFilesFolder = this.createRootFolder(
-      "Unsynced Files",
+      "Unsynced files",
       this.files[this.currentTab],
     );
 
