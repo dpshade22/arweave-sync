@@ -39,7 +39,7 @@ export class VaultSyncManager {
   async syncFile(file: TFile): Promise<void> {
     await this.updateRemoteConfig();
 
-    const { syncState } = await this.checkFileSync(file);
+    const { syncState, fileHash } = await this.checkFileSync(file);
 
     if (syncState === "synced") {
       console.log(`File ${file.path} is already synced.`);
@@ -50,7 +50,7 @@ export class VaultSyncManager {
       case "new-local":
       case "local-newer":
         console.log(`Exporting local changes for ${file.path}`);
-        await this.exportFilesToArweave([file.path]);
+        await this.exportFileToArweave(file, fileHash);
         break;
       case "new-remote":
       case "remote-newer":

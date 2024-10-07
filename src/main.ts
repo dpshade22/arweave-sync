@@ -561,6 +561,7 @@ export default class ArweaveSync extends Plugin {
     }
 
     try {
+      // Only sync the specific file
       await this.vaultSyncManager.syncFile(file);
     } catch (error) {
       this.handleSyncError(file, error);
@@ -569,7 +570,7 @@ export default class ArweaveSync extends Plugin {
         syncButton.removeClass("uploading");
       }
     }
-    await this.aoManager.updateUploadConfig(this.settings.localUploadConfig);
+
     this.updateSyncUI();
   }
 

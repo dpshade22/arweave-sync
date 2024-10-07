@@ -95,6 +95,7 @@ export class SyncSidebar extends ItemView {
       this.updateTabStyles();
       this.updateNoFilesMessageVisibility();
       await this.renderContent();
+      this.refresh();
     }
   }
 
