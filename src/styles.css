@@ -530,12 +530,18 @@
     position: relative;
 }
 
-.tooltip {
+.tooltip .rename-indicator {
+    left: 0;
+    box-shadow: none;
+    background-color: none;
+}
+
+.tooltip .rename-indicator {
     position: relative;
     cursor: help;
 }
 
-.tooltip::after {
+.tooltip::after .rename-indicator {
     content: attr(aria-label);
     position: absolute;
     bottom: 125%;
@@ -553,7 +559,7 @@
     z-index: 10000;
 }
 
-.tooltip:hover::after {
+.tooltip:hover::after .rename-indicator {
     opacity: 1;
     visibility: visible;
 }
