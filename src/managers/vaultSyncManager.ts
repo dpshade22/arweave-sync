@@ -106,10 +106,9 @@ export class VaultSyncManager {
     return importedFiles;
   }
 
-  public async importFileFromArweave(filePath: string): Promise<void> {
+  async importFileFromArweave(filePath: string): Promise<void> {
     try {
       const normalizedPath = normalizePath(filePath);
-
       const remoteFileInfo = this.remoteUploadConfig[filePath];
       if (!remoteFileInfo) {
         throw new Error(`No remote file info found for ${filePath}`);
@@ -131,60 +130,46 @@ export class VaultSyncManager {
         return;
       }
 
-      await this.ensureDirectoryExists(normalizedPath);
+      const existingFile =
+        this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
 
-      let finalPath = normalizedPath;
-      let fileCreated = false;
-
-      try {
-        if (decryptedContent instanceof ArrayBuffer) {
-          await this.plugin.app.vault.createBinary(finalPath, decryptedContent);
-        } else {
-          await this.plugin.app.vault.create(finalPath, decryptedContent);
-        }
-        fileCreated = true;
-        console.log(`Created new file: ${finalPath}`);
-      } catch (createError) {
-        if (createError.message === "File already exists.") {
-          const existingFile =
-            this.plugin.app.vault.getAbstractFileByPath(finalPath);
-          if (existingFile instanceof TFile) {
-            await this.updateExistingFile(existingFile, decryptedContent);
-            console.log(`Modified existing file: ${finalPath}`);
-          } else if (existingFile instanceof TFolder) {
-            finalPath = this.generateUniqueFilePath(normalizedPath);
-            if (decryptedContent instanceof ArrayBuffer) {
-              await this.plugin.app.vault.createBinary(
-                finalPath,
-                decryptedContent,
-              );
-            } else {
-              await this.plugin.app.vault.create(finalPath, decryptedContent);
-            }
-            fileCreated = true;
-            console.log(`Created new file with modified path: ${finalPath}`);
-          } else {
-            throw new Error(`Unexpected file type for ${finalPath}`);
-          }
-        } else {
-          throw createError;
-        }
-      }
-
-      if (fileCreated || finalPath !== normalizedPath) {
-        this.plugin.updateLocalConfig(filePath, {
-          ...remoteFileInfo,
-          filePath: finalPath,
-        });
+      if (existingFile instanceof TFile) {
+        // File exists, update it
+        await this.updateExistingFile(existingFile, decryptedContent);
+        console.log(`Updated existing file: ${normalizedPath}`);
+      } else if (existingFile instanceof TFolder) {
+        // A folder exists with the same name, create file with a unique name
+        const uniquePath = this.generateUniqueFilePath(normalizedPath);
+        await this.createNewFile(uniquePath, decryptedContent);
+        console.log(`Created new file with modified path: ${uniquePath}`);
       } else {
-        this.plugin.updateLocalConfig(filePath, remoteFileInfo);
+        // File doesn't exist, create it
+        await this.ensureDirectoryExists(normalizedPath);
+        await this.createNewFile(normalizedPath, decryptedContent);
+        console.log(`Created new file: ${normalizedPath}`);
       }
+
+      this.plugin.updateLocalConfig(filePath, {
+        ...remoteFileInfo,
+        filePath: normalizedPath,
+      });
       await this.plugin.saveSettings();
 
-      console.log(`Imported file: ${finalPath}`);
+      console.log(`Imported file: ${normalizedPath}`);
     } catch (error) {
       console.error(`Failed to import file: ${filePath}`, error);
       throw error;
+    }
+  }
+
+  private async createNewFile(
+    path: string,
+    content: string | ArrayBuffer,
+  ): Promise<void> {
+    if (content instanceof ArrayBuffer) {
+      await this.plugin.app.vault.createBinary(path, content);
+    } else {
+      await this.plugin.app.vault.create(path, content);
     }
   }
 
@@ -194,8 +179,7 @@ export class VaultSyncManager {
   ): Promise<void> {
     const activeLeaf = this.plugin.app.workspace.activeLeaf;
     if (
-      activeLeaf &&
-      activeLeaf.view instanceof MarkdownView &&
+      activeLeaf?.view instanceof MarkdownView &&
       activeLeaf.view.file === file
     ) {
       // If the file is currently open and active, use the Editor interface
@@ -203,20 +187,17 @@ export class VaultSyncManager {
       if (typeof content === "string") {
         editor.setValue(content);
       } else {
-        // Handle binary content (you might want to show a message that the file was updated)
+        // Handle binary content
         new Notice(`Binary file ${file.name} has been updated.`);
+        await this.plugin.app.vault.modifyBinary(file, content);
       }
     } else {
-      // If the file is not active, use Vault.process
-      await this.plugin.app.vault.process(file, (data) => {
-        if (typeof content === "string") {
-          return content;
-        } else {
-          // For binary files, we can't process them this way
-          // You might want to handle this case differently
-          throw new Error("Cannot process binary files this way");
-        }
-      });
+      // If the file is not active, use Vault.process for text files and modifyBinary for binary files
+      if (typeof content === "string") {
+        await this.plugin.app.vault.process(file, () => content);
+      } else {
+        await this.plugin.app.vault.modifyBinary(file, content);
+      }
     }
   }
 
