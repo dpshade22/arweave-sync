@@ -530,6 +530,7 @@
     position: relative;
 }
 
+/*
 .tooltip {
     left: 0;
     box-shadow: none;
@@ -559,7 +560,7 @@
 .tooltip:hover::after {
     opacity: 1;
     visibility: visible;
-}
+} */
 
 @media (max-width: 768px) {
     .arweave-sync-sidebar .tab-container {

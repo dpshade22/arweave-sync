@@ -448,23 +448,23 @@ export class SyncSidebar extends ItemView {
         remoteFile.filePath === node.path && remoteFile.oldFilePath,
     );
 
-    if (remoteFileInfo && remoteFileInfo.oldFilePath) {
-      const renameIndicator = contentEl.createEl("span", {
-        cls: "rename-indicator",
-        text: "R",
-      });
-      renameIndicator.style.marginLeft = "5px";
-      renameIndicator.style.fontWeight = "bold";
-      renameIndicator.style.color = "var(--text-accent)";
+    // if (remoteFileInfo && remoteFileInfo.oldFilePath) {
+    //   const renameIndicator = contentEl.createEl("span", {
+    //     cls: "rename-indicator",
+    //     text: "R",
+    //   });
+    //   renameIndicator.style.marginLeft = "5px";
+    //   renameIndicator.style.fontWeight = "bold";
+    //   renameIndicator.style.color = "var(--text-accent)";
 
-      // Add tooltip
-      const tooltip = `Renamed from: ${remoteFileInfo.oldFilePath}`;
-      renameIndicator.setAttribute("aria-label", tooltip);
-      renameIndicator.addClass("tooltip");
+    //   // Add tooltip
+    //   const tooltip = `Renamed from: ${remoteFileInfo.oldFilePath}`;
+    //   renameIndicator.setAttribute("aria-label", tooltip);
+    //   renameIndicator.addClass("tooltip");
 
-      // Add CSS for tooltip (you can also add this to your styles.css)
-      contentEl.addClass("rename-container");
-    }
+    //   // Add CSS for tooltip (you can also add this to your styles.css)
+    //   contentEl.addClass("rename-container");
+    // }
 
     if (node.fileInfo) {
       this.setFileNodeAttributes(contentEl, node);
