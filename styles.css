@@ -300,6 +300,7 @@
     width: 100%;
     margin-top: 0;
     margin-bottom: 0;
+    cursor: pointer;
 }
 
 .arweave-sync-sidebar .submit-changes:hover {
