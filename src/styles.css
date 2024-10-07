@@ -209,6 +209,7 @@
     margin: 0;
     padding: 0;
     position: relative;
+    overflow-x: hidden;
 }
 
 .arweave-sync-sidebar .folder-item {
@@ -538,11 +539,9 @@
     content: attr(aria-label);
     position: absolute;
     bottom: 125%;
-    left: 50%;
     transform: translateX(-50%);
     padding: 5px;
     border-radius: 3px;
-    background-color: var(--background-modifier-hover);
     color: var(--text-normal);
     font-size: 12px;
     white-space: nowrap;
@@ -551,7 +550,7 @@
     transition:
         opacity 0.2s,
         visibility 0.2s;
-    z-index: 1000;
+    z-index: 10000;
 }
 
 .tooltip:hover::after {
