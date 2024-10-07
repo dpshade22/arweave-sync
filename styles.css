@@ -631,7 +631,7 @@
     .arweave-sync-sidebar .submit-changes-container {
         order: 1;
         position: fixed;
-        bottom: 50px; /* Adjust this value based on your tab height */
+        bottom: 70px;
         left: 0;
         right: 0;
         z-index: 999; /* Just below the tabs */
@@ -644,6 +644,6 @@
     .arweave-sync-sidebar .tab {
         flex: 1;
         text-align: center;
-        padding: 15px 10px;
+        padding: 25px 10px;
     }
 }
