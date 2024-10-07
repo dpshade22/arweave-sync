@@ -49,7 +49,6 @@ export default class ArweaveSync extends Plugin {
     this.setupEventListeners();
     this.setupUI();
     this.addCommands();
-
     this.registerView(SYNC_SIDEBAR_VIEW, (leaf) => new SyncSidebar(leaf, this));
 
     this.addRibbonIcon("wallet", "Arweave Sync", () => {
@@ -59,6 +58,8 @@ export default class ArweaveSync extends Plugin {
         this.showWalletConnectModal();
       }
     });
+
+    this.updateSyncUI();
   }
 
   private initializeManagers() {
@@ -135,7 +136,14 @@ export default class ArweaveSync extends Plugin {
               .setIcon("sync")
               .onClick(() => this.syncFile(file));
           });
+          menu.addItem((item) => {
+            item
+              .setTitle("Force Pull from Arweave")
+              .setIcon("download-cloud")
+              .onClick(() => this.forcePullCurrentFile(file));
+          });
         }
+
         if (file instanceof TFolder) {
           menu.addItem((item) => {
             item
@@ -161,6 +169,21 @@ export default class ArweaveSync extends Plugin {
       id: "open-arweave-sync-sidebar",
       name: "Open Arweave Sync Sidebar",
       callback: () => this.activateSyncSidebar(),
+    });
+
+    this.addCommand({
+      id: "force-pull-current-file",
+      name: "Force Pull Current File from Arweave",
+      checkCallback: (checking: boolean) => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile) {
+          if (!checking) {
+            this.forcePullCurrentFile(activeFile);
+          }
+          return true;
+        }
+        return false;
+      },
     });
 
     this.addCommand({
@@ -722,11 +745,17 @@ export default class ArweaveSync extends Plugin {
     return syncState !== "synced";
   }
 
-  async getFileSyncState(
-    file: TFile,
-  ): Promise<"new-file" | "updated-file" | "synced"> {
-    const { syncState } = await this.vaultSyncManager.checkFileSync(file);
-    return syncState;
+  private async forcePullCurrentFile(file: TFile) {
+    try {
+      await this.vaultSyncManager.forcePullFile(file);
+      new Notice(
+        `Successfully pulled the latest version of ${file.name} from Arweave`,
+      );
+      this.updateSyncUI();
+    } catch (error) {
+      console.error("Error force pulling file:", error);
+      new Notice(`Failed to pull ${file.name} from Arweave: ${error.message}`);
+    }
   }
 
   async activateSyncSidebar() {
@@ -758,6 +787,10 @@ export default class ArweaveSync extends Plugin {
         view.handleFileRename(file, oldPath);
       } else {
         view.updateFileStatus(file);
+      }
+
+      if (view.isVisible()) {
+        view.refresh();
       }
     });
   }

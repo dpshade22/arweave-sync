@@ -7,6 +7,7 @@ import ArweaveSync from "../main";
 import { arGql } from "ar-gql";
 import { walletManager } from "./walletManager";
 import { Buffer } from "buffer";
+import { dirname, basename, join } from "../utils/path";
 
 export class VaultSyncManager {
   private vault: Vault;
@@ -119,40 +120,126 @@ export class VaultSyncManager {
         return;
       }
 
-      const file = this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
+      await this.ensureDirectoryExists(normalizedPath);
 
-      if (file instanceof TFile) {
-        if (Buffer.isBuffer(decryptedContent)) {
-          await this.plugin.app.vault.modifyBinary(
-            file,
-            decryptedContent.buffer,
-          );
-        } else if (typeof decryptedContent === "string") {
-          await this.plugin.app.vault.modify(file, decryptedContent);
-        } else {
-          throw new Error(`Unexpected decrypted content type for ${filePath}`);
-        }
-      } else {
-        await this.ensureDirectoryExists(normalizedPath);
+      let finalPath = normalizedPath;
+      let fileCreated = false;
+
+      try {
         if (Buffer.isBuffer(decryptedContent)) {
           await this.plugin.app.vault.createBinary(
-            normalizedPath,
+            finalPath,
             decryptedContent.buffer,
           );
         } else if (typeof decryptedContent === "string") {
-          await this.plugin.app.vault.create(normalizedPath, decryptedContent);
+          await this.plugin.app.vault.create(finalPath, decryptedContent);
+        }
+        fileCreated = true;
+        console.log(`Created new file: ${finalPath}`);
+      } catch (createError) {
+        if (createError.message === "File already exists.") {
+          const existingFile =
+            this.plugin.app.vault.getAbstractFileByPath(finalPath);
+          if (existingFile instanceof TFile) {
+            if (Buffer.isBuffer(decryptedContent)) {
+              await this.plugin.app.vault.modifyBinary(
+                existingFile,
+                decryptedContent.buffer,
+              );
+            } else if (typeof decryptedContent === "string") {
+              await this.plugin.app.vault.modify(
+                existingFile,
+                decryptedContent,
+              );
+            }
+            console.log(`Modified existing file: ${finalPath}`);
+          } else if (existingFile instanceof TFolder) {
+            finalPath = this.generateUniqueFilePath(normalizedPath);
+            if (Buffer.isBuffer(decryptedContent)) {
+              await this.plugin.app.vault.createBinary(
+                finalPath,
+                decryptedContent.buffer,
+              );
+            } else if (typeof decryptedContent === "string") {
+              await this.plugin.app.vault.create(finalPath, decryptedContent);
+            }
+            fileCreated = true;
+            console.log(`Created new file with modified path: ${finalPath}`);
+          } else {
+            throw new Error(`Unexpected file type for ${finalPath}`);
+          }
         } else {
-          throw new Error(`Unexpected decrypted content type for ${filePath}`);
+          throw createError;
         }
       }
 
-      this.plugin.updateLocalConfig(filePath, remoteFileInfo);
-
+      if (fileCreated || finalPath !== normalizedPath) {
+        this.plugin.updateLocalConfig(filePath, {
+          ...remoteFileInfo,
+          filePath: finalPath,
+        });
+      } else {
+        this.plugin.updateLocalConfig(filePath, remoteFileInfo);
+      }
       await this.plugin.saveSettings();
 
-      console.log(`Imported file: ${normalizedPath}`);
+      console.log(`Imported file: ${finalPath}`);
     } catch (error) {
       console.error(`Failed to import file: ${filePath}`, error);
+      throw error;
+    }
+  }
+
+  private generateUniqueFilePath(originalPath: string): string {
+    let newPath = originalPath;
+    let counter = 1;
+    while (this.plugin.app.vault.getAbstractFileByPath(newPath)) {
+      const dir = dirname(originalPath);
+      const name = basename(originalPath).replace(/\.[^/.]+$/, ""); // Remove extension
+      const ext = basename(originalPath).split(".").pop() || "";
+      newPath = normalizePath(
+        `${dir}/${name}_${counter}${ext ? "." + ext : ""}`,
+      );
+      counter++;
+    }
+    return newPath;
+  }
+
+  public async forcePullFile(file: TFile): Promise<void> {
+    try {
+      const remoteFileInfo = this.remoteUploadConfig[file.path];
+      if (!remoteFileInfo) {
+        throw new Error(`No remote file info found for ${file.path}`);
+      }
+
+      const encryptedContent = await this.fetchEncryptedContent(
+        remoteFileInfo.txId,
+      );
+      let decryptedContent: string | Buffer;
+
+      try {
+        decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
+      } catch (decryptError) {
+        console.error(`Failed to decrypt ${file.path}:`, decryptError);
+        throw new Error(
+          `Failed to decrypt ${file.path}. Please check your encryption password.`,
+        );
+      }
+
+      if (Buffer.isBuffer(decryptedContent)) {
+        await this.plugin.app.vault.modifyBinary(file, decryptedContent.buffer);
+      } else if (typeof decryptedContent === "string") {
+        await this.plugin.app.vault.modify(file, decryptedContent);
+      } else {
+        throw new Error(`Unexpected decrypted content type for ${file.path}`);
+      }
+
+      this.plugin.updateLocalConfig(file.path, remoteFileInfo);
+      await this.plugin.saveSettings();
+
+      console.log(`Force pulled file: ${file.path}`);
+    } catch (error) {
+      console.error(`Failed to force pull file: ${file.path}`, error);
       throw error;
     }
   }
@@ -172,14 +259,29 @@ export class VaultSyncManager {
     );
   }
 
-  private async ensureDirectoryExists(filePath: string) {
-    const dirPath = filePath.split("/").slice(0, -1).join("/");
-    if (dirPath) {
-      const dir = this.vault.getAbstractFileByPath(dirPath);
-      if (!dir) {
-        await this.vault.createFolder(dirPath);
-      } else if (!(dir instanceof TFolder)) {
-        throw new Error(`${dirPath} exists but is not a folder`);
+  private async ensureDirectoryExists(filePath: string): Promise<void> {
+    const dir = dirname(filePath);
+    if (dir && dir !== ".") {
+      const folders = dir.split("/").filter(Boolean);
+      let currentPath = "";
+
+      for (const folder of folders) {
+        currentPath += (currentPath ? "/" : "") + folder;
+        const folderFile =
+          this.plugin.app.vault.getAbstractFileByPath(currentPath);
+
+        if (!folderFile) {
+          try {
+            await this.plugin.app.vault.createFolder(currentPath);
+          } catch (error) {
+            if (error.message !== "Folder already exists.") {
+              throw error;
+            }
+            // If the folder already exists, we can continue to the next subfolder
+          }
+        } else if (!(folderFile instanceof TFolder)) {
+          throw new Error(`${currentPath} exists but is not a folder`);
+        }
       }
     }
   }
@@ -498,5 +600,11 @@ export class VaultSyncManager {
       "zip",
     ];
     return binaryExtensions.includes(file.extension.toLowerCase());
+  }
+
+  private async fileExistsCaseInsensitive(filePath: string): Promise<boolean> {
+    const normalizedPath = normalizePath(filePath.toLowerCase());
+    const allFiles = this.plugin.app.vault.getFiles();
+    return allFiles.some((file) => file.path.toLowerCase() === normalizedPath);
   }
 }

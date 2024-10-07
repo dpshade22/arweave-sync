@@ -52,6 +52,10 @@ export class SyncSidebar extends ItemView {
     return "wallet";
   }
 
+  isVisible(): boolean {
+    return this.containerEl.isShown();
+  }
+
   async onOpen() {
     const { containerEl } = this;
     containerEl.empty();

@@ -26992,6 +26992,32 @@ var import_obsidian2 = require("obsidian");
 var import_crypto_js2 = __toESM(require_crypto_js());
 var import_ar_gql2 = __toESM(require_dist());
 var import_buffer3 = __toESM(require_buffer2());
+
+// src/utils/path.ts
+function join2(...parts) {
+  return parts.join("/").replace(/\/+/g, "/");
+}
+function dirname(path2) {
+  return path2.replace(/\/+$/, "").replace(/\/[^\/]*$/, "");
+}
+function basename(path2) {
+  return path2.split("/").pop() || "";
+}
+function relative(from, to) {
+  const fromParts = from.split("/").filter(Boolean);
+  const toParts = to.split("/").filter(Boolean);
+  let commonLength = 0;
+  for (let i = 0; i < Math.min(fromParts.length, toParts.length); i++) {
+    if (fromParts[i] !== toParts[i]) break;
+    commonLength++;
+  }
+  const upCount = fromParts.length - commonLength;
+  const downParts = toParts.slice(commonLength);
+  const relativePath = [...Array(upCount).fill(".."), ...downParts];
+  return relativePath.join("/") || ".";
+}
+
+// src/managers/vaultSyncManager.ts
 var VaultSyncManager = class {
   constructor(plugin, encryptionPassword, remoteUploadConfig, localUploadConfig) {
     this.plugin = plugin;
@@ -27080,36 +27106,114 @@ var VaultSyncManager = class {
         await this.handleDecryptionFailure(filePath);
         return;
       }
-      const file = this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
-      if (file instanceof import_obsidian2.TFile) {
-        if (import_buffer3.Buffer.isBuffer(decryptedContent)) {
-          await this.plugin.app.vault.modifyBinary(
-            file,
-            decryptedContent.buffer
-          );
-        } else if (typeof decryptedContent === "string") {
-          await this.plugin.app.vault.modify(file, decryptedContent);
-        } else {
-          throw new Error(`Unexpected decrypted content type for ${filePath}`);
-        }
-      } else {
-        await this.ensureDirectoryExists(normalizedPath);
+      await this.ensureDirectoryExists(normalizedPath);
+      let finalPath = normalizedPath;
+      let fileCreated = false;
+      try {
         if (import_buffer3.Buffer.isBuffer(decryptedContent)) {
           await this.plugin.app.vault.createBinary(
-            normalizedPath,
+            finalPath,
             decryptedContent.buffer
           );
         } else if (typeof decryptedContent === "string") {
-          await this.plugin.app.vault.create(normalizedPath, decryptedContent);
+          await this.plugin.app.vault.create(finalPath, decryptedContent);
+        }
+        fileCreated = true;
+        console.log(`Created new file: ${finalPath}`);
+      } catch (createError) {
+        if (createError.message === "File already exists.") {
+          const existingFile = this.plugin.app.vault.getAbstractFileByPath(finalPath);
+          if (existingFile instanceof import_obsidian2.TFile) {
+            if (import_buffer3.Buffer.isBuffer(decryptedContent)) {
+              await this.plugin.app.vault.modifyBinary(
+                existingFile,
+                decryptedContent.buffer
+              );
+            } else if (typeof decryptedContent === "string") {
+              await this.plugin.app.vault.modify(
+                existingFile,
+                decryptedContent
+              );
+            }
+            console.log(`Modified existing file: ${finalPath}`);
+          } else if (existingFile instanceof import_obsidian2.TFolder) {
+            finalPath = this.generateUniqueFilePath(normalizedPath);
+            if (import_buffer3.Buffer.isBuffer(decryptedContent)) {
+              await this.plugin.app.vault.createBinary(
+                finalPath,
+                decryptedContent.buffer
+              );
+            } else if (typeof decryptedContent === "string") {
+              await this.plugin.app.vault.create(finalPath, decryptedContent);
+            }
+            fileCreated = true;
+            console.log(`Created new file with modified path: ${finalPath}`);
+          } else {
+            throw new Error(`Unexpected file type for ${finalPath}`);
+          }
         } else {
-          throw new Error(`Unexpected decrypted content type for ${filePath}`);
+          throw createError;
         }
       }
-      this.plugin.updateLocalConfig(filePath, remoteFileInfo);
+      if (fileCreated || finalPath !== normalizedPath) {
+        this.plugin.updateLocalConfig(filePath, {
+          ...remoteFileInfo,
+          filePath: finalPath
+        });
+      } else {
+        this.plugin.updateLocalConfig(filePath, remoteFileInfo);
+      }
       await this.plugin.saveSettings();
-      console.log(`Imported file: ${normalizedPath}`);
+      console.log(`Imported file: ${finalPath}`);
     } catch (error) {
       console.error(`Failed to import file: ${filePath}`, error);
+      throw error;
+    }
+  }
+  generateUniqueFilePath(originalPath) {
+    let newPath = originalPath;
+    let counter = 1;
+    while (this.plugin.app.vault.getAbstractFileByPath(newPath)) {
+      const dir = dirname(originalPath);
+      const name = basename(originalPath).replace(/\.[^/.]+$/, "");
+      const ext = basename(originalPath).split(".").pop() || "";
+      newPath = (0, import_obsidian2.normalizePath)(
+        `${dir}/${name}_${counter}${ext ? "." + ext : ""}`
+      );
+      counter++;
+    }
+    return newPath;
+  }
+  async forcePullFile(file) {
+    try {
+      const remoteFileInfo = this.remoteUploadConfig[file.path];
+      if (!remoteFileInfo) {
+        throw new Error(`No remote file info found for ${file.path}`);
+      }
+      const encryptedContent = await this.fetchEncryptedContent(
+        remoteFileInfo.txId
+      );
+      let decryptedContent;
+      try {
+        decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
+      } catch (decryptError) {
+        console.error(`Failed to decrypt ${file.path}:`, decryptError);
+        throw new Error(
+          `Failed to decrypt ${file.path}. Please check your encryption password.`
+        );
+      }
+      if (import_buffer3.Buffer.isBuffer(decryptedContent)) {
+        await this.plugin.app.vault.modifyBinary(file, decryptedContent.buffer);
+      } else if (typeof decryptedContent === "string") {
+        await this.plugin.app.vault.modify(file, decryptedContent);
+      } else {
+        throw new Error(`Unexpected decrypted content type for ${file.path}`);
+      }
+      this.plugin.updateLocalConfig(file.path, remoteFileInfo);
+      await this.plugin.saveSettings();
+      console.log(`Force pulled file: ${file.path}`);
+    } catch (error) {
+      console.error(`Failed to force pull file: ${file.path}`, error);
       throw error;
     }
   }
@@ -27125,13 +27229,24 @@ var VaultSyncManager = class {
     );
   }
   async ensureDirectoryExists(filePath) {
-    const dirPath = filePath.split("/").slice(0, -1).join("/");
-    if (dirPath) {
-      const dir = this.vault.getAbstractFileByPath(dirPath);
-      if (!dir) {
-        await this.vault.createFolder(dirPath);
-      } else if (!(dir instanceof import_obsidian2.TFolder)) {
-        throw new Error(`${dirPath} exists but is not a folder`);
+    const dir = dirname(filePath);
+    if (dir && dir !== ".") {
+      const folders = dir.split("/").filter(Boolean);
+      let currentPath = "";
+      for (const folder of folders) {
+        currentPath += (currentPath ? "/" : "") + folder;
+        const folderFile = this.plugin.app.vault.getAbstractFileByPath(currentPath);
+        if (!folderFile) {
+          try {
+            await this.plugin.app.vault.createFolder(currentPath);
+          } catch (error) {
+            if (error.message !== "Folder already exists.") {
+              throw error;
+            }
+          }
+        } else if (!(folderFile instanceof import_obsidian2.TFolder)) {
+          throw new Error(`${currentPath} exists but is not a folder`);
+        }
       }
     }
   }
@@ -27373,6 +27488,11 @@ var VaultSyncManager = class {
     ];
     return binaryExtensions.includes(file.extension.toLowerCase());
   }
+  async fileExistsCaseInsensitive(filePath) {
+    const normalizedPath = (0, import_obsidian2.normalizePath)(filePath.toLowerCase());
+    const allFiles = this.plugin.app.vault.getFiles();
+    return allFiles.some((file) => file.path.toLowerCase() === normalizedPath);
+  }
 };
 
 // src/types/index.ts
@@ -27533,6 +27653,9 @@ var SyncSidebar = class extends import_obsidian5.ItemView {
   }
   getIcon() {
     return "wallet";
+  }
+  isVisible() {
+    return this.containerEl.isShown();
   }
   async onOpen() {
     const { containerEl } = this;
@@ -28383,29 +28506,6 @@ Version: ${node.fileInfo.versionNumber}`
 
 // src/managers/arPublishManager.ts
 var import_obsidian6 = require("obsidian");
-
-// src/utils/path.ts
-function join2(...parts) {
-  return parts.join("/").replace(/\/+/g, "/");
-}
-function dirname(path2) {
-  return path2.replace(/\/+$/, "").replace(/\/[^\/]*$/, "");
-}
-function relative(from, to) {
-  const fromParts = from.split("/").filter(Boolean);
-  const toParts = to.split("/").filter(Boolean);
-  let commonLength = 0;
-  for (let i = 0; i < Math.min(fromParts.length, toParts.length); i++) {
-    if (fromParts[i] !== toParts[i]) break;
-    commonLength++;
-  }
-  const upCount = fromParts.length - commonLength;
-  const downParts = toParts.slice(commonLength);
-  const relativePath = [...Array(upCount).fill(".."), ...downParts];
-  return relativePath.join("/") || ".";
-}
-
-// src/managers/arPublishManager.ts
 var ArPublishManager = class {
   constructor(app, plugin) {
     this.app = app;
@@ -29157,6 +29257,7 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
         this.showWalletConnectModal();
       }
     });
+    this.updateSyncUI();
   }
   initializeManagers() {
     initializeWalletManager();
@@ -29214,6 +29315,9 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
           menu.addItem((item) => {
             item.setTitle("Sync with Arweave").setIcon("sync").onClick(() => this.syncFile(file));
           });
+          menu.addItem((item) => {
+            item.setTitle("Force Pull from Arweave").setIcon("download-cloud").onClick(() => this.forcePullCurrentFile(file));
+          });
         }
         if (file instanceof import_obsidian7.TFolder) {
           menu.addItem((item) => {
@@ -29235,6 +29339,20 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
       id: "open-arweave-sync-sidebar",
       name: "Open Arweave Sync Sidebar",
       callback: () => this.activateSyncSidebar()
+    });
+    this.addCommand({
+      id: "force-pull-current-file",
+      name: "Force Pull Current File from Arweave",
+      checkCallback: (checking) => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile) {
+          if (!checking) {
+            this.forcePullCurrentFile(activeFile);
+          }
+          return true;
+        }
+        return false;
+      }
     });
     this.addCommand({
       id: "open-wallet-connect-modal",
@@ -29681,9 +29799,17 @@ Check the console for more details.`
     const { syncState } = await this.vaultSyncManager.checkFileSync(file);
     return syncState !== "synced";
   }
-  async getFileSyncState(file) {
-    const { syncState } = await this.vaultSyncManager.checkFileSync(file);
-    return syncState;
+  async forcePullCurrentFile(file) {
+    try {
+      await this.vaultSyncManager.forcePullFile(file);
+      new import_obsidian7.Notice(
+        `Successfully pulled the latest version of ${file.name} from Arweave`
+      );
+      this.updateSyncUI();
+    } catch (error) {
+      console.error("Error force pulling file:", error);
+      new import_obsidian7.Notice(`Failed to pull ${file.name} from Arweave: ${error.message}`);
+    }
   }
   async activateSyncSidebar() {
     const { workspace } = this.app;
@@ -29709,6 +29835,9 @@ Check the console for more details.`
         view.handleFileRename(file, oldPath);
       } else {
         view.updateFileStatus(file);
+      }
+      if (view.isVisible()) {
+        view.refresh();
       }
     });
   }
