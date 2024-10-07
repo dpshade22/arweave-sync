@@ -27110,68 +27110,53 @@ var VaultSyncManager = class {
         await this.handleDecryptionFailure(filePath);
         return;
       }
-      await this.ensureDirectoryExists(normalizedPath);
-      let finalPath = normalizedPath;
-      let fileCreated = false;
-      try {
-        if (import_buffer3.Buffer.isBuffer(decryptedContent)) {
-          await this.plugin.app.vault.createBinary(
-            finalPath,
-            decryptedContent.buffer
-          );
-        } else if (typeof decryptedContent === "string") {
-          await this.plugin.app.vault.create(finalPath, decryptedContent);
-        }
-        fileCreated = true;
-        console.log(`Created new file: ${finalPath}`);
-      } catch (createError) {
-        if (createError.message === "File already exists.") {
-          const existingFile = this.plugin.app.vault.getAbstractFileByPath(finalPath);
-          if (existingFile instanceof import_obsidian2.TFile) {
-            if (import_buffer3.Buffer.isBuffer(decryptedContent)) {
-              await this.plugin.app.vault.modifyBinary(
-                existingFile,
-                decryptedContent.buffer
-              );
-            } else if (typeof decryptedContent === "string") {
-              await this.plugin.app.vault.modify(
-                existingFile,
-                decryptedContent
-              );
-            }
-            console.log(`Modified existing file: ${finalPath}`);
-          } else if (existingFile instanceof import_obsidian2.TFolder) {
-            finalPath = this.generateUniqueFilePath(normalizedPath);
-            if (import_buffer3.Buffer.isBuffer(decryptedContent)) {
-              await this.plugin.app.vault.createBinary(
-                finalPath,
-                decryptedContent.buffer
-              );
-            } else if (typeof decryptedContent === "string") {
-              await this.plugin.app.vault.create(finalPath, decryptedContent);
-            }
-            fileCreated = true;
-            console.log(`Created new file with modified path: ${finalPath}`);
-          } else {
-            throw new Error(`Unexpected file type for ${finalPath}`);
-          }
-        } else {
-          throw createError;
-        }
-      }
-      if (fileCreated || finalPath !== normalizedPath) {
-        this.plugin.updateLocalConfig(filePath, {
-          ...remoteFileInfo,
-          filePath: finalPath
-        });
+      const existingFile = this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
+      if (existingFile instanceof import_obsidian2.TFile) {
+        await this.updateExistingFile(existingFile, decryptedContent);
+        console.log(`Updated existing file: ${normalizedPath}`);
+      } else if (existingFile instanceof import_obsidian2.TFolder) {
+        const uniquePath = this.generateUniqueFilePath(normalizedPath);
+        await this.createNewFile(uniquePath, decryptedContent);
+        console.log(`Created new file with modified path: ${uniquePath}`);
       } else {
-        this.plugin.updateLocalConfig(filePath, remoteFileInfo);
+        await this.ensureDirectoryExists(normalizedPath);
+        await this.createNewFile(normalizedPath, decryptedContent);
+        console.log(`Created new file: ${normalizedPath}`);
       }
+      this.plugin.updateLocalConfig(filePath, {
+        ...remoteFileInfo,
+        filePath: normalizedPath
+      });
       await this.plugin.saveSettings();
-      console.log(`Imported file: ${finalPath}`);
+      console.log(`Imported file: ${normalizedPath}`);
     } catch (error) {
       console.error(`Failed to import file: ${filePath}`, error);
       throw error;
+    }
+  }
+  async createNewFile(path2, content) {
+    if (content instanceof ArrayBuffer) {
+      await this.plugin.app.vault.createBinary(path2, content);
+    } else {
+      await this.plugin.app.vault.create(path2, content);
+    }
+  }
+  async updateExistingFile(file, content) {
+    const activeLeaf = this.plugin.app.workspace.activeLeaf;
+    if ((activeLeaf == null ? void 0 : activeLeaf.view) instanceof import_obsidian2.MarkdownView && activeLeaf.view.file === file) {
+      const editor = activeLeaf.view.editor;
+      if (typeof content === "string") {
+        editor.setValue(content);
+      } else {
+        new import_obsidian2.Notice(`Binary file ${file.name} has been updated.`);
+        await this.plugin.app.vault.modifyBinary(file, content);
+      }
+    } else {
+      if (typeof content === "string") {
+        await this.plugin.app.vault.process(file, () => content);
+      } else {
+        await this.plugin.app.vault.modifyBinary(file, content);
+      }
     }
   }
   generateUniqueFilePath(originalPath) {
@@ -29426,9 +29411,8 @@ var ArweaveSync = class extends import_obsidian7.Plugin {
     new import_obsidian7.Notice("Wallet disconnected");
   }
   async addSyncButtonToLeaf(leaf) {
-    const view = leaf.view;
-    if (view instanceof import_obsidian7.MarkdownView) {
-      await this.addSyncButton(view);
+    if (leaf.view instanceof import_obsidian7.MarkdownView) {
+      await this.addSyncButton(leaf.view);
     }
   }
   async addSyncButton(view) {
@@ -29821,7 +29805,7 @@ Check the console for more details.`
       leaf = workspace.getLeftLeaf(false);
       await leaf.setViewState({ type: SYNC_SIDEBAR_VIEW, active: true });
     }
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
     if (leaf.view instanceof SyncSidebar) {
       this.activeSyncSidebar = leaf.view;
     }
@@ -29844,8 +29828,11 @@ Check the console for more details.`
       }
     });
   }
-  refreshSyncSidebar() {
-    this.updateView((view) => view.refresh());
+  async refreshSyncSidebar() {
+    const view = await this.getSyncSidebarView();
+    if (view) {
+      view.refresh();
+    }
   }
   updateView(updater) {
     const leaf = this.app.workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
@@ -29871,6 +29858,16 @@ Check the console for more details.`
         `Failed to publish ${folder.name} to Arweave. Error: ${error.message}`
       );
     }
+  }
+  async getSyncSidebarView() {
+    const leaf = this.app.workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
+    if (leaf) {
+      await this.app.workspace.revealLeaf(leaf);
+      if (leaf.view instanceof SyncSidebar) {
+        return leaf.view;
+      }
+    }
+    return null;
   }
   onunload() {
     console.log("Unloading ArweaveSync plugin");

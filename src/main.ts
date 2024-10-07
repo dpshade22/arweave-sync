@@ -268,9 +268,8 @@ export default class ArweaveSync extends Plugin {
   }
 
   private async addSyncButtonToLeaf(leaf: WorkspaceLeaf) {
-    const view = leaf.view;
-    if (view instanceof MarkdownView) {
-      await this.addSyncButton(view);
+    if (leaf.view instanceof MarkdownView) {
+      await this.addSyncButton(leaf.view);
     }
   }
 
@@ -759,16 +758,16 @@ export default class ArweaveSync extends Plugin {
     }
   }
 
-  async activateSyncSidebar() {
+  public async activateSyncSidebar() {
     const { workspace } = this.app;
-    let leaf: any = workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
+    let leaf = workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
 
     if (!leaf) {
       leaf = workspace.getLeftLeaf(false);
       await leaf.setViewState({ type: SYNC_SIDEBAR_VIEW, active: true });
     }
 
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
 
     if (leaf.view instanceof SyncSidebar) {
       this.activeSyncSidebar = leaf.view;
@@ -796,8 +795,11 @@ export default class ArweaveSync extends Plugin {
     });
   }
 
-  refreshSyncSidebar() {
-    this.updateView((view) => view.refresh());
+  public async refreshSyncSidebar() {
+    const view = await this.getSyncSidebarView();
+    if (view) {
+      view.refresh();
+    }
   }
 
   private updateView(updater: (view: SyncSidebar) => void) {
@@ -826,6 +828,17 @@ export default class ArweaveSync extends Plugin {
         `Failed to publish ${folder.name} to Arweave. Error: ${error.message}`,
       );
     }
+  }
+
+  private async getSyncSidebarView(): Promise<SyncSidebar | null> {
+    const leaf = this.app.workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
+    if (leaf) {
+      await this.app.workspace.revealLeaf(leaf);
+      if (leaf.view instanceof SyncSidebar) {
+        return leaf.view;
+      }
+    }
+    return null;
   }
 
   onunload() {
