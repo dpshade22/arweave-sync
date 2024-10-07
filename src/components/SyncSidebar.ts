@@ -427,26 +427,33 @@ export class SyncSidebar extends ItemView {
   ) {
     contentEl.empty();
 
-    // Add base classes
-    contentEl.addClass("tree-item-self", "is-clickable", "nav-file-title");
+    // Check if this file has been renamed remotely
+    const isRenamedRemotely = Object.values(
+      this.plugin.settings.remoteUploadConfig,
+    ).some((remoteFile) => remoteFile.oldFilePath === node.path);
 
-    // Add sync state class
-    if (node.syncState) {
-      contentEl.addClass(node.syncState);
+    if (!isRenamedRemotely) {
+      // Add base classes
+      contentEl.addClass("tree-item-self", "is-clickable", "nav-file-title");
+
+      // Add sync state class
+      if (node.syncState) {
+        contentEl.addClass(node.syncState);
+      }
+
+      contentEl.createEl("div", {
+        cls: "tree-item-inner nav-file-title-content",
+        text: this.displayFileName(node.name),
+      });
+
+      if (node.fileInfo) {
+        this.setFileNodeAttributes(contentEl, node);
+      }
+
+      contentEl.addEventListener("click", () =>
+        this.toggleFileSelection(node, isSource),
+      );
     }
-
-    const innerEl = contentEl.createEl("div", {
-      cls: "tree-item-inner nav-file-title-content",
-      text: this.displayFileName(node.name),
-    });
-
-    if (node.fileInfo) {
-      this.setFileNodeAttributes(contentEl, node);
-    }
-
-    contentEl.addEventListener("click", () =>
-      this.toggleFileSelection(node, isSource),
-    );
   }
 
   private async setFileNodeAttributes(contentEl: HTMLElement, node: FileNode) {
@@ -727,26 +734,34 @@ export class SyncSidebar extends ItemView {
     const files = this.plugin.app.vault.getFiles();
 
     for (const file of files) {
-      const { syncState, fileHash } =
-        await this.plugin.vaultSyncManager.checkFileSync(file);
+      // Check if this file's path matches any oldFilePath in remoteUploadConfig
+      const isRenamedRemotely = Object.values(
+        this.plugin.settings.remoteUploadConfig,
+      ).some((remoteFile) => remoteFile.oldFilePath === file.path);
 
-      if (syncState === "new-local" || syncState === "local-newer") {
-        const localFileInfo = this.plugin.settings.localUploadConfig[file.path];
-        const fileNode = this.createFileNode(
-          file.path,
-          {
-            txId: localFileInfo?.txId || "",
-            timestamp: file.stat.mtime,
-            fileHash: fileHash,
-            encrypted: false,
-            filePath: file.path,
-            previousVersionTxId: localFileInfo?.previousVersionTxId || null,
-            versionNumber: (localFileInfo?.versionNumber || 0) + 1,
-          },
-          syncState,
-        );
+      if (!isRenamedRemotely) {
+        const { syncState, fileHash } =
+          await this.plugin.vaultSyncManager.checkFileSync(file);
 
-        newOrModifiedFiles.push(fileNode);
+        if (syncState === "new-local" || syncState === "local-newer") {
+          const localFileInfo =
+            this.plugin.settings.localUploadConfig[file.path];
+          const fileNode = this.createFileNode(
+            file.path,
+            {
+              txId: localFileInfo?.txId || "",
+              timestamp: file.stat.mtime,
+              fileHash: fileHash,
+              encrypted: false,
+              filePath: file.path,
+              previousVersionTxId: localFileInfo?.previousVersionTxId || null,
+              versionNumber: (localFileInfo?.versionNumber || 0) + 1,
+            },
+            syncState,
+          );
+
+          newOrModifiedFiles.push(fileNode);
+        }
       }
     }
 
