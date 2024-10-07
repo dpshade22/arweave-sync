@@ -68,6 +68,71 @@ export class SyncSidebar extends ItemView {
     await this.renderContent();
   }
 
+  private async renderContent() {
+    const folderState = this.saveFolderState();
+    this.contentContainer.empty();
+
+    // Create a wrapper for the scrollable content
+    const scrollableContent = this.contentContainer.createEl("div", {
+      cls: "scrollable-content",
+    });
+
+    this.updateNoFilesMessageVisibility();
+
+    if (!this.isEmptyContent()) {
+      this.renderRootFolders(scrollableContent);
+    }
+
+    // Render submit button outside the scrollable content
+    this.renderSubmitButton();
+
+    this.applyFolderState(folderState);
+  }
+
+  private renderRootFolders(container: HTMLElement) {
+    const filesToExportFolder = this.createRootFolder(
+      "Files to Export",
+      this.filesToSync[this.currentTab],
+    );
+    const unsyncedFilesFolder = this.createRootFolder(
+      "Unsynced Files",
+      this.files[this.currentTab],
+    );
+
+    container.appendChild(unsyncedFilesFolder);
+    container.appendChild(filesToExportFolder);
+  }
+
+  private createRootFolder(name: string, files: FileNode[]): HTMLElement {
+    const folderEl = createEl("div", { cls: "root-folder" });
+    const folderHeader = folderEl.createEl("div", {
+      cls: "folder-header nav-folder-title is-clickable",
+    });
+
+    const toggleEl = folderHeader.createEl("div", {
+      cls: "tree-item-icon collapse-icon nav-folder-collapse-indicator",
+    });
+    const chevronSvg = this.createChevronSvg();
+    toggleEl.appendChild(chevronSvg);
+
+    folderHeader.createEl("div", {
+      text: name,
+      cls: "tree-item-inner nav-folder-title-content",
+    });
+
+    const contentEl = folderEl.createEl("div", { cls: "nav-folder-children" });
+    this.renderFileNodes(files, contentEl, name === "Unsynced Files", 0);
+
+    let isExpanded = true;
+    folderHeader.addEventListener("click", () => {
+      isExpanded = !isExpanded;
+      contentEl.style.display = isExpanded ? "block" : "none";
+      this.updateChevronRotation(chevronSvg, isExpanded);
+    });
+
+    return folderEl;
+  }
+
   private renderTabs() {
     const tabContainer = this.containerEl.createEl("div", {
       cls: "tab-container",
@@ -114,20 +179,6 @@ export class SyncSidebar extends ItemView {
     this.files.export = await this.getLocalFilesForExport();
     this.files.import = await this.getRemoteFilesForImport();
     this.filesToSync = { export: [], import: [] };
-  }
-
-  private async renderContent() {
-    const folderState = this.saveFolderState();
-    this.contentContainer.empty();
-
-    this.updateNoFilesMessageVisibility();
-
-    if (!this.isEmptyContent()) {
-      this.renderFileColumns();
-      this.renderSubmitButton();
-    }
-
-    this.applyFolderState(folderState);
   }
 
   private isEmptyContent(): boolean {
@@ -186,35 +237,11 @@ export class SyncSidebar extends ItemView {
   }
 
   private renderSubmitButton() {
-    if (this.currentTab === "export") {
-      const priceInfoBox = this.contentContainer.createEl("div", {
-        cls: "price-info-box",
-      });
+    const submitContainer = this.contentContainer.createEl("div", {
+      cls: "submit-changes-container",
+    });
 
-      priceInfoBox.createEl("div", {
-        cls: "balance-display",
-        attr: {
-          "data-label": "Current Balance:",
-          "data-value": `${this.currentBalance} AR`,
-        },
-      });
-      priceInfoBox.createEl("div", {
-        cls: "total-price-display",
-        attr: {
-          "data-label": "Total Price:",
-          "data-value": `${this.totalPrice} AR`,
-        },
-      });
-      priceInfoBox.createEl("div", {
-        cls: "new-balance-display",
-        attr: {
-          "data-label": "New Balance:",
-          "data-value": `${this.newBalance} AR`,
-        },
-      });
-    }
-
-    const submitButton = this.contentContainer.createEl("button", {
+    const submitButton = submitContainer.createEl("button", {
       text: `${this.currentTab === "export" ? "Export" : "Import"}`,
       cls: "mod-cta submit-changes",
       attr: {
@@ -420,7 +447,7 @@ export class SyncSidebar extends ItemView {
     return files;
   }
 
-  private renderFileNode(
+  private async renderFileNode(
     node: FileNode,
     contentEl: HTMLElement,
     isSource: boolean,
@@ -439,32 +466,6 @@ export class SyncSidebar extends ItemView {
       cls: "tree-item-inner nav-file-title-content",
       text: this.displayFileName(node.name),
     });
-
-    // Check if this file has been renamed remotely
-    const remoteFileInfo = Object.values(
-      this.plugin.settings.remoteUploadConfig,
-    ).find(
-      (remoteFile) =>
-        remoteFile.filePath === node.path && remoteFile.oldFilePath,
-    );
-
-    // if (remoteFileInfo && remoteFileInfo.oldFilePath) {
-    //   const renameIndicator = contentEl.createEl("span", {
-    //     cls: "rename-indicator",
-    //     text: "R",
-    //   });
-    //   renameIndicator.style.marginLeft = "5px";
-    //   renameIndicator.style.fontWeight = "bold";
-    //   renameIndicator.style.color = "var(--text-accent)";
-
-    //   // Add tooltip
-    //   const tooltip = `Renamed from: ${remoteFileInfo.oldFilePath}`;
-    //   renameIndicator.setAttribute("aria-label", tooltip);
-    //   renameIndicator.addClass("tooltip");
-
-    //   // Add CSS for tooltip (you can also add this to your styles.css)
-    //   contentEl.addClass("rename-container");
-    // }
 
     if (node.fileInfo) {
       this.setFileNodeAttributes(contentEl, node);
@@ -528,7 +529,38 @@ export class SyncSidebar extends ItemView {
 
   private updateNoFilesMessageVisibility() {
     const isEmpty = this.isEmptyContent();
-    this.showNoFilesMessage(isEmpty);
+    let messageContainer = this.contentContainer.querySelector(
+      ".no-files-message-container",
+    ) as HTMLElement | null;
+
+    if (!messageContainer) {
+      messageContainer = this.contentContainer.createEl("div", {
+        cls: "no-files-message-container",
+      });
+
+      // Add the icon
+      const iconEl = messageContainer.createEl("div", {
+        cls: "no-files-icon",
+        attr: { "aria-hidden": "true" },
+      });
+      iconEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-edit"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"></path></svg>`;
+
+      // Add the main message
+      messageContainer.createEl("div", {
+        cls: "no-files-text",
+        text: `No notes to ${this.currentTab === "export" ? "export" : "import"}`,
+      });
+
+      // Add the subtext
+      messageContainer.createEl("div", {
+        cls: "no-files-subtext",
+        text: "Your notes will appear here when they're ready to sync.",
+      });
+    }
+
+    if (messageContainer instanceof HTMLElement) {
+      messageContainer.style.display = isEmpty ? "flex" : "none";
+    }
   }
 
   private expandParentFolders(filePath: string, tree: FileNode[]) {
@@ -753,34 +785,26 @@ export class SyncSidebar extends ItemView {
     const files = this.plugin.app.vault.getFiles();
 
     for (const file of files) {
-      // Check if this file's path matches any oldFilePath in remoteUploadConfig
-      const isRenamedRemotely = Object.values(
-        this.plugin.settings.remoteUploadConfig,
-      ).some((remoteFile) => remoteFile.oldFilePath === file.path);
+      const { syncState, fileHash } =
+        await this.plugin.vaultSyncManager.checkFileSync(file);
 
-      if (!isRenamedRemotely) {
-        const { syncState, fileHash } =
-          await this.plugin.vaultSyncManager.checkFileSync(file);
+      if (syncState === "new-local" || syncState === "local-newer") {
+        const localFileInfo = this.plugin.settings.localUploadConfig[file.path];
+        const fileNode = this.createFileNode(
+          file.path,
+          {
+            txId: localFileInfo?.txId || "",
+            timestamp: file.stat.mtime,
+            fileHash: fileHash,
+            encrypted: false,
+            filePath: file.path,
+            previousVersionTxId: localFileInfo?.previousVersionTxId || null,
+            versionNumber: (localFileInfo?.versionNumber || 0) + 1,
+          },
+          syncState,
+        );
 
-        if (syncState === "new-local" || syncState === "local-newer") {
-          const localFileInfo =
-            this.plugin.settings.localUploadConfig[file.path];
-          const fileNode = this.createFileNode(
-            file.path,
-            {
-              txId: localFileInfo?.txId || "",
-              timestamp: file.stat.mtime,
-              fileHash: fileHash,
-              encrypted: false,
-              filePath: file.path,
-              previousVersionTxId: localFileInfo?.previousVersionTxId || null,
-              versionNumber: (localFileInfo?.versionNumber || 0) + 1,
-            },
-            syncState,
-          );
-
-          newOrModifiedFiles.push(fileNode);
-        }
+        newOrModifiedFiles.push(fileNode);
       }
     }
 

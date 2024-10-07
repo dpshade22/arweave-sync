@@ -796,9 +796,23 @@ export default class ArweaveSync extends Plugin {
   }
 
   public async refreshSyncSidebar() {
-    const view = await this.getSyncSidebarView();
-    if (view) {
-      view.refresh();
+    const leaves = this.app.workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW);
+    for (const leaf of leaves) {
+      // Ensure the view is loaded
+      if (leaf.view instanceof SyncSidebar) {
+        const view = leaf.view;
+
+        // Check if this view is currently active
+        const isActiveView =
+          this.app.workspace.getActiveViewOfType(SyncSidebar) === view;
+
+        if (!isActiveView) {
+          // Refresh in the background if not the active view
+          setTimeout(() => view.refresh(), 0);
+        } else {
+          view.refresh();
+        }
+      }
     }
   }
 
