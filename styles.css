@@ -531,6 +531,9 @@
 }
 
 .tooltip {
+    left: 0;
+    box-shadow: none;
+    background: none;
     position: relative;
     cursor: help;
 }
@@ -550,7 +553,7 @@
     transition:
         opacity 0.2s,
         visibility 0.2s;
-    z-index: 10000;
+    z-index: 100000;
 }
 
 .tooltip:hover::after {
