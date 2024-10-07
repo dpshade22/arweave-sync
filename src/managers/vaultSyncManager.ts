@@ -1,5 +1,12 @@
 import Arweave from "arweave";
-import { Vault, TFile, Notice, TFolder, normalizePath } from "obsidian";
+import {
+  Vault,
+  TFile,
+  Notice,
+  TFolder,
+  MarkdownView,
+  normalizePath,
+} from "obsidian";
 import { UploadConfig, FileUploadInfo } from "../types";
 import { encrypt, decrypt } from "../utils/encryption";
 import CryptoJS from "crypto-js";
@@ -115,7 +122,7 @@ export class VaultSyncManager {
         remoteFileInfo.txId,
       );
 
-      let decryptedContent: string | Buffer;
+      let decryptedContent: string | ArrayBuffer;
       try {
         decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
       } catch (decryptError) {
@@ -130,12 +137,9 @@ export class VaultSyncManager {
       let fileCreated = false;
 
       try {
-        if (Buffer.isBuffer(decryptedContent)) {
-          await this.plugin.app.vault.createBinary(
-            finalPath,
-            decryptedContent.buffer,
-          );
-        } else if (typeof decryptedContent === "string") {
+        if (decryptedContent instanceof ArrayBuffer) {
+          await this.plugin.app.vault.createBinary(finalPath, decryptedContent);
+        } else {
           await this.plugin.app.vault.create(finalPath, decryptedContent);
         }
         fileCreated = true;
@@ -145,26 +149,16 @@ export class VaultSyncManager {
           const existingFile =
             this.plugin.app.vault.getAbstractFileByPath(finalPath);
           if (existingFile instanceof TFile) {
-            if (Buffer.isBuffer(decryptedContent)) {
-              await this.plugin.app.vault.modifyBinary(
-                existingFile,
-                decryptedContent.buffer,
-              );
-            } else if (typeof decryptedContent === "string") {
-              await this.plugin.app.vault.modify(
-                existingFile,
-                decryptedContent,
-              );
-            }
+            await this.updateExistingFile(existingFile, decryptedContent);
             console.log(`Modified existing file: ${finalPath}`);
           } else if (existingFile instanceof TFolder) {
             finalPath = this.generateUniqueFilePath(normalizedPath);
-            if (Buffer.isBuffer(decryptedContent)) {
+            if (decryptedContent instanceof ArrayBuffer) {
               await this.plugin.app.vault.createBinary(
                 finalPath,
-                decryptedContent.buffer,
+                decryptedContent,
               );
-            } else if (typeof decryptedContent === "string") {
+            } else {
               await this.plugin.app.vault.create(finalPath, decryptedContent);
             }
             fileCreated = true;
@@ -191,6 +185,38 @@ export class VaultSyncManager {
     } catch (error) {
       console.error(`Failed to import file: ${filePath}`, error);
       throw error;
+    }
+  }
+
+  private async updateExistingFile(
+    file: TFile,
+    content: string | ArrayBuffer,
+  ): Promise<void> {
+    const activeLeaf = this.plugin.app.workspace.activeLeaf;
+    if (
+      activeLeaf &&
+      activeLeaf.view instanceof MarkdownView &&
+      activeLeaf.view.file === file
+    ) {
+      // If the file is currently open and active, use the Editor interface
+      const editor = activeLeaf.view.editor;
+      if (typeof content === "string") {
+        editor.setValue(content);
+      } else {
+        // Handle binary content (you might want to show a message that the file was updated)
+        new Notice(`Binary file ${file.name} has been updated.`);
+      }
+    } else {
+      // If the file is not active, use Vault.process
+      await this.plugin.app.vault.process(file, (data) => {
+        if (typeof content === "string") {
+          return content;
+        } else {
+          // For binary files, we can't process them this way
+          // You might want to handle this case differently
+          throw new Error("Cannot process binary files this way");
+        }
+      });
     }
   }
 
