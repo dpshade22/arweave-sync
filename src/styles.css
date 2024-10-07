@@ -525,6 +525,40 @@
     color: var(--text-on-accent);
 }
 
+.rename-container {
+    position: relative;
+}
+
+.tooltip {
+    position: relative;
+    cursor: help;
+}
+
+.tooltip::after {
+    content: attr(aria-label);
+    position: absolute;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 5px;
+    border-radius: 3px;
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+        opacity 0.2s,
+        visibility 0.2s;
+    z-index: 1000;
+}
+
+.tooltip:hover::after {
+    opacity: 1;
+    visibility: visible;
+}
+
 @media (max-width: 768px) {
     .arweave-sync-sidebar .tab-container {
         margin-top: 1rem;

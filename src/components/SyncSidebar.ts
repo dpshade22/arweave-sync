@@ -420,40 +420,59 @@ export class SyncSidebar extends ItemView {
     return files;
   }
 
-  private async renderFileNode(
+  private renderFileNode(
     node: FileNode,
     contentEl: HTMLElement,
     isSource: boolean,
   ) {
     contentEl.empty();
 
-    // Check if this file has been renamed remotely
-    const isRenamedRemotely = Object.values(
-      this.plugin.settings.remoteUploadConfig,
-    ).some((remoteFile) => remoteFile.oldFilePath === node.path);
+    // Add base classes
+    contentEl.addClass("tree-item-self", "is-clickable", "nav-file-title");
 
-    if (!isRenamedRemotely) {
-      // Add base classes
-      contentEl.addClass("tree-item-self", "is-clickable", "nav-file-title");
-
-      // Add sync state class
-      if (node.syncState) {
-        contentEl.addClass(node.syncState);
-      }
-
-      contentEl.createEl("div", {
-        cls: "tree-item-inner nav-file-title-content",
-        text: this.displayFileName(node.name),
-      });
-
-      if (node.fileInfo) {
-        this.setFileNodeAttributes(contentEl, node);
-      }
-
-      contentEl.addEventListener("click", () =>
-        this.toggleFileSelection(node, isSource),
-      );
+    // Add sync state class
+    if (node.syncState) {
+      contentEl.addClass(node.syncState);
     }
+
+    const innerEl = contentEl.createEl("div", {
+      cls: "tree-item-inner nav-file-title-content",
+      text: this.displayFileName(node.name),
+    });
+
+    // Check if this file has been renamed remotely
+    const remoteFileInfo = Object.values(
+      this.plugin.settings.remoteUploadConfig,
+    ).find(
+      (remoteFile) =>
+        remoteFile.filePath === node.path && remoteFile.oldFilePath,
+    );
+
+    if (remoteFileInfo && remoteFileInfo.oldFilePath) {
+      const renameIndicator = contentEl.createEl("span", {
+        cls: "rename-indicator",
+        text: "R",
+      });
+      renameIndicator.style.marginLeft = "5px";
+      renameIndicator.style.fontWeight = "bold";
+      renameIndicator.style.color = "var(--text-accent)";
+
+      // Add tooltip
+      const tooltip = `Renamed from: ${remoteFileInfo.oldFilePath}`;
+      renameIndicator.setAttribute("aria-label", tooltip);
+      renameIndicator.addClass("tooltip");
+
+      // Add CSS for tooltip (you can also add this to your styles.css)
+      contentEl.addClass("rename-container");
+    }
+
+    if (node.fileInfo) {
+      this.setFileNodeAttributes(contentEl, node);
+    }
+
+    contentEl.addEventListener("click", () =>
+      this.toggleFileSelection(node, isSource),
+    );
   }
 
   private async setFileNodeAttributes(contentEl: HTMLElement, node: FileNode) {

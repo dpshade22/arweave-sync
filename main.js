@@ -27922,7 +27922,7 @@ var SyncSidebar = class extends import_obsidian5.ItemView {
     });
     return files;
   }
-  async renderFileNode(node, contentEl, isSource) {
+  renderFileNode(node, contentEl, isSource) {
     contentEl.empty();
     contentEl.addClass("tree-item-self", "is-clickable", "nav-file-title");
     if (node.syncState) {
@@ -27932,6 +27932,24 @@ var SyncSidebar = class extends import_obsidian5.ItemView {
       cls: "tree-item-inner nav-file-title-content",
       text: this.displayFileName(node.name)
     });
+    const remoteFileInfo = Object.values(
+      this.plugin.settings.remoteUploadConfig
+    ).find(
+      (remoteFile) => remoteFile.filePath === node.path && remoteFile.oldFilePath
+    );
+    if (remoteFileInfo && remoteFileInfo.oldFilePath) {
+      const renameIndicator = contentEl.createEl("span", {
+        cls: "rename-indicator",
+        text: "R"
+      });
+      renameIndicator.style.marginLeft = "5px";
+      renameIndicator.style.fontWeight = "bold";
+      renameIndicator.style.color = "var(--text-accent)";
+      const tooltip = `Renamed from: ${remoteFileInfo.oldFilePath}`;
+      renameIndicator.setAttribute("aria-label", tooltip);
+      renameIndicator.addClass("tooltip");
+      contentEl.addClass("rename-container");
+    }
     if (node.fileInfo) {
       this.setFileNodeAttributes(contentEl, node);
     }
@@ -28165,23 +28183,28 @@ Version: ${node.fileInfo.versionNumber}`
     const newOrModifiedFiles = [];
     const files = this.plugin.app.vault.getFiles();
     for (const file of files) {
-      const { syncState, fileHash } = await this.plugin.vaultSyncManager.checkFileSync(file);
-      if (syncState === "new-local" || syncState === "local-newer") {
-        const localFileInfo = this.plugin.settings.localUploadConfig[file.path];
-        const fileNode = this.createFileNode(
-          file.path,
-          {
-            txId: (localFileInfo == null ? void 0 : localFileInfo.txId) || "",
-            timestamp: file.stat.mtime,
-            fileHash,
-            encrypted: false,
-            filePath: file.path,
-            previousVersionTxId: (localFileInfo == null ? void 0 : localFileInfo.previousVersionTxId) || null,
-            versionNumber: ((localFileInfo == null ? void 0 : localFileInfo.versionNumber) || 0) + 1
-          },
-          syncState
-        );
-        newOrModifiedFiles.push(fileNode);
+      const isRenamedRemotely = Object.values(
+        this.plugin.settings.remoteUploadConfig
+      ).some((remoteFile) => remoteFile.oldFilePath === file.path);
+      if (!isRenamedRemotely) {
+        const { syncState, fileHash } = await this.plugin.vaultSyncManager.checkFileSync(file);
+        if (syncState === "new-local" || syncState === "local-newer") {
+          const localFileInfo = this.plugin.settings.localUploadConfig[file.path];
+          const fileNode = this.createFileNode(
+            file.path,
+            {
+              txId: (localFileInfo == null ? void 0 : localFileInfo.txId) || "",
+              timestamp: file.stat.mtime,
+              fileHash,
+              encrypted: false,
+              filePath: file.path,
+              previousVersionTxId: (localFileInfo == null ? void 0 : localFileInfo.previousVersionTxId) || null,
+              versionNumber: ((localFileInfo == null ? void 0 : localFileInfo.versionNumber) || 0) + 1
+            },
+            syncState
+          );
+          newOrModifiedFiles.push(fileNode);
+        }
       }
     }
     return this.buildFileTree(newOrModifiedFiles);
