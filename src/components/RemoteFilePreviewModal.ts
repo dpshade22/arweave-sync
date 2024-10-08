@@ -19,7 +19,7 @@ export class RemoteFilePreviewModal extends Modal {
     contentEl.addClass("remote-file-preview-modal");
 
     const header = contentEl.createEl("div", { cls: "modal-header" });
-    header.createEl("h2", { text: "Remote File Preview" });
+    header.createEl("h2", { text: "Remote file preview" });
 
     this.loadingEl = contentEl.createEl("div", { cls: "loading-container" });
     this.loadingEl.createEl("div", {

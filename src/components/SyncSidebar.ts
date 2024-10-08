@@ -640,9 +640,9 @@ export class SyncSidebar extends ItemView {
         const syncState =
           await this.plugin.vaultSyncManager.checkFileSync(file);
         contentEl.addClass(syncState.syncState);
-        console.log(
-          `File name: ${file.name}, Sync state: ${syncState.syncState}`,
-        );
+        // console.log(
+        //   `File name: ${file.name}, Sync state: ${syncState.syncState}`,
+        // );
       }
     }
   }
@@ -769,9 +769,9 @@ export class SyncSidebar extends ItemView {
     // Asynchronously update the file size and price
     if (this.currentTab === "export") {
       const isAddingToExport = isSource;
-      console.log(
-        `Toggling file selection: ${file.path}, isAddingToExport: ${isAddingToExport}`,
-      );
+      // console.log(
+      //   `Toggling file selection: ${file.path}, isAddingToExport: ${isAddingToExport}`,
+      // );
       this.updateFileSizeAndPrice(file, isAddingToExport).then(() => {
         // Update the price display after the calculation is complete
         this.updatePriceDisplay();

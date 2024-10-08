@@ -35,7 +35,7 @@ export class FileHistoryModal extends Modal {
     contentEl.addClass("file-history-modal");
 
     const header = contentEl.createEl("div", { cls: "modal-header" });
-    header.createEl("h2", { text: "File History" });
+    header.createEl("h2", { text: "File history" });
 
     this.loadingEl = contentEl.createEl("div", { cls: "loading-container" });
     this.loadingEl.createEl("div", {

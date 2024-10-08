@@ -20,15 +20,14 @@ export class VaultSyncManager {
   private vault: Vault;
   private arweave: Arweave;
   private argql: ReturnType<typeof arGql>;
+  private encryptionPassword: string | null = null;
 
   constructor(
     private plugin: ArweaveSync,
-    private encryptionPassword: string,
     private remoteUploadConfig: UploadConfig,
     private localUploadConfig: UploadConfig,
   ) {
     this.vault = plugin.app.vault;
-    this.encryptionPassword = encryptionPassword;
     this.remoteUploadConfig = remoteUploadConfig;
     this.localUploadConfig = localUploadConfig;
     this.arweave = Arweave.init({
@@ -41,6 +40,32 @@ export class VaultSyncManager {
 
   isWalletSet(): boolean {
     return walletManager.isConnected();
+  }
+
+  encrypt(data: string, isBinary: boolean = false): string {
+    this.ensureEncryptionPassword();
+    return encrypt(data, this.encryptionPassword!, isBinary);
+  }
+
+  decrypt(encryptedData: string): string | Buffer {
+    this.ensureEncryptionPassword();
+    return decrypt(encryptedData, this.encryptionPassword!);
+  }
+
+  setEncryptionPassword(password: string) {
+    this.encryptionPassword = password;
+  }
+
+  isEncryptionPasswordSet(): boolean {
+    return this.encryptionPassword !== null;
+  }
+
+  private ensureEncryptionPassword(): void {
+    if (!this.isEncryptionPasswordSet()) {
+      throw new Error(
+        "Encryption password is not set. Please connect a wallet first.",
+      );
+    }
   }
 
   async syncFile(file: TFile): Promise<void> {
@@ -107,6 +132,8 @@ export class VaultSyncManager {
   }
 
   async importFileFromArweave(filePath: string): Promise<void> {
+    this.ensureEncryptionPassword();
+
     try {
       const normalizedPath = normalizePath(filePath);
       const remoteFileInfo = this.remoteUploadConfig[filePath];
@@ -123,7 +150,7 @@ export class VaultSyncManager {
 
       let decryptedContent: string | ArrayBuffer;
       try {
-        decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
+        decryptedContent = decrypt(encryptedContent, this.encryptionPassword!);
       } catch (decryptError) {
         console.error(`Failed to decrypt ${filePath}:`, decryptError);
         await this.handleDecryptionFailure(filePath);
@@ -339,6 +366,7 @@ export class VaultSyncManager {
       throw new Error("Unable to retrieve wallet. Please try reconnecting.");
     }
 
+    this.ensureEncryptionPassword();
     const isBinary = this.isBinaryFile(file);
     const content = isBinary
       ? await this.vault.readBinary(file)
@@ -522,13 +550,18 @@ export class VaultSyncManager {
   }
 
   async fetchLatestRemoteFileContent(filePath: string): Promise<string> {
+    this.ensureEncryptionPassword();
+
     const fileInfo = this.remoteUploadConfig[filePath];
     if (!fileInfo) {
       throw new Error(`No remote file info found for ${filePath}`);
     }
 
     const encryptedContent = await this.fetchEncryptedContent(fileInfo.txId);
-    const decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
+    const decryptedContent = decrypt(
+      encryptedContent,
+      this.encryptionPassword!,
+    );
 
     if (typeof decryptedContent === "string") {
       return decryptedContent;

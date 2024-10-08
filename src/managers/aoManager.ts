@@ -169,19 +169,13 @@ export class AOManager {
     return result.Messages?.[0]?.Data;
   }
 
-  private encryptUploadConfig(
-    uploadConfig: UploadConfig,
-    password: string,
-  ): string {
+  private encryptUploadConfig(uploadConfig: UploadConfig): string {
     const jsonString = JSON.stringify(uploadConfig);
-    return encrypt(jsonString, password, false);
+    return this.plugin.vaultSyncManager.encrypt(jsonString, false);
   }
 
-  private decryptUploadConfig(
-    encryptedData: string,
-    password: string,
-  ): UploadConfig {
-    const decryptedData = decrypt(encryptedData, password);
+  private decryptUploadConfig(encryptedData: string): UploadConfig {
+    const decryptedData = this.plugin.vaultSyncManager.decrypt(encryptedData);
     if (typeof decryptedData !== "string") {
       throw new Error("Decrypted data is not a string");
     }
@@ -189,23 +183,27 @@ export class AOManager {
   }
 
   async updateUploadConfig(uploadConfig: UploadConfig): Promise<void> {
-    const encryptedConfig = this.encryptUploadConfig(
-      uploadConfig,
-      this.plugin.settings.encryptionPassword,
-    );
+    if (!this.plugin.vaultSyncManager.isEncryptionPasswordSet()) {
+      throw new Error(
+        "Encryption password is not set. Please connect a wallet first.",
+      );
+    }
+    const encryptedConfig = this.encryptUploadConfig(uploadConfig);
     await this.sendMessage("UpdateEncryptedUploadConfig", encryptedConfig);
     await this.plugin.vaultSyncManager.updateRemoteConfig();
     this.plugin.updateSyncUI();
   }
 
   async getUploadConfig(): Promise<UploadConfig | null> {
+    if (!this.plugin.vaultSyncManager.isEncryptionPasswordSet()) {
+      throw new Error(
+        "Encryption password is not set. Please connect a wallet first.",
+      );
+    }
     try {
       const encryptedConfig = await this.dryRun("GetEncryptedUploadConfig");
       if (encryptedConfig) {
-        return this.decryptUploadConfig(
-          encryptedConfig,
-          this.plugin.settings.encryptionPassword,
-        );
+        return this.decryptUploadConfig(encryptedConfig);
       }
     } catch (error) {
       console.error("Error fetching remote upload config:", error);

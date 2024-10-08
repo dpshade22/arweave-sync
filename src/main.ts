@@ -77,15 +77,18 @@ export default class ArweaveSync extends Plugin {
       protocol: "https",
     });
 
-    const jwk = walletManager.getJWK();
-    const encryptionPassword = derivePasswordFromJWK(jwk);
-
     this.vaultSyncManager = new VaultSyncManager(
       this,
-      encryptionPassword,
       this.settings.remoteUploadConfig,
       this.settings.localUploadConfig,
     );
+
+    const jwk = walletManager.getJWK();
+    const encryptionPassword = walletManager.getEncryptionPassword();
+    console.log(encryptionPassword);
+    if (encryptionPassword) {
+      this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
+    }
   }
 
   private setupEventListeners() {
@@ -195,7 +198,7 @@ export default class ArweaveSync extends Plugin {
 
     this.addCommand({
       id: "open-arweave-sync-sidebar",
-      name: "Open Arweave Sync Sidebar",
+      name: "Open Arweave sync sidebar",
       callback: () => this.activateSyncSidebar(),
     });
 
@@ -443,10 +446,19 @@ export default class ArweaveSync extends Plugin {
     }
     this.isConnecting = true;
 
+    await walletManager.connect(new File([walletJson], "wallet.json"));
+    this.walletAddress = walletManager.getAddress();
+
     try {
       await walletManager.connect(new File([walletJson], "wallet.json"));
-      this.walletAddress = walletManager.getAddress();
+      const encryptionPassword = walletManager.getEncryptionPassword();
+      if (encryptionPassword) {
+        this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
+      } else {
+        throw new Error("Failed to derive encryption password from wallet");
+      }
 
+      this.walletAddress = walletManager.getAddress();
       await this.aoManager.initialize(walletManager.getJWK());
 
       this.updateStatusBar();

@@ -47,6 +47,164 @@ var __privateWrapper = (obj, member, setter, getter) => ({
   }
 });
 
+// node_modules/ar-gql/dist/queries/tx.js
+var require_tx = __commonJS({
+  "node_modules/ar-gql/dist/queries/tx.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.default = `
+query($id: ID!) {
+  transaction(id: $id) {
+    id
+    anchor
+    signature
+    recipient
+    owner {
+      address
+      key
+    }
+    fee {
+      winston
+      ar
+    }
+    quantity {
+      winston
+      ar
+    }
+    data {
+      size
+      type
+    }
+    tags {
+      name
+      value
+    }
+    block {
+      id
+      timestamp
+      height
+      previous
+    }
+    parent {
+      id
+    }
+  }
+}
+`;
+  }
+});
+
+// node_modules/ar-gql/dist/utils/fetchRetry.js
+var require_fetchRetry = __commonJS({
+  "node_modules/ar-gql/dist/utils/fetchRetry.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.fetchRetry = void 0;
+    var fetchRetry = async (input, init, opts) => {
+      const { retry, retryMs } = opts;
+      let tries = 0;
+      while (true) {
+        try {
+          return await fetch(input, init);
+        } catch (e) {
+          if (tries++ < retry) {
+            console.warn(`[ar-gql] waiting ${retryMs}ms before retrying ${tries} of ${retry}`);
+            await new Promise((resolve) => setTimeout(resolve, retryMs));
+            continue;
+          }
+          throw new TypeError(`Failed to fetch from ${input} after ${retry} retries`, { cause: e });
+        }
+      }
+    };
+    exports.fetchRetry = fetchRetry;
+  }
+});
+
+// node_modules/ar-gql/dist/index.js
+var require_dist = __commonJS({
+  "node_modules/ar-gql/dist/index.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.GQLUrls = exports.arGql = void 0;
+    var tx_1 = require_tx();
+    var fetchRetry_1 = require_fetchRetry();
+    function arGql3(options) {
+      const defaultOpts = {
+        endpointUrl: "https://arweave.net/graphql",
+        retries: 0,
+        retryMs: 1e4
+      };
+      const opts = { ...defaultOpts, ...options };
+      if (!opts.endpointUrl.match(/^https?:\/\/.*\/graphql*/)) {
+        throw new Error(`string doesn't appear to be a URL of the form <http(s)://some-domain/graphql>'. You entered "${opts.endpointUrl}"`);
+      }
+      const run = async (query, variables) => {
+        const graphql = JSON.stringify({
+          query,
+          variables
+        });
+        const res = await (0, fetchRetry_1.fetchRetry)(opts.endpointUrl, {
+          method: "POST",
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+          },
+          body: graphql
+        }, {
+          retry: opts.retries,
+          retryMs: opts.retryMs
+        });
+        if (!res.ok) {
+          throw new Error(res.statusText, { cause: res.status });
+        }
+        return await res.json();
+      };
+      const all = async (query, variables, pageCallback) => {
+        let hasNextPage = true;
+        let edges = [];
+        let cursor = "";
+        let pageCallbacks = [];
+        while (hasNextPage) {
+          const res = (await run(query, { ...variables, cursor })).data.transactions;
+          if (res.edges && res.edges.length) {
+            if (typeof pageCallback === "function") {
+              pageCallbacks.push(pageCallback(res.edges));
+            } else {
+              edges = edges.concat(res.edges);
+            }
+            cursor = res.edges[res.edges.length - 1].cursor;
+          }
+          hasNextPage = res.pageInfo.hasNextPage;
+        }
+        await Promise.all(pageCallbacks);
+        return edges;
+      };
+      const tx = async (id) => {
+        const res = await run(tx_1.default, { id });
+        return res.data.transaction;
+      };
+      const fetchTxTag = async (id, name) => {
+        const res = await tx(id);
+        const tag = res.tags.find((tag2) => tag2.name === name);
+        if (tag)
+          return tag.value;
+      };
+      return {
+        run,
+        all,
+        tx,
+        fetchTxTag,
+        endpointUrl: opts.endpointUrl
+      };
+    }
+    exports.arGql = arGql3;
+    exports.GQLUrls = {
+      goldsky: "https://arweave-search.goldsky.com/graphql",
+      arweave: "https://arweave.net/graphql"
+    };
+  }
+});
+
 // (disabled):crypto
 var require_crypto = __commonJS({
   "(disabled):crypto"() {
@@ -8377,164 +8535,6 @@ var require_buffer2 = __commonJS({
     function BufferBigIntNotDefined() {
       throw new Error("BigInt not supported");
     }
-  }
-});
-
-// node_modules/ar-gql/dist/queries/tx.js
-var require_tx = __commonJS({
-  "node_modules/ar-gql/dist/queries/tx.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.default = `
-query($id: ID!) {
-  transaction(id: $id) {
-    id
-    anchor
-    signature
-    recipient
-    owner {
-      address
-      key
-    }
-    fee {
-      winston
-      ar
-    }
-    quantity {
-      winston
-      ar
-    }
-    data {
-      size
-      type
-    }
-    tags {
-      name
-      value
-    }
-    block {
-      id
-      timestamp
-      height
-      previous
-    }
-    parent {
-      id
-    }
-  }
-}
-`;
-  }
-});
-
-// node_modules/ar-gql/dist/utils/fetchRetry.js
-var require_fetchRetry = __commonJS({
-  "node_modules/ar-gql/dist/utils/fetchRetry.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.fetchRetry = void 0;
-    var fetchRetry = async (input, init, opts) => {
-      const { retry, retryMs } = opts;
-      let tries = 0;
-      while (true) {
-        try {
-          return await fetch(input, init);
-        } catch (e) {
-          if (tries++ < retry) {
-            console.warn(`[ar-gql] waiting ${retryMs}ms before retrying ${tries} of ${retry}`);
-            await new Promise((resolve) => setTimeout(resolve, retryMs));
-            continue;
-          }
-          throw new TypeError(`Failed to fetch from ${input} after ${retry} retries`, { cause: e });
-        }
-      }
-    };
-    exports.fetchRetry = fetchRetry;
-  }
-});
-
-// node_modules/ar-gql/dist/index.js
-var require_dist = __commonJS({
-  "node_modules/ar-gql/dist/index.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.GQLUrls = exports.arGql = void 0;
-    var tx_1 = require_tx();
-    var fetchRetry_1 = require_fetchRetry();
-    function arGql3(options) {
-      const defaultOpts = {
-        endpointUrl: "https://arweave.net/graphql",
-        retries: 0,
-        retryMs: 1e4
-      };
-      const opts = { ...defaultOpts, ...options };
-      if (!opts.endpointUrl.match(/^https?:\/\/.*\/graphql*/)) {
-        throw new Error(`string doesn't appear to be a URL of the form <http(s)://some-domain/graphql>'. You entered "${opts.endpointUrl}"`);
-      }
-      const run = async (query, variables) => {
-        const graphql = JSON.stringify({
-          query,
-          variables
-        });
-        const res = await (0, fetchRetry_1.fetchRetry)(opts.endpointUrl, {
-          method: "POST",
-          headers: {
-            "Accept": "application/json",
-            "Content-Type": "application/json"
-          },
-          body: graphql
-        }, {
-          retry: opts.retries,
-          retryMs: opts.retryMs
-        });
-        if (!res.ok) {
-          throw new Error(res.statusText, { cause: res.status });
-        }
-        return await res.json();
-      };
-      const all = async (query, variables, pageCallback) => {
-        let hasNextPage = true;
-        let edges = [];
-        let cursor = "";
-        let pageCallbacks = [];
-        while (hasNextPage) {
-          const res = (await run(query, { ...variables, cursor })).data.transactions;
-          if (res.edges && res.edges.length) {
-            if (typeof pageCallback === "function") {
-              pageCallbacks.push(pageCallback(res.edges));
-            } else {
-              edges = edges.concat(res.edges);
-            }
-            cursor = res.edges[res.edges.length - 1].cursor;
-          }
-          hasNextPage = res.pageInfo.hasNextPage;
-        }
-        await Promise.all(pageCallbacks);
-        return edges;
-      };
-      const tx = async (id) => {
-        const res = await run(tx_1.default, { id });
-        return res.data.transaction;
-      };
-      const fetchTxTag = async (id, name) => {
-        const res = await tx(id);
-        const tag = res.tags.find((tag2) => tag2.name === name);
-        if (tag)
-          return tag.value;
-      };
-      return {
-        run,
-        all,
-        tx,
-        fetchTxTag,
-        endpointUrl: opts.endpointUrl
-      };
-    }
-    exports.arGql = arGql3;
-    exports.GQLUrls = {
-      goldsky: "https://arweave-search.goldsky.com/graphql",
-      arweave: "https://arweave.net/graphql"
-    };
   }
 });
 
@@ -25104,42 +25104,6 @@ var GRAPHQL_RETRY_BACKOFF = globalThis.GRAPHQL_RETRY_BACKOFF || void 0;
 var { result, results, message, spawn, monitor, unmonitor, dryrun, assign } = connect({ GATEWAY_URL, MU_URL, CU_URL, GRAPHQL_URL, GRAPHQL_MAX_RETRIES, GRAPHQL_RETRY_BACKOFF });
 var createDataItemSigner2 = wallet_exports.createDataItemSigner;
 
-// src/utils/encryption.ts
-var import_crypto_js = __toESM(require_crypto_js());
-var import_buffer2 = __toESM(require_buffer2());
-function derivePasswordFromJWK(jwk) {
-  const jwkField = jwk.n || JSON.stringify(jwk);
-  return import_crypto_js.default.SHA256(jwkField).toString();
-}
-function encrypt(data, password, isBinary = false) {
-  let dataToEncrypt;
-  if (isBinary) {
-    dataToEncrypt = import_buffer2.Buffer.isBuffer(data) ? data.toString("base64") : import_buffer2.Buffer.from(data, "binary").toString("base64");
-  } else {
-    dataToEncrypt = import_buffer2.Buffer.isBuffer(data) ? data.toString("utf8") : data;
-  }
-  const encrypted = import_crypto_js.default.AES.encrypt(dataToEncrypt, password).toString();
-  return isBinary ? `binary:${encrypted}` : `text:${encrypted}`;
-}
-function decrypt(encryptedData, password) {
-  const [type3, data] = encryptedData.split(":", 2);
-  const isBinary = type3 === "binary";
-  try {
-    const bytes = import_crypto_js.default.AES.decrypt(data, password);
-    const decryptedText = bytes.toString(import_crypto_js.default.enc.Utf8);
-    if (isBinary) {
-      return import_buffer2.Buffer.from(decryptedText, "base64");
-    } else {
-      return decryptedText;
-    }
-  } catch (error) {
-    console.error("Decryption error:", error);
-    throw new Error(
-      "Failed to decrypt data. Please check your encryption password."
-    );
-  }
-}
-
 // node_modules/warp-arbundles/build/web/esm/bundle.js
 var bundle_exports2 = {};
 __export(bundle_exports2, {
@@ -26707,34 +26671,38 @@ var AOManager = class {
     if (result2.Error) throw new Error(result2.Error);
     return (_b2 = (_a7 = result2.Messages) == null ? void 0 : _a7[0]) == null ? void 0 : _b2.Data;
   }
-  encryptUploadConfig(uploadConfig, password) {
+  encryptUploadConfig(uploadConfig) {
     const jsonString = JSON.stringify(uploadConfig);
-    return encrypt(jsonString, password, false);
+    return this.plugin.vaultSyncManager.encrypt(jsonString, false);
   }
-  decryptUploadConfig(encryptedData, password) {
-    const decryptedData = decrypt(encryptedData, password);
+  decryptUploadConfig(encryptedData) {
+    const decryptedData = this.plugin.vaultSyncManager.decrypt(encryptedData);
     if (typeof decryptedData !== "string") {
       throw new Error("Decrypted data is not a string");
     }
     return JSON.parse(decryptedData);
   }
   async updateUploadConfig(uploadConfig) {
-    const encryptedConfig = this.encryptUploadConfig(
-      uploadConfig,
-      this.plugin.settings.encryptionPassword
-    );
+    if (!this.plugin.vaultSyncManager.isEncryptionPasswordSet()) {
+      throw new Error(
+        "Encryption password is not set. Please connect a wallet first."
+      );
+    }
+    const encryptedConfig = this.encryptUploadConfig(uploadConfig);
     await this.sendMessage("UpdateEncryptedUploadConfig", encryptedConfig);
     await this.plugin.vaultSyncManager.updateRemoteConfig();
     this.plugin.updateSyncUI();
   }
   async getUploadConfig() {
+    if (!this.plugin.vaultSyncManager.isEncryptionPasswordSet()) {
+      throw new Error(
+        "Encryption password is not set. Please connect a wallet first."
+      );
+    }
     try {
       const encryptedConfig = await this.dryRun("GetEncryptedUploadConfig");
       if (encryptedConfig) {
-        return this.decryptUploadConfig(
-          encryptedConfig,
-          this.plugin.settings.encryptionPassword
-        );
+        return this.decryptUploadConfig(encryptedConfig);
       }
     } catch (error) {
       console.error("Error fetching remote upload config:", error);
@@ -26876,6 +26844,44 @@ var AO_PROCESS_CODE = `
 
 // src/managers/walletManager.ts
 var import_obsidian = require("obsidian");
+
+// src/utils/encryption.ts
+var import_crypto_js = __toESM(require_crypto_js());
+var import_buffer2 = __toESM(require_buffer2());
+function derivePasswordFromJWK(jwk) {
+  const jwkField = jwk.n || JSON.stringify(jwk);
+  return import_crypto_js.default.SHA256(jwkField).toString();
+}
+function encrypt(data, password, isBinary = false) {
+  let dataToEncrypt;
+  if (isBinary) {
+    dataToEncrypt = import_buffer2.Buffer.isBuffer(data) ? data.toString("base64") : import_buffer2.Buffer.from(data, "binary").toString("base64");
+  } else {
+    dataToEncrypt = import_buffer2.Buffer.isBuffer(data) ? data.toString("utf8") : data;
+  }
+  const encrypted = import_crypto_js.default.AES.encrypt(dataToEncrypt, password).toString();
+  return isBinary ? `binary:${encrypted}` : `text:${encrypted}`;
+}
+function decrypt(encryptedData, password) {
+  const [type3, data] = encryptedData.split(":", 2);
+  const isBinary = type3 === "binary";
+  try {
+    const bytes = import_crypto_js.default.AES.decrypt(data, password);
+    const decryptedText = bytes.toString(import_crypto_js.default.enc.Utf8);
+    if (isBinary) {
+      return import_buffer2.Buffer.from(decryptedText, "base64");
+    } else {
+      return decryptedText;
+    }
+  } catch (error) {
+    console.error("Decryption error:", error);
+    throw new Error(
+      "Failed to decrypt data. Please check your encryption password."
+    );
+  }
+}
+
+// src/managers/walletManager.ts
 var import_arweave = __toESM(require_web());
 var WalletManager = class extends import_obsidian.Events {
   constructor() {
@@ -26885,6 +26891,12 @@ var WalletManager = class extends import_obsidian.Events {
     this.walletJson = null;
     this.arweave = import_arweave.default.init({});
     this.loadCachedWallet();
+  }
+  getEncryptionPassword() {
+    if (this.jwk) {
+      return derivePasswordFromJWK(this.jwk);
+    }
+    return null;
   }
   async loadCachedWallet() {
     const cachedAddress = localStorage.getItem("cachedWalletAddress");
@@ -27023,13 +27035,12 @@ function relative(from, to) {
 
 // src/managers/vaultSyncManager.ts
 var VaultSyncManager = class {
-  constructor(plugin, encryptionPassword, remoteUploadConfig, localUploadConfig) {
+  constructor(plugin, remoteUploadConfig, localUploadConfig) {
     this.plugin = plugin;
-    this.encryptionPassword = encryptionPassword;
     this.remoteUploadConfig = remoteUploadConfig;
     this.localUploadConfig = localUploadConfig;
+    this.encryptionPassword = null;
     this.vault = plugin.app.vault;
-    this.encryptionPassword = encryptionPassword;
     this.remoteUploadConfig = remoteUploadConfig;
     this.localUploadConfig = localUploadConfig;
     this.arweave = import_arweave2.default.init({
@@ -27041,6 +27052,27 @@ var VaultSyncManager = class {
   }
   isWalletSet() {
     return walletManager.isConnected();
+  }
+  encrypt(data, isBinary = false) {
+    this.ensureEncryptionPassword();
+    return encrypt(data, this.encryptionPassword, isBinary);
+  }
+  decrypt(encryptedData) {
+    this.ensureEncryptionPassword();
+    return decrypt(encryptedData, this.encryptionPassword);
+  }
+  setEncryptionPassword(password) {
+    this.encryptionPassword = password;
+  }
+  isEncryptionPasswordSet() {
+    return this.encryptionPassword !== null;
+  }
+  ensureEncryptionPassword() {
+    if (!this.isEncryptionPasswordSet()) {
+      throw new Error(
+        "Encryption password is not set. Please connect a wallet first."
+      );
+    }
   }
   async syncFile(file) {
     await this.updateRemoteConfig();
@@ -27096,6 +27128,7 @@ var VaultSyncManager = class {
     return importedFiles;
   }
   async importFileFromArweave(filePath) {
+    this.ensureEncryptionPassword();
     try {
       const normalizedPath = (0, import_obsidian2.normalizePath)(filePath);
       const remoteFileInfo = this.remoteUploadConfig[filePath];
@@ -27274,6 +27307,7 @@ var VaultSyncManager = class {
     if (!wallet) {
       throw new Error("Unable to retrieve wallet. Please try reconnecting.");
     }
+    this.ensureEncryptionPassword();
     const isBinary = this.isBinaryFile(file);
     const content = isBinary ? await this.vault.readBinary(file) : await this.vault.read(file);
     const encryptedContent = encrypt(
@@ -27409,12 +27443,16 @@ var VaultSyncManager = class {
     throw new Error("Unexpected error in fetchEncryptedContent");
   }
   async fetchLatestRemoteFileContent(filePath) {
+    this.ensureEncryptionPassword();
     const fileInfo = this.remoteUploadConfig[filePath];
     if (!fileInfo) {
       throw new Error(`No remote file info found for ${filePath}`);
     }
     const encryptedContent = await this.fetchEncryptedContent(fileInfo.txId);
-    const decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
+    const decryptedContent = decrypt(
+      encryptedContent,
+      this.encryptionPassword
+    );
     if (typeof decryptedContent === "string") {
       return decryptedContent;
     } else {
@@ -27657,7 +27695,7 @@ var FileHistoryModal = class extends import_obsidian5.Modal {
     contentEl.empty();
     contentEl.addClass("file-history-modal");
     const header = contentEl.createEl("div", { cls: "modal-header" });
-    header.createEl("h2", { text: "File History" });
+    header.createEl("h2", { text: "File history" });
     this.loadingEl = contentEl.createEl("div", { cls: "loading-container" });
     this.loadingEl.createEl("div", {
       cls: "loading-text",
@@ -27842,7 +27880,7 @@ var RemoteFilePreviewModal = class extends import_obsidian7.Modal {
     contentEl.empty();
     contentEl.addClass("remote-file-preview-modal");
     const header = contentEl.createEl("div", { cls: "modal-header" });
-    header.createEl("h2", { text: "Remote File Preview" });
+    header.createEl("h2", { text: "Remote file preview" });
     this.loadingEl = contentEl.createEl("div", { cls: "loading-container" });
     this.loadingEl.createEl("div", {
       cls: "loading-text",
@@ -28366,9 +28404,6 @@ Version: ${node.fileInfo.versionNumber}`
       if (file instanceof import_obsidian8.TFile) {
         const syncState = await this.plugin.vaultSyncManager.checkFileSync(file);
         contentEl.addClass(syncState.syncState);
-        console.log(
-          `File name: ${file.name}, Sync state: ${syncState.syncState}`
-        );
       }
     }
   }
@@ -28467,9 +28502,6 @@ Version: ${node.fileInfo.versionNumber}`
     this.renderContent();
     if (this.currentTab === "export") {
       const isAddingToExport = isSource;
-      console.log(
-        `Toggling file selection: ${file.path}, isAddingToExport: ${isAddingToExport}`
-      );
       this.updateFileSizeAndPrice(file, isAddingToExport).then(() => {
         this.updatePriceDisplay();
       });
@@ -29806,14 +29838,17 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
       port: 443,
       protocol: "https"
     });
-    const jwk = walletManager.getJWK();
-    const encryptionPassword = derivePasswordFromJWK(jwk);
     this.vaultSyncManager = new VaultSyncManager(
       this,
-      encryptionPassword,
       this.settings.remoteUploadConfig,
       this.settings.localUploadConfig
     );
+    const jwk = walletManager.getJWK();
+    const encryptionPassword = walletManager.getEncryptionPassword();
+    console.log(encryptionPassword);
+    if (encryptionPassword) {
+      this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
+    }
   }
   setupEventListeners() {
     if (walletManager.isWalletLoaded()) {
@@ -29894,7 +29929,7 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
     });
     this.addCommand({
       id: "open-arweave-sync-sidebar",
-      name: "Open Arweave Sync Sidebar",
+      name: "Open Arweave sync sidebar",
       callback: () => this.activateSyncSidebar()
     });
     this.addCommand({
@@ -30089,8 +30124,16 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
       return;
     }
     this.isConnecting = true;
+    await walletManager.connect(new File([walletJson], "wallet.json"));
+    this.walletAddress = walletManager.getAddress();
     try {
       await walletManager.connect(new File([walletJson], "wallet.json"));
+      const encryptionPassword = walletManager.getEncryptionPassword();
+      if (encryptionPassword) {
+        this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
+      } else {
+        throw new Error("Failed to derive encryption password from wallet");
+      }
       this.walletAddress = walletManager.getAddress();
       await this.aoManager.initialize(walletManager.getJWK());
       this.updateStatusBar();

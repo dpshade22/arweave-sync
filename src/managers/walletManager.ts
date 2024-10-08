@@ -1,6 +1,8 @@
 import { Events } from "obsidian";
 import { JWKInterface } from "arweave/node/lib/wallet";
+import { derivePasswordFromJWK } from "../utils/encryption";
 import Arweave from "arweave";
+import ArweaveSync from "src/main";
 
 export class WalletManager extends Events {
   private address: string | null = null;
@@ -12,6 +14,13 @@ export class WalletManager extends Events {
     super();
     this.arweave = Arweave.init({});
     this.loadCachedWallet();
+  }
+
+  getEncryptionPassword(): string | null {
+    if (this.jwk) {
+      return derivePasswordFromJWK(this.jwk);
+    }
+    return null;
   }
 
   private async loadCachedWallet() {
