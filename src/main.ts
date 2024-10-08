@@ -787,13 +787,6 @@ export default class ArweaveSync extends Plugin {
     new FileHistoryModal(this.app, this, file).open();
   }
 
-  async fetchFileVersions(
-    filePath: string,
-    limit: number = 10,
-  ): Promise<FileVersion[]> {
-    return await this.vaultSyncManager.fetchFileVersions(filePath, limit);
-  }
-
   async confirmRestore(fileName: string): Promise<boolean> {
     const modal = new ConfirmationModal(
       this.app,
