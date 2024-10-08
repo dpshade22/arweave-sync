@@ -27141,7 +27141,7 @@ var VaultSyncManager = class {
       );
       let decryptedContent;
       try {
-        decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
+        decryptedContent = this.decrypt(encryptedContent);
       } catch (decryptError) {
         console.error(`Failed to decrypt ${filePath}:`, decryptError);
         await this.handleDecryptionFailure(filePath);
@@ -27210,6 +27210,20 @@ var VaultSyncManager = class {
     }
     return newPath;
   }
+  async forcePushFile(file) {
+    try {
+      const fileHash = await this.getFileHash(file);
+      const newFileInfo = await this.exportFileToArweave(file, fileHash);
+      this.localUploadConfig[file.path] = newFileInfo;
+      const currentRemoteConfig = await this.plugin.aoManager.getUploadConfig() || {};
+      currentRemoteConfig[file.path] = newFileInfo;
+      await this.plugin.aoManager.updateUploadConfig(currentRemoteConfig);
+      console.log(`Force pushed file: ${file.path}`);
+    } catch (error) {
+      console.error(`Failed to force push file: ${file.path}`, error);
+      throw error;
+    }
+  }
   async forcePullFile(file) {
     try {
       const remoteFileInfo = this.remoteUploadConfig[file.path];
@@ -27221,7 +27235,7 @@ var VaultSyncManager = class {
       );
       let decryptedContent;
       try {
-        decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
+        decryptedContent = this.decrypt(encryptedContent);
       } catch (decryptError) {
         console.error(`Failed to decrypt ${file.path}:`, decryptError);
         throw new Error(
@@ -27310,9 +27324,8 @@ var VaultSyncManager = class {
     this.ensureEncryptionPassword();
     const isBinary = this.isBinaryFile(file);
     const content = isBinary ? await this.vault.readBinary(file) : await this.vault.read(file);
-    const encryptedContent = encrypt(
+    const encryptedContent = this.encrypt(
       content instanceof ArrayBuffer ? import_buffer3.Buffer.from(content) : content,
-      this.encryptionPassword,
       isBinary
     );
     const currentFileInfo = this.localUploadConfig[file.path];
@@ -27388,7 +27401,7 @@ var VaultSyncManager = class {
         const encryptedContent = await this.fetchEncryptedContent(
           remoteFileInfo.txId
         );
-        decrypt(encryptedContent, this.encryptionPassword);
+        this.decrypt(encryptedContent);
         syncState = "new-remote";
       } catch (decryptError) {
         console.error(`Failed to decrypt ${file.path}:`, decryptError);
@@ -27449,10 +27462,7 @@ var VaultSyncManager = class {
       throw new Error(`No remote file info found for ${filePath}`);
     }
     const encryptedContent = await this.fetchEncryptedContent(fileInfo.txId);
-    const decryptedContent = decrypt(
-      encryptedContent,
-      this.encryptionPassword
-    );
+    const decryptedContent = this.decrypt(encryptedContent);
     if (typeof decryptedContent === "string") {
       return decryptedContent;
     } else {
@@ -27494,7 +27504,7 @@ var VaultSyncManager = class {
           string: true
         });
         const content = typeof data === "string" ? data : new TextDecoder().decode(data);
-        const decryptedContent = decrypt(content, this.encryptionPassword);
+        const decryptedContent = this.decrypt(content);
         const fileHash = (_a7 = transaction.tags.find(
           (tag) => tag.name === "File-Hash"
         )) == null ? void 0 : _a7.value;
@@ -29888,10 +29898,13 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
       this.app.workspace.on("file-menu", (menu, file) => {
         if (file instanceof import_obsidian10.TFile) {
           menu.addItem((item) => {
-            item.setTitle("View File History").setIcon("history").onClick(() => this.openFileHistory(file));
+            item.setTitle("View file history").setIcon("history").onClick(() => this.openFileHistory(file));
           });
           menu.addItem((item) => {
-            item.setTitle("Force Pull from Arweave").setIcon("download-cloud").onClick(() => this.forcePullCurrentFile(file));
+            item.setTitle("Force pull from Arweave").setIcon("download-cloud").onClick(() => this.forcePullCurrentFile(file));
+          });
+          menu.addItem((item) => {
+            item.setTitle("Force push to Arweave").setIcon("download-cloud").onClick(() => this.forcePullCurrentFile(file));
           });
           menu.addItem((item) => {
             item.setTitle("Sync with Arweave").setIcon("sync").onClick(() => this.syncFile(file));
@@ -29899,7 +29912,7 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
         }
         if (file instanceof import_obsidian10.TFolder) {
           menu.addItem((item) => {
-            item.setTitle("Publish as Website to Arweave").setIcon("globe").onClick(() => this.publishToArweave(file));
+            item.setTitle("Publish as website to Arweave").setIcon("globe").onClick(() => this.publishToArweave(file));
           });
         }
       })
@@ -30397,6 +30410,32 @@ Check the console for more details.`
     const { syncState } = await this.vaultSyncManager.checkFileSync(file);
     return syncState !== "synced";
   }
+  async forcePushCurrentFile(file) {
+    try {
+      const confirmed = await this.confirmForcePush(file.name);
+      if (!confirmed) {
+        new import_obsidian10.Notice("Force push cancelled.");
+        return;
+      }
+      await this.vaultSyncManager.forcePushFile(file);
+      new import_obsidian10.Notice(`Successfully pushed ${file.name} to Arweave`);
+      this.updateSyncUI();
+    } catch (error) {
+      console.error("Error force pushing file:", error);
+      new import_obsidian10.Notice(`Failed to push ${file.name} to Arweave: ${error.message}`);
+    }
+  }
+  async confirmForcePush(fileName) {
+    const modal = new ConfirmationModal(
+      this.app,
+      "Confirm Force Push",
+      `<p>Are you sure you want to force push <strong>${fileName}</strong> to Arweave? This will overwrite the remote version.</p>`,
+      "Force Push",
+      "Cancel",
+      false
+    );
+    return await modal.awaitUserConfirmation();
+  }
   async forcePullCurrentFile(file) {
     try {
       const confirmed = await this.confirmForcePull(file.name);
@@ -30413,6 +30452,17 @@ Check the console for more details.`
       console.error("Error force pulling file:", error);
       new import_obsidian10.Notice(`Failed to pull ${file.name} from Arweave: ${error.message}`);
     }
+  }
+  async confirmForcePull(fileName) {
+    const modal = new ConfirmationModal(
+      this.app,
+      "Confirm Force Pull",
+      `<p>Are you sure you want to force pull <strong>${fileName}</strong> from Arweave? This will overwrite your local copy.</p>`,
+      "Force Pull",
+      "Cancel",
+      false
+    );
+    return await modal.awaitUserConfirmation();
   }
   async openFileHistory(file) {
     new FileHistoryModal(this.app, this, file).open();
@@ -30505,17 +30555,6 @@ Check the console for more details.`
       }
     }
     return null;
-  }
-  async confirmForcePull(fileName) {
-    const modal = new ConfirmationModal(
-      this.app,
-      "Confirm Force Pull",
-      `<p>Are you sure you want to force pull <strong>${fileName}</strong> from Arweave? This will overwrite your local copy.</p>`,
-      "Force Pull",
-      "Cancel",
-      false
-    );
-    return await modal.awaitUserConfirmation();
   }
   onunload() {
     console.log("Unloading ArweaveSync plugin");

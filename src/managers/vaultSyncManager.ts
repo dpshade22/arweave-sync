@@ -42,7 +42,7 @@ export class VaultSyncManager {
     return walletManager.isConnected();
   }
 
-  encrypt(data: string, isBinary: boolean = false): string {
+  encrypt(data: string | Buffer, isBinary: boolean = false): string {
     this.ensureEncryptionPassword();
     return encrypt(data, this.encryptionPassword!, isBinary);
   }
@@ -150,7 +150,7 @@ export class VaultSyncManager {
 
       let decryptedContent: string | ArrayBuffer;
       try {
-        decryptedContent = decrypt(encryptedContent, this.encryptionPassword!);
+        decryptedContent = this.decrypt(encryptedContent);
       } catch (decryptError) {
         console.error(`Failed to decrypt ${filePath}:`, decryptError);
         await this.handleDecryptionFailure(filePath);
@@ -243,6 +243,27 @@ export class VaultSyncManager {
     return newPath;
   }
 
+  public async forcePushFile(file: TFile): Promise<void> {
+    try {
+      const fileHash = await this.getFileHash(file);
+      const newFileInfo = await this.exportFileToArweave(file, fileHash);
+
+      // Update both local and remote configs
+      this.localUploadConfig[file.path] = newFileInfo;
+      const currentRemoteConfig =
+        (await this.plugin.aoManager.getUploadConfig()) || {};
+
+      currentRemoteConfig[file.path] = newFileInfo;
+
+      // Update the remote config on AO
+      await this.plugin.aoManager.updateUploadConfig(currentRemoteConfig);
+      console.log(`Force pushed file: ${file.path}`);
+    } catch (error) {
+      console.error(`Failed to force push file: ${file.path}`, error);
+      throw error;
+    }
+  }
+
   public async forcePullFile(file: TFile): Promise<void> {
     try {
       const remoteFileInfo = this.remoteUploadConfig[file.path];
@@ -256,7 +277,7 @@ export class VaultSyncManager {
       let decryptedContent: string | Buffer;
 
       try {
-        decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
+        decryptedContent = this.decrypt(encryptedContent);
       } catch (decryptError) {
         console.error(`Failed to decrypt ${file.path}:`, decryptError);
         throw new Error(
@@ -371,9 +392,8 @@ export class VaultSyncManager {
     const content = isBinary
       ? await this.vault.readBinary(file)
       : await this.vault.read(file);
-    const encryptedContent = encrypt(
+    const encryptedContent = this.encrypt(
       content instanceof ArrayBuffer ? Buffer.from(content) : content,
-      this.encryptionPassword,
       isBinary,
     );
 
@@ -485,7 +505,7 @@ export class VaultSyncManager {
         const encryptedContent = await this.fetchEncryptedContent(
           remoteFileInfo.txId,
         );
-        decrypt(encryptedContent, this.encryptionPassword);
+        this.decrypt(encryptedContent);
         syncState = "new-remote";
       } catch (decryptError) {
         console.error(`Failed to decrypt ${file.path}:`, decryptError);
@@ -558,10 +578,7 @@ export class VaultSyncManager {
     }
 
     const encryptedContent = await this.fetchEncryptedContent(fileInfo.txId);
-    const decryptedContent = decrypt(
-      encryptedContent,
-      this.encryptionPassword!,
-    );
+    const decryptedContent = this.decrypt(encryptedContent);
 
     if (typeof decryptedContent === "string") {
       return decryptedContent;
@@ -617,7 +634,7 @@ export class VaultSyncManager {
 
         const content =
           typeof data === "string" ? data : new TextDecoder().decode(data);
-        const decryptedContent = decrypt(content, this.encryptionPassword);
+        const decryptedContent = this.decrypt(content);
 
         const fileHash = transaction.tags.find(
           (tag) => tag.name === "File-Hash",

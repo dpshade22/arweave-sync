@@ -25,7 +25,6 @@ import { ConfirmationModal } from "./components/ConfirmationModal";
 import { FileHistoryModal } from "./components/FileHistoryModal";
 import Arweave from "arweave";
 import { ArweaveSyncSettingTab } from "./settings/settings";
-import { encrypt, decrypt, derivePasswordFromJWK } from "./utils/encryption";
 import { debounce } from "./utils/helpers";
 import { SyncSidebar, SYNC_SIDEBAR_VIEW } from "./components/SyncSidebar";
 import { testEncryptionWithSpecificFile } from "./utils/testEncryption";
@@ -142,13 +141,19 @@ export default class ArweaveSync extends Plugin {
         if (file instanceof TFile) {
           menu.addItem((item) => {
             item
-              .setTitle("View File History")
+              .setTitle("View file history")
               .setIcon("history")
               .onClick(() => this.openFileHistory(file));
           });
           menu.addItem((item) => {
             item
-              .setTitle("Force Pull from Arweave")
+              .setTitle("Force pull from Arweave")
+              .setIcon("download-cloud")
+              .onClick(() => this.forcePullCurrentFile(file));
+          });
+          menu.addItem((item) => {
+            item
+              .setTitle("Force push to Arweave")
               .setIcon("download-cloud")
               .onClick(() => this.forcePullCurrentFile(file));
           });
@@ -163,7 +168,7 @@ export default class ArweaveSync extends Plugin {
         if (file instanceof TFolder) {
           menu.addItem((item) => {
             item
-              .setTitle("Publish as Website to Arweave")
+              .setTitle("Publish as website to Arweave")
               .setIcon("globe")
               .onClick(() => this.publishToArweave(file));
           });
@@ -785,6 +790,35 @@ export default class ArweaveSync extends Plugin {
     return syncState !== "synced";
   }
 
+  public async forcePushCurrentFile(file: TFile) {
+    try {
+      const confirmed = await this.confirmForcePush(file.name);
+      if (!confirmed) {
+        new Notice("Force push cancelled.");
+        return;
+      }
+
+      await this.vaultSyncManager.forcePushFile(file);
+      new Notice(`Successfully pushed ${file.name} to Arweave`);
+      this.updateSyncUI();
+    } catch (error) {
+      console.error("Error force pushing file:", error);
+      new Notice(`Failed to push ${file.name} to Arweave: ${error.message}`);
+    }
+  }
+
+  private async confirmForcePush(fileName: string): Promise<boolean> {
+    const modal = new ConfirmationModal(
+      this.app,
+      "Confirm Force Push",
+      `<p>Are you sure you want to force push <strong>${fileName}</strong> to Arweave? This will overwrite the remote version.</p>`,
+      "Force Push",
+      "Cancel",
+      false,
+    );
+    return await modal.awaitUserConfirmation();
+  }
+
   public async forcePullCurrentFile(file: TFile) {
     try {
       const confirmed = await this.confirmForcePull(file.name);
@@ -802,6 +836,18 @@ export default class ArweaveSync extends Plugin {
       console.error("Error force pulling file:", error);
       new Notice(`Failed to pull ${file.name} from Arweave: ${error.message}`);
     }
+  }
+
+  private async confirmForcePull(fileName: string): Promise<boolean> {
+    const modal = new ConfirmationModal(
+      this.app,
+      "Confirm Force Pull",
+      `<p>Are you sure you want to force pull <strong>${fileName}</strong> from Arweave? This will overwrite your local copy.</p>`,
+      "Force Pull",
+      "Cancel",
+      false,
+    );
+    return await modal.awaitUserConfirmation();
   }
 
   async openFileHistory(file: TFile) {
@@ -914,18 +960,6 @@ export default class ArweaveSync extends Plugin {
       }
     }
     return null;
-  }
-
-  private async confirmForcePull(fileName: string): Promise<boolean> {
-    const modal = new ConfirmationModal(
-      this.app,
-      "Confirm Force Pull",
-      `<p>Are you sure you want to force pull <strong>${fileName}</strong> from Arweave? This will overwrite your local copy.</p>`,
-      "Force Pull",
-      "Cancel",
-      false,
-    );
-    return await modal.awaitUserConfirmation();
   }
 
   onunload() {

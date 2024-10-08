@@ -1,10 +1,12 @@
+import { Buffer } from "buffer";
+
 export interface UploadConfig {
   [filePath: string]: FileUploadInfo;
 }
 
 export interface FileVersion {
   txId: string;
-  content: string;
+  content: string | Buffer;
   timestamp: number;
   previousVersionTxId: string | null;
 }
