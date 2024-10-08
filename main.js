@@ -27494,7 +27494,10 @@ var VaultSyncManager = class {
         `;
       try {
         const variables = { id: txId };
-        const results2 = await this.argql.run(query, variables);
+        const results2 = await (0, import_ar_gql2.arGql)({ endpointUrl: import_ar_gql2.GQLUrls.goldsky }).run(
+          query,
+          variables
+        );
         const transaction = results2.data.transaction;
         if (!transaction) {
           return;
@@ -30392,19 +30395,6 @@ Check the console for more details.`
     const content = await this.app.vault.read(file);
     const buffer = import_arweave3.default.utils.stringToBuffer(content);
     return import_arweave3.default.utils.bufferTob64Url(await import_arweave3.default.crypto.hash(buffer));
-  }
-  async fetchPreviousVersion(filePath, n) {
-    const result2 = await this.vaultSyncManager.fetchPreviousVersion(
-      filePath,
-      n
-    );
-    if (result2) {
-      return {
-        ...result2,
-        timestamp: result2.timestamp || Date.now() / 1e3
-      };
-    }
-    return null;
   }
   async isFileNeedingSync(file) {
     const { syncState } = await this.vaultSyncManager.checkFileSync(file);

@@ -11,7 +11,7 @@ import { UploadConfig, FileUploadInfo, FileVersion } from "../types";
 import { encrypt, decrypt } from "../utils/encryption";
 import CryptoJS from "crypto-js";
 import ArweaveSync from "../main";
-import { arGql } from "ar-gql";
+import { arGql, GQLUrls } from "ar-gql";
 import { walletManager } from "./walletManager";
 import { Buffer } from "buffer";
 import { dirname, basename, join } from "../utils/path";
@@ -620,7 +620,10 @@ export class VaultSyncManager {
 
       try {
         const variables = { id: txId };
-        const results = await this.argql.run(query, variables);
+        const results = await arGql({ endpointUrl: GQLUrls.goldsky }).run(
+          query,
+          variables,
+        );
         const transaction = results.data.transaction;
 
         if (!transaction) {
