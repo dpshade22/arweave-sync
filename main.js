@@ -27954,22 +27954,37 @@ var SyncSidebar = class extends import_obsidian8.ItemView {
     this.applyFolderState(folderState);
   }
   renderRootFolders(container) {
-    const filesToExportFolder = this.createRootFolder(
-      "Files to Export",
-      this.filesToSync[this.currentTab],
+    const filesToExportFolder = {
+      name: `Files to ${this.currentTab}`,
+      path: `Files to ${this.currentTab}`,
+      isFolder: true,
+      children: this.filesToSync[this.currentTab],
+      expanded: true
+    };
+    const unsyncedFilesFolder = {
+      name: "Unsynced files",
+      path: "Unsynced files",
+      isFolder: true,
+      children: this.files[this.currentTab],
+      expanded: true
+    };
+    const unsyncedFilesEl = container.createEl("div", { cls: "root-folder" });
+    const filesToExportEl = container.createEl("div", { cls: "root-folder" });
+    this.renderRootFolderNode(
+      filesToExportFolder,
+      filesToExportEl,
+      filesToExportEl,
       false
     );
-    const unsyncedFilesFolder = this.createRootFolder(
-      "Unsynced Files",
-      this.files[this.currentTab],
+    this.renderRootFolderNode(
+      unsyncedFilesFolder,
+      unsyncedFilesEl,
+      unsyncedFilesEl,
       true
     );
-    container.appendChild(unsyncedFilesFolder);
-    container.appendChild(filesToExportFolder);
   }
-  createRootFolder(name, files, isSource) {
-    const folderEl = createEl("div", { cls: "root-folder" });
-    const folderHeader = folderEl.createEl("div", {
+  renderRootFolderNode(node, contentEl, itemEl, isSource) {
+    const folderHeader = contentEl.createEl("div", {
       cls: "folder-header nav-folder-title is-clickable"
     });
     const toggleEl = folderHeader.createEl("div", {
@@ -27978,101 +27993,61 @@ var SyncSidebar = class extends import_obsidian8.ItemView {
     const chevronSvg = this.createChevronSvg();
     toggleEl.appendChild(chevronSvg);
     folderHeader.createEl("div", {
-      text: name,
+      text: node.name,
       cls: "tree-item-inner nav-folder-title-content"
     });
-    const contentEl = folderEl.createEl("div", { cls: "nav-folder-children" });
-    this.renderFileNodes(files, contentEl, isSource, 0);
-    let isExpanded = true;
-    let interactionStartX;
-    let interactionStartY;
-    let longPressTimer = null;
-    let hasPerformedAction = false;
-    const toggleFolder = () => {
-      isExpanded = !isExpanded;
-      contentEl.style.display = isExpanded ? "block" : "none";
-      this.updateChevronRotation(chevronSvg, isExpanded);
+    const childrenEl = itemEl.createEl("div", { cls: "nav-folder-children" });
+    childrenEl.style.display = node.expanded ? "block" : "none";
+    const toggleFolder = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      node.expanded = !node.expanded;
+      this.updateChevronRotation(chevronSvg, node.expanded);
+      childrenEl.style.display = node.expanded ? "block" : "none";
+      if (node.expanded && childrenEl.childElementCount === 0) {
+        this.renderFileNodes(node.children, childrenEl, isSource, 1);
+      }
     };
-    const handleLongPress = () => {
-      if (!hasPerformedAction) {
-        this.toggleAllFiles(files, isSource);
+    let pressTimer;
+    let longPressTriggered = false;
+    let startX;
+    let startY;
+    const startPress = (e) => {
+      startX = e instanceof MouseEvent ? e.clientX : e.touches[0].clientX;
+      startY = e instanceof MouseEvent ? e.clientY : e.touches[0].clientY;
+      pressTimer = window.setTimeout(() => {
+        longPressTriggered = true;
+        this.toggleAllFiles(node.children, isSource);
         if (navigator.vibrate) {
           navigator.vibrate(50);
         }
-        hasPerformedAction = true;
-      }
+      }, 500);
     };
-    const handleInteractionStart = (e) => {
-      if (e instanceof MouseEvent) {
-        interactionStartX = e.clientX;
-        interactionStartY = e.clientY;
-      } else {
-        interactionStartX = e.touches[0].clientX;
-        interactionStartY = e.touches[0].clientY;
-      }
-      hasPerformedAction = false;
-      longPressTimer = setTimeout(handleLongPress, 500);
-    };
-    const handleInteractionEnd = (e) => {
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
-      }
-      if (hasPerformedAction) {
-        return;
-      }
-      let endX, endY;
-      if (e instanceof MouseEvent) {
-        endX = e.clientX;
-        endY = e.clientY;
-      } else {
-        endX = e.changedTouches[0].clientX;
-        endY = e.changedTouches[0].clientY;
-      }
+    const endPress = (e) => {
+      clearTimeout(pressTimer);
+      const endX = e instanceof MouseEvent ? e.clientX : e.changedTouches[0].clientX;
+      const endY = e instanceof MouseEvent ? e.clientY : e.changedTouches[0].clientY;
       const distance = Math.sqrt(
-        Math.pow(endX - interactionStartX, 2) + Math.pow(endY - interactionStartY, 2)
+        Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2)
       );
-      if (distance < 10) {
-        toggleFolder();
+      if (!longPressTriggered && distance < 5) {
+        toggleFolder(e);
       }
+      longPressTriggered = false;
     };
-    const handleInteractionMove = (e) => {
-      let currentX, currentY;
-      if (e instanceof MouseEvent) {
-        currentX = e.clientX;
-        currentY = e.clientY;
-      } else {
-        currentX = e.touches[0].clientX;
-        currentY = e.touches[0].clientY;
-      }
-      const distance = Math.sqrt(
-        Math.pow(currentX - interactionStartX, 2) + Math.pow(currentY - interactionStartY, 2)
-      );
-      if (distance > 10 && longPressTimer) {
-        clearTimeout(longPressTimer);
-        longPressTimer = null;
-      }
+    const cancelPress = () => {
+      clearTimeout(pressTimer);
+      longPressTriggered = false;
     };
-    folderHeader.addEventListener("mousedown", handleInteractionStart);
-    folderHeader.addEventListener("mouseup", handleInteractionEnd);
-    folderHeader.addEventListener("mousemove", handleInteractionMove);
-    folderHeader.addEventListener("mouseleave", () => {
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
-      }
-    });
-    folderHeader.addEventListener("touchstart", handleInteractionStart, {
-      passive: true
-    });
-    folderHeader.addEventListener("touchend", handleInteractionEnd);
-    folderHeader.addEventListener("touchmove", handleInteractionMove, {
-      passive: true
-    });
-    folderHeader.addEventListener("touchcancel", () => {
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
-      }
-    });
-    return folderEl;
+    folderHeader.addEventListener("mousedown", startPress);
+    folderHeader.addEventListener("touchstart", startPress, { passive: true });
+    folderHeader.addEventListener("mouseup", endPress);
+    folderHeader.addEventListener("touchend", endPress);
+    folderHeader.addEventListener("mouseleave", cancelPress);
+    folderHeader.addEventListener("touchcancel", cancelPress);
+    if (node.expanded) {
+      this.renderFileNodes(node.children, childrenEl, isSource, 1);
+    }
   }
   toggleAllFiles(files, isSource) {
     const allSelected = files.every(
