@@ -1,6 +1,11 @@
 import CryptoJS from "crypto-js";
 import { Buffer } from "buffer";
 
+export function derivePasswordFromJWK(jwk: any): string {
+  const jwkField = jwk.n || JSON.stringify(jwk);
+  return CryptoJS.SHA256(jwkField).toString();
+}
+
 export function encrypt(
   data: string | Buffer,
   password: string,

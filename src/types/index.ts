@@ -21,7 +21,7 @@ export interface FileUploadInfo {
 }
 
 export interface ArweaveSyncSettings {
-  encryptionPassword: string;
+  // encryptionPassword: string;
   lastConfigUploadTxId: string;
   localUploadConfig: UploadConfig;
   remoteUploadConfig: UploadConfig;
@@ -30,7 +30,7 @@ export interface ArweaveSyncSettings {
 }
 
 export const DEFAULT_SETTINGS: ArweaveSyncSettings = {
-  encryptionPassword: "",
+  // encryptionPassword: "",
   lastConfigUploadTxId: "",
   customProcessId: "",
   localUploadConfig: {},

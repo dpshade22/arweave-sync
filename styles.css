@@ -888,6 +888,47 @@ button:not(.clickable-icon).delete-confirm-button:hover {
 
 /* Responsive styles */
 @media (max-width: 768px) {
+    .arweave-sync-sidebar {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .arweave-sync-sidebar .tab-container {
+        order: 2;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background-color: var(--background-primary);
+        border-top: 1px solid var(--background-modifier-border);
+        border-bottom: none;
+        z-index: 1000;
+    }
+
+    .arweave-sync-sidebar .content-container {
+        order: 0;
+        margin-bottom: 100px; /* Adjust this value based on your tab height + submit button height */
+    }
+
+    .arweave-sync-sidebar .submit-changes-container {
+        order: 1;
+        position: fixed;
+        bottom: 70px;
+        left: 0;
+        right: 0;
+        z-index: 999; /* Just below the tabs */
+    }
+
+    .arweave-sync-sidebar .scrollable-content {
+        padding-bottom: 20px; /* Add some space at the bottom */
+    }
+
+    .arweave-sync-sidebar .tab {
+        flex: 1;
+        text-align: center;
+        padding: 25px 10px;
+    }
+
     .file-history-modal {
         width: 95vw;
     }

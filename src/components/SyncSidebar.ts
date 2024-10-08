@@ -102,17 +102,23 @@ export class SyncSidebar extends ItemView {
     const filesToExportFolder = this.createRootFolder(
       "Files to Export",
       this.filesToSync[this.currentTab],
+      false,
     );
     const unsyncedFilesFolder = this.createRootFolder(
       "Unsynced Files",
       this.files[this.currentTab],
+      true,
     );
 
     container.appendChild(unsyncedFilesFolder);
     container.appendChild(filesToExportFolder);
   }
 
-  private createRootFolder(name: string, files: FileNode[]): HTMLElement {
+  private createRootFolder(
+    name: string,
+    files: FileNode[],
+    isSource: boolean,
+  ): HTMLElement {
     const folderEl = createEl("div", { cls: "root-folder" });
     const folderHeader = folderEl.createEl("div", {
       cls: "folder-header nav-folder-title is-clickable",
@@ -130,16 +136,171 @@ export class SyncSidebar extends ItemView {
     });
 
     const contentEl = folderEl.createEl("div", { cls: "nav-folder-children" });
-    this.renderFileNodes(files, contentEl, name === "Unsynced Files", 0);
+    this.renderFileNodes(files, contentEl, isSource, 0);
 
     let isExpanded = true;
-    folderHeader.addEventListener("click", () => {
+    let interactionStartX: number;
+    let interactionStartY: number;
+    let longPressTimer: NodeJS.Timeout | null = null;
+    let hasPerformedAction = false;
+
+    const toggleFolder = () => {
       isExpanded = !isExpanded;
       contentEl.style.display = isExpanded ? "block" : "none";
       this.updateChevronRotation(chevronSvg, isExpanded);
+    };
+
+    const handleLongPress = () => {
+      if (!hasPerformedAction) {
+        this.toggleAllFiles(files, isSource);
+        if (navigator.vibrate) {
+          navigator.vibrate(50);
+        }
+        hasPerformedAction = true;
+      }
+    };
+
+    const handleInteractionStart = (e: MouseEvent | TouchEvent) => {
+      if (e instanceof MouseEvent) {
+        interactionStartX = e.clientX;
+        interactionStartY = e.clientY;
+      } else {
+        interactionStartX = e.touches[0].clientX;
+        interactionStartY = e.touches[0].clientY;
+      }
+      hasPerformedAction = false;
+      longPressTimer = setTimeout(handleLongPress, 500);
+    };
+
+    const handleInteractionEnd = (e: MouseEvent | TouchEvent) => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+      }
+
+      if (hasPerformedAction) {
+        return;
+      }
+
+      let endX: number, endY: number;
+
+      if (e instanceof MouseEvent) {
+        endX = e.clientX;
+        endY = e.clientY;
+      } else {
+        endX = e.changedTouches[0].clientX;
+        endY = e.changedTouches[0].clientY;
+      }
+
+      const distance = Math.sqrt(
+        Math.pow(endX - interactionStartX, 2) +
+          Math.pow(endY - interactionStartY, 2),
+      );
+
+      if (distance < 10) {
+        toggleFolder();
+      }
+    };
+
+    const handleInteractionMove = (e: MouseEvent | TouchEvent) => {
+      let currentX: number, currentY: number;
+
+      if (e instanceof MouseEvent) {
+        currentX = e.clientX;
+        currentY = e.clientY;
+      } else {
+        currentX = e.touches[0].clientX;
+        currentY = e.touches[0].clientY;
+      }
+
+      const distance = Math.sqrt(
+        Math.pow(currentX - interactionStartX, 2) +
+          Math.pow(currentY - interactionStartY, 2),
+      );
+
+      if (distance > 10 && longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    };
+
+    folderHeader.addEventListener("mousedown", handleInteractionStart);
+    folderHeader.addEventListener("mouseup", handleInteractionEnd);
+    folderHeader.addEventListener("mousemove", handleInteractionMove);
+    folderHeader.addEventListener("mouseleave", () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+      }
+    });
+
+    folderHeader.addEventListener("touchstart", handleInteractionStart, {
+      passive: true,
+    });
+    folderHeader.addEventListener("touchend", handleInteractionEnd);
+    folderHeader.addEventListener("touchmove", handleInteractionMove, {
+      passive: true,
+    });
+    folderHeader.addEventListener("touchcancel", () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+      }
     });
 
     return folderEl;
+  }
+
+  private toggleAllFiles(files: FileNode[], isSource: boolean) {
+    const allSelected = files.every((file) =>
+      this.isFileSelected(file, isSource),
+    );
+
+    files.forEach((file) => {
+      if (file.isFolder) {
+        this.toggleAllFiles(file.children, isSource);
+      } else {
+        if (allSelected) {
+          this.removeFileFromSelection(file, isSource);
+        } else {
+          this.addFileToSelection(file, isSource);
+        }
+      }
+    });
+
+    this.renderContent();
+  }
+
+  private isFileSelected(file: FileNode, isSource: boolean): boolean {
+    const targetTree = isSource ? this.filesToSync : this.files;
+    return (
+      this.findNodeByPath(targetTree[this.currentTab], file.path) !== undefined
+    );
+  }
+
+  private addFileToSelection(file: FileNode, isSource: boolean) {
+    const sourceTree = isSource ? this.files : this.filesToSync;
+    const targetTree = isSource ? this.filesToSync : this.files;
+
+    sourceTree[this.currentTab] = this.removeFileFromTree(
+      sourceTree[this.currentTab],
+      file.path,
+    );
+    targetTree[this.currentTab] = this.addFileToTree(
+      targetTree[this.currentTab],
+      file,
+    );
+  }
+
+  private removeFileFromSelection(file: FileNode, isSource: boolean) {
+    const sourceTree = isSource ? this.filesToSync : this.files;
+    const targetTree = isSource ? this.files : this.filesToSync;
+
+    sourceTree[this.currentTab] = this.removeFileFromTree(
+      sourceTree[this.currentTab],
+      file.path,
+    );
+    targetTree[this.currentTab] = this.addFileToTree(
+      targetTree[this.currentTab],
+      file,
+    );
   }
 
   private renderTabs() {

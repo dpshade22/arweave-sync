@@ -25,7 +25,7 @@ import { ConfirmationModal } from "./components/ConfirmationModal";
 import { FileHistoryModal } from "./components/FileHistoryModal";
 import Arweave from "arweave";
 import { ArweaveSyncSettingTab } from "./settings/settings";
-import { encrypt, decrypt } from "./utils/encryption";
+import { encrypt, decrypt, derivePasswordFromJWK } from "./utils/encryption";
 import { debounce } from "./utils/helpers";
 import { SyncSidebar, SYNC_SIDEBAR_VIEW } from "./components/SyncSidebar";
 import { testEncryptionWithSpecificFile } from "./utils/testEncryption";
@@ -77,9 +77,12 @@ export default class ArweaveSync extends Plugin {
       protocol: "https",
     });
 
+    const jwk = walletManager.getJWK();
+    const encryptionPassword = derivePasswordFromJWK(jwk);
+
     this.vaultSyncManager = new VaultSyncManager(
       this,
-      this.settings.encryptionPassword,
+      encryptionPassword,
       this.settings.remoteUploadConfig,
       this.settings.localUploadConfig,
     );
