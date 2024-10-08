@@ -136,15 +136,21 @@ export default class ArweaveSync extends Plugin {
         if (file instanceof TFile) {
           menu.addItem((item) => {
             item
-              .setTitle("Sync with Arweave")
-              .setIcon("sync")
-              .onClick(() => this.syncFile(file));
+              .setTitle("View File History")
+              .setIcon("history")
+              .onClick(() => this.openFileHistory(file));
           });
           menu.addItem((item) => {
             item
               .setTitle("Force Pull from Arweave")
               .setIcon("download-cloud")
               .onClick(() => this.forcePullCurrentFile(file));
+          });
+          menu.addItem((item) => {
+            item
+              .setTitle("Sync with Arweave")
+              .setIcon("sync")
+              .onClick(() => this.syncFile(file));
           });
         }
 

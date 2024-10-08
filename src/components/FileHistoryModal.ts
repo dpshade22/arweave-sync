@@ -3,9 +3,9 @@ import {
   App,
   TFile,
   MarkdownRenderer,
-  Notice,
-  ButtonComponent,
   MarkdownRenderChild,
+  ButtonComponent,
+  Notice,
 } from "obsidian";
 import ArweaveSync from "../main";
 import { FileVersion } from "../types";
@@ -14,10 +14,12 @@ export class FileHistoryModal extends Modal {
   private versions: FileVersion[] = [];
   private currentVersionIndex: number = 0;
   private navigationEl: HTMLElement;
+  private versionInfoEl: HTMLElement;
   private loadingEl: HTMLElement;
   private isLoading: boolean = false;
   private hasMoreVersions: boolean = true;
   private modalContentEl: HTMLElement;
+  private markdownContainer: HTMLElement;
 
   constructor(
     app: App,
@@ -44,7 +46,18 @@ export class FileHistoryModal extends Modal {
     this.loadingEl.style.display = "none";
 
     this.modalContentEl = contentEl.createEl("div", { cls: "modal-content" });
-    this.navigationEl = contentEl.createEl("div", { cls: "button-container" });
+
+    this.markdownContainer = this.modalContentEl.createEl("div", {
+      cls: "rendered-markdown",
+    });
+
+    const bottomSection = this.modalContentEl.createEl("div", {
+      cls: "bottom-section",
+    });
+    this.versionInfoEl = bottomSection.createEl("div", { cls: "version-info" });
+    this.navigationEl = bottomSection.createEl("div", {
+      cls: "button-container",
+    });
 
     await this.loadInitialVersions();
     if (this.versions.length === 0) {
@@ -93,47 +106,42 @@ export class FileHistoryModal extends Modal {
   private setLoading(loading: boolean) {
     this.isLoading = loading;
     this.loadingEl.style.display = loading ? "flex" : "none";
-    this.modalContentEl.style.display = loading ? "none" : "block";
-    this.navigationEl.style.display = loading ? "none" : "flex";
+    this.modalContentEl.style.display = loading ? "none" : "flex";
   }
 
   private async renderVersionContent() {
-    this.modalContentEl.empty();
+    this.markdownContainer.empty();
+
     const currentVersion = this.versions[this.currentVersionIndex];
-
-    const versionInfo = this.modalContentEl.createEl("div", {
-      cls: "version-info",
-    });
-    versionInfo.createEl("p", {
-      text: `Date: ${new Date(currentVersion.timestamp * 1000).toLocaleString()}`,
-    });
-    versionInfo.createEl("p", {
-      text: `Transaction ID: ${currentVersion.txId}`,
-    });
-
-    this.modalContentEl.createEl("h1", {
-      text: this.file.name,
-      cls: "file-name-heading",
-    });
-
-    const markdownContainer = this.modalContentEl.createDiv();
     await MarkdownRenderer.render(
       this.app,
       currentVersion.content,
-      markdownContainer,
+      this.markdownContainer,
       this.file.path,
-      new MarkdownRenderChild(markdownContainer),
+      new MarkdownRenderChild(this.markdownContainer),
     );
+
+    this.updateVersionInfo();
+  }
+
+  private updateVersionInfo() {
+    this.versionInfoEl.empty();
+    const currentVersion = this.versions[this.currentVersionIndex];
+    this.versionInfoEl.createEl("p", {
+      text: `File: ${this.file.name.replace(/\.md$/, "")}`,
+    });
+    this.versionInfoEl.createEl("p", {
+      text: `Date: ${new Date(currentVersion.timestamp * 1000).toLocaleString()}`,
+    });
+    this.versionInfoEl.createEl("p", {
+      text: `TxID: ${currentVersion.txId}`,
+    });
   }
 
   private renderNavigationButtons() {
     this.navigationEl.empty();
 
-    const navigationButtons = this.navigationEl.createEl("div", {
-      cls: "navigation-buttons",
-    });
-
-    const prevButton = new ButtonComponent(navigationButtons)
+    const prevButton = new ButtonComponent(this.navigationEl)
       .setButtonText(
         this.currentVersionIndex === this.versions.length - 1 &&
           this.hasMoreVersions
@@ -155,7 +163,7 @@ export class FileHistoryModal extends Modal {
       (this.currentVersionIndex === this.versions.length - 1 &&
         !this.hasMoreVersions);
 
-    const nextButton = new ButtonComponent(navigationButtons)
+    const nextButton = new ButtonComponent(this.navigationEl)
       .setButtonText("Next Version")
       .onClick(() => this.navigateVersion("next"));
     nextButton.buttonEl.disabled = this.currentVersionIndex === 0;

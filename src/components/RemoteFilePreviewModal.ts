@@ -2,6 +2,9 @@ import { App, Modal, MarkdownRenderer, MarkdownRenderChild } from "obsidian";
 import ArweaveSync from "../main";
 
 export class RemoteFilePreviewModal extends Modal {
+  private loadingEl: HTMLElement;
+  public contentEl: HTMLElement;
+
   constructor(
     app: App,
     private plugin: ArweaveSync,
@@ -18,18 +21,42 @@ export class RemoteFilePreviewModal extends Modal {
     const header = contentEl.createEl("div", { cls: "modal-header" });
     header.createEl("h2", { text: "Remote File Preview" });
 
-    const content = contentEl.createEl("div", { cls: "modal-content" });
+    this.loadingEl = contentEl.createEl("div", { cls: "loading-container" });
+    this.loadingEl.createEl("div", {
+      cls: "loading-text",
+      text: "Loading file content",
+    });
+    this.loadingEl.createEl("div", { cls: "loading-dots" });
 
+    this.contentEl = contentEl.createEl("div", { cls: "modal-content" });
+    this.contentEl.style.display = "none";
+
+    await this.loadFileContent();
+  }
+
+  private async loadFileContent() {
     try {
       const fileName = this.filePath.split("/").pop() || this.filePath;
-      content.createEl("h1", { text: fileName, cls: "file-name-heading" });
+      this.contentEl.createEl("h1", {
+        text: fileName,
+        cls: "file-name-heading",
+      });
 
       const fileContent =
         await this.plugin.vaultSyncManager.fetchLatestRemoteFileContent(
           this.filePath,
         );
 
-      const markdownContainer = content.createDiv();
+      // Create a container for the code block-like appearance
+      const codeBlockContainer = this.contentEl.createEl("div", {
+        cls: "code-block-container",
+      });
+
+      // Create a div for the rendered markdown
+      const markdownContainer = codeBlockContainer.createEl("div", {
+        cls: "rendered-markdown",
+      });
+
       await MarkdownRenderer.render(
         this.app,
         fileContent,
@@ -37,8 +64,13 @@ export class RemoteFilePreviewModal extends Modal {
         this.filePath,
         new MarkdownRenderChild(markdownContainer),
       );
+
+      this.loadingEl.style.display = "none";
+      this.contentEl.style.display = "block";
     } catch (error) {
-      content.createEl("p", {
+      this.loadingEl.style.display = "none";
+      this.contentEl.style.display = "block";
+      this.contentEl.createEl("p", {
         text: `Error loading remote file: ${error.message}`,
         cls: "error-message",
       });

@@ -7,6 +7,7 @@ import {
   request,
 } from "obsidian";
 import ArweaveSync from "../main";
+import { ConfirmationModal } from "./ConfirmationModal";
 import { RemoteFilePreviewModal } from "./RemoteFilePreviewModal";
 import { FileUploadInfo, UploadConfig } from "../types";
 
@@ -1129,6 +1130,28 @@ export class SyncSidebar extends ItemView {
             .onClick(() => this.replaceRemoteWithLocal(file));
         });
       }
+    } else if (this.currentTab === "export" && actualFile instanceof TFile) {
+      // Add "Open in new tab" option for export files
+      menu.addItem((item) => {
+        item
+          .setTitle("Open in new tab")
+          .setIcon("external-link")
+          .onClick(() => {
+            this.plugin.app.workspace.openLinkText(actualFile.path, "", true);
+          });
+      });
+    }
+
+    if (actualFile instanceof TFile) {
+      menu.addItem((item) => {
+        item
+          .setTitle("Sync with Arweave")
+          .setIcon("refresh-cw")
+          .onClick(() => {
+            // Implement sync with Arweave functionality
+            this.plugin.vaultSyncManager.syncFile(actualFile);
+          });
+      });
     }
 
     // Add Arweave-specific options
@@ -1138,15 +1161,7 @@ export class SyncSidebar extends ItemView {
         .setIcon("download-cloud")
         .onClick(() => {
           // Implement force pull from Arweave functionality
-        });
-    });
-
-    menu.addItem((item) => {
-      item
-        .setTitle("Sync with Arweave")
-        .setIcon("refresh-cw")
-        .onClick(() => {
-          // Implement sync with Arweave functionality
+          this.plugin.vaultSyncManager.importFileFromArweave(file.path);
         });
     });
 

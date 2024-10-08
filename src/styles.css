@@ -548,6 +548,10 @@
     margin-top: 20px;
 }
 
+.confirmation-buttons {
+    margin-top: 10px;
+}
+
 .confirmation-modal .button-container button,
 .confirmation-buttons button.mod-cta {
     margin-left: 10px;
@@ -605,238 +609,71 @@ button:not(.clickable-icon).delete-confirm-button:hover {
     background-color: var(--background-modifier-error-hover);
 }
 
-/* Markdown Preview */
 /* Common styles for both modals */
-.remote-file-preview-modal .modal-content,
-.file-history-modal .modal-content {
-    max-height: 70vh;
-    overflow-y: auto;
-    padding: 16px;
-    background-color: var(--background-primary);
-    border-radius: 4px;
-}
-
-/* Reset styles for rendered markdown content */
-.remote-file-preview-modal .modal-content > div > *:first-child,
-.file-history-modal .modal-content > div > *:first-child {
-    margin-top: 0;
-}
-
-/* Style for headings within the content */
-.remote-file-preview-modal .modal-content h1,
-.remote-file-preview-modal .modal-content h2,
-.remote-file-preview-modal .modal-content h3,
-.remote-file-preview-modal .modal-content h4,
-.remote-file-preview-modal .modal-content h5,
-.remote-file-preview-modal .modal-content h6,
-.file-history-modal .modal-content h1,
-.file-history-modal .modal-content h2,
-.file-history-modal .modal-content h3,
-.file-history-modal .modal-content h4,
-.file-history-modal .modal-content h5,
-.file-history-modal .modal-content h6 {
-    margin: 0;
-    border: none;
-}
-
-.remote-file-preview-modal .modal-content p,
-.file-history-modal .modal-content p {
-    margin-top: 0.5em;
-    margin-bottom: 0.5em;
-}
-
-.remote-file-preview-modal .file-name-heading,
-.file-history-modal .file-name-heading {
-    margin-top: 0;
-    margin-bottom: 16px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.remote-file-preview-modal .error-message,
-.file-history-modal .error-message {
-    color: var(--text-error);
-    font-weight: bold;
-}
-
-/* Preview Remote Files Styles */
-.remote-file-preview-modal {
-    display: flex;
-    flex-direction: column;
-    height: 80vh;
-}
-
-.remote-file-preview-modal .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.remote-file-preview-modal .modal-close-button {
-    background-color: transparent;
-    border: none;
-    cursor: pointer;
-    padding: 4px;
-    color: var(--text-muted);
-}
-
-.remote-file-preview-modal .modal-close-button:before {
-    content: none;
-}
-
-.remote-file-preview-modal .modal-content {
-    flex-grow: 1;
-    overflow-y: auto;
-    padding: 16px;
-    background-color: var(--background-primary);
-}
-
-.remote-file-preview-modal .version-info {
-    background-color: var(--background-secondary);
-    padding: 12px;
-    border-radius: 4px;
-    margin-bottom: 16px;
-}
-
-.remote-file-preview-modal .version-info p {
-    margin: 5px 0;
-}
-
-.remote-file-preview-modal .file-name-heading {
-    margin-top: 0;
-    margin-bottom: 16px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.remote-file-preview-modal .error-message {
-    color: var(--text-error);
-    font-weight: bold;
-    text-align: center;
-    padding: 20px;
-}
-
+.remote-file-preview-modal,
 .file-history-modal {
     display: flex;
     flex-direction: column;
     height: 80vh;
+    width: 80vw;
+    max-width: 800px;
 }
 
-.file-history-modal .modal-header {
+.modal-content {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 16px;
+    background-color: var(--background-primary);
+    border-radius: 4px;
+    width: 100%;
+}
+
+.modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 16px;
+    /* padding: 10px 16px; */
     border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.file-history-modal .modal-close-button {
+.modal-header h2 {
+    margin-top: 0;
+}
+
+.modal-close-button {
     background-color: transparent;
     border: none;
     cursor: pointer;
     padding: 4px;
     color: var(--text-muted);
+    font-size: 18px;
 }
 
-.file-history-modal .modal-content {
-    flex-grow: 1;
-    overflow-y: auto;
-    padding: 16px;
-    background-color: var(--background-primary);
+.file-name-heading {
+    margin-bottom: 0;
+    font-size: 1.5em;
+    color: var(--text-normal);
 }
 
-.file-history-modal .version-info {
-    background-color: var(--background-secondary);
-    padding: 12px;
-    border-radius: 4px;
-    margin-bottom: 16px;
-}
-
-.file-history-modal .version-info p {
-    margin: 5px 0;
-}
-
-.file-history-modal .file-name-heading {
-    margin-top: 0;
-    margin-bottom: 16px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.file-history-modal .button-container {
-    display: flex;
-    justify-content: space-between;
-    padding: 16px;
-    border-top: 1px solid var(--background-modifier-border);
-}
-
-.file-history-modal .navigation-buttons {
-    display: flex;
-    gap: 8px;
-}
-
-.file-history-modal .restore-button {
-    margin-left: auto;
-}
-
-.file-history-modal .error-message {
+.error-message {
     color: var(--text-error);
     font-weight: bold;
     text-align: center;
     padding: 20px;
 }
 
-/* Reset styles for rendered markdown content */
-.file-history-modal .modal-content > div,
-.remote-file-preview-modal .modal-content > div {
-    margin: 0;
-    padding: 0;
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-muted);
 }
 
-.file-history-modal .modal-content > div > *:first-child,
-.remote-file-preview-modal .modal-content > div > *:first-child {
-    margin-top: 0;
-}
-
-.file-history-modal .modal-content > div > *:last-child,
-.remote-file-preview-modal .modal-content > div > *:last-child {
-    margin-bottom: 0;
-}
-
-.remote-file-preview-modal .modal-content > div.version-info,
-.file-history-modal .modal-content > div.version-info {
-    padding: 12px;
-}
-
-.file-history-modal .modal-content > div.version-info > p,
-.remote-file-preview-modal .modal-content > div.version-info > p {
-    font-size: small;
-    font-style: italic;
-}
-
-/* Style for headings within the content */
-.file-history-modal .modal-content h1,
-.file-history-modal .modal-content h2,
-.file-history-modal .modal-content h3,
-.file-history-modal .modal-content h4,
-.file-history-modal .modal-content h5,
-.file-history-modal .modal-content h6,
-.remote-file-preview-modal .modal-content h1,
-.remote-file-preview-modal .modal-content h2,
-.remote-file-preview-modal .modal-content h3,
-.remote-file-preview-modal .modal-content h4,
-.remote-file-preview-modal .modal-content h5,
-.remote-file-preview-modal .modal-content h6 {
-    margin-top: 1em;
-    margin-bottom: 0.5em;
-}
-
-.file-history-modal .modal-content p,
-.remote-file-preview-modal .modal-content p {
-    margin-top: 0.5em;
-    margin-bottom: 0.5em;
+.loading-text {
+    margin-bottom: 10px;
+    font-size: 16px;
 }
 
 .loading-dots::after {
@@ -859,79 +696,213 @@ button:not(.clickable-icon).delete-confirm-button:hover {
     }
 }
 
-.file-history-modal .loading-container,
-.remote-file-preview-modal .loading-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
+/* Shared styles for rendered markdown content */
+.markdown-content-container {
+    background-color: var(--code-background);
+    border-radius: 4px;
+    padding: 16px;
+    margin-top: 16px;
+    overflow-x: auto;
+}
+
+.markdown-content-container pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.rendered-markdown {
+    font-family: var(--font-text);
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--text-normal);
+}
+
+.rendered-markdown h1,
+.rendered-markdown h2,
+.rendered-markdown h3,
+.rendered-markdown h4,
+.rendered-markdown h5,
+.rendered-markdown h6 {
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+    color: var(--text-normal);
+    font-weight: 600;
+}
+
+.rendered-markdown h1 {
+    font-size: 1.8em;
+}
+.rendered-markdown h2 {
+    font-size: 1.6em;
+}
+.rendered-markdown h3 {
+    font-size: 1.4em;
+}
+.rendered-markdown h4 {
+    font-size: 1.2em;
+}
+.rendered-markdown h5 {
+    font-size: 1.1em;
+}
+.rendered-markdown h6 {
+    font-size: 1em;
+}
+
+.rendered-markdown p,
+.rendered-markdown ul,
+.rendered-markdown ol {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+}
+
+.rendered-markdown a {
+    color: var(--text-accent);
+    text-decoration: none;
+}
+
+.rendered-markdown a:hover {
+    text-decoration: underline;
+}
+
+.rendered-markdown code {
+    background-color: var(--background-secondary);
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-family: var(--font-monospace);
+    font-size: 0.85em;
+}
+
+.rendered-markdown pre code {
+    display: block;
+    padding: 1em;
+    overflow-x: auto;
+}
+
+.rendered-markdown blockquote {
+    border-left: 4px solid var(--text-accent);
+    margin: 1em 0;
+    padding-left: 1em;
     color: var(--text-muted);
 }
 
-.file-history-modal .loading-text,
-.remote-file-preview-modal .loading-text {
-    margin-bottom: 10px;
-    font-size: 16px;
+.rendered-markdown img {
+    max-width: 100%;
+    height: auto;
 }
 
-/* Responsive Styles */
+.rendered-markdown table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+}
+
+.rendered-markdown th,
+.rendered-markdown td {
+    border: 1px solid var(--background-modifier-border);
+    padding: 0.5em;
+}
+
+.rendered-markdown th {
+    background-color: var(--background-secondary);
+    font-weight: bold;
+}
+
+/* File History Modal */
+.file-history-modal .modal-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.file-history-modal .version-info {
+    background-color: var(--background-secondary);
+    padding: 12px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.file-history-modal .version-info p {
+    margin: 5px 0;
+    color: var(--text-muted);
+    font-style: italic;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+.file-history-modal .rendered-markdown > hr:first-child {
+    margin-top: 0;
+}
+.file-history-modal .rendered-markdown {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 16px;
+    background-color: var(--background-secondary);
+    border-radius: 4px;
+}
+
+.file-history-modal .bottom-section {
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.file-history-modal .button-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    margin-top: auto;
+}
+
+.file-history-modal .navigation-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.file-history-modal button {
+    background-color: var(--interactive-normal);
+    color: var(--text-normal);
+    border: none;
+    border-radius: 4px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s ease;
+}
+
+.file-history-modal button:hover {
+    background-color: var(--interactive-hover);
+}
+
+.file-history-modal button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.file-history-modal .restore-button {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.file-history-modal .restore-button:hover {
+    background-color: var(--interactive-accent-hover);
+}
+
+/* Responsive styles */
 @media (max-width: 768px) {
-    .arweave-sync-sidebar {
-        display: flex;
+    .file-history-modal {
+        width: 95vw;
+    }
+
+    .file-history-modal .button-container {
         flex-direction: column;
+        gap: 16px;
     }
 
-    .arweave-sync-sidebar .tab-container {
-        order: 2;
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        background-color: var(--background-primary);
-        border-top: 1px solid var(--background-modifier-border);
-        border-bottom: none;
-        z-index: 1000;
+    .file-history-modal .navigation-buttons {
+        width: 100%;
+        justify-content: space-between;
     }
 
-    .arweave-sync-sidebar .content-container {
-        order: 0;
-        margin-bottom: 100px;
-    }
-
-    .arweave-sync-sidebar .submit-changes-container {
-        order: 1;
-        position: fixed;
-        bottom: 70px;
-        left: 0;
-        right: 0;
-        z-index: 999;
-    }
-
-    .arweave-sync-sidebar .scrollable-content {
-        padding-bottom: 20px;
-    }
-
-    .arweave-sync-sidebar .tab {
-        flex: 1;
-        text-align: center;
-        padding: 25px 10px;
-    }
-
-    .file-history-modal .button-container,
-    .remote-file-preview-modal .button-container {
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .file-history-modal .navigation-buttons,
-    .remote-file-preview-modal .navigation-buttons {
-        order: 2;
-    }
-
-    .file-history-modal .restore-button,
-    .remote-file-preview-modal .restore-button {
-        order: 1;
-        margin-left: 0;
+    .file-history-modal .restore-button {
+        width: 100%;
     }
 }
