@@ -5,6 +5,7 @@ import {
   Notice,
   WorkspaceLeaf,
   TFolder,
+  Modal,
 } from "obsidian";
 import { AOManager } from "./managers/aoManager";
 import {
@@ -15,10 +16,13 @@ import { VaultSyncManager } from "./managers/vaultSyncManager";
 import {
   UploadConfig,
   FileUploadInfo,
+  FileVersion,
   ArweaveSyncSettings,
   DEFAULT_SETTINGS,
 } from "./types";
 import { WalletConnectModal } from "./components/WalletConnectModal";
+import { ConfirmationModal } from "./components/ConfirmationModal";
+import { FileHistoryModal } from "./components/FileHistoryModal";
 import Arweave from "arweave";
 import { ArweaveSyncSettingTab } from "./settings/settings";
 import { encrypt, decrypt } from "./utils/encryption";
@@ -132,15 +136,21 @@ export default class ArweaveSync extends Plugin {
         if (file instanceof TFile) {
           menu.addItem((item) => {
             item
-              .setTitle("Sync with Arweave")
-              .setIcon("sync")
-              .onClick(() => this.syncFile(file));
+              .setTitle("View File History")
+              .setIcon("history")
+              .onClick(() => this.openFileHistory(file));
           });
           menu.addItem((item) => {
             item
               .setTitle("Force Pull from Arweave")
               .setIcon("download-cloud")
               .onClick(() => this.forcePullCurrentFile(file));
+          });
+          menu.addItem((item) => {
+            item
+              .setTitle("Sync with Arweave")
+              .setIcon("sync")
+              .onClick(() => this.syncFile(file));
           });
         }
 
@@ -165,6 +175,21 @@ export default class ArweaveSync extends Plugin {
   }
 
   private addCommands() {
+    this.addCommand({
+      id: "open-file-history",
+      name: "Open File History",
+      checkCallback: (checking: boolean) => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile) {
+          if (!checking) {
+            this.openFileHistory(activeFile);
+          }
+          return true;
+        }
+        return false;
+      },
+    });
+
     this.addCommand({
       id: "open-arweave-sync-sidebar",
       name: "Open Arweave Sync Sidebar",
@@ -268,9 +293,8 @@ export default class ArweaveSync extends Plugin {
   }
 
   private async addSyncButtonToLeaf(leaf: WorkspaceLeaf) {
-    const view = leaf.view;
-    if (view instanceof MarkdownView) {
-      await this.addSyncButton(view);
+    if (leaf.view instanceof MarkdownView) {
+      await this.addSyncButton(leaf.view);
     }
   }
 
@@ -746,8 +770,14 @@ export default class ArweaveSync extends Plugin {
     return syncState !== "synced";
   }
 
-  private async forcePullCurrentFile(file: TFile) {
+  public async forcePullCurrentFile(file: TFile) {
     try {
+      const confirmed = await this.confirmForcePull(file.name);
+      if (!confirmed) {
+        new Notice("Force pull cancelled.");
+        return;
+      }
+
       await this.vaultSyncManager.forcePullFile(file);
       new Notice(
         `Successfully pulled the latest version of ${file.name} from Arweave`,
@@ -759,7 +789,22 @@ export default class ArweaveSync extends Plugin {
     }
   }
 
-  async activateSyncSidebar() {
+  async openFileHistory(file: TFile) {
+    new FileHistoryModal(this.app, this, file).open();
+  }
+
+  async confirmRestore(fileName: string): Promise<boolean> {
+    const modal = new ConfirmationModal(
+      this.app,
+      "Confirm Restore",
+      `Are you sure you want to restore this version of ${fileName}? This will overwrite the current version.`,
+      "Restore",
+      "Cancel",
+    );
+    return await modal.awaitUserConfirmation();
+  }
+
+  public async activateSyncSidebar() {
     const { workspace } = this.app;
     let leaf: any = workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
 
@@ -768,7 +813,7 @@ export default class ArweaveSync extends Plugin {
       await leaf.setViewState({ type: SYNC_SIDEBAR_VIEW, active: true });
     }
 
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
 
     if (leaf.view instanceof SyncSidebar) {
       this.activeSyncSidebar = leaf.view;
@@ -796,8 +841,25 @@ export default class ArweaveSync extends Plugin {
     });
   }
 
-  refreshSyncSidebar() {
-    this.updateView((view) => view.refresh());
+  public async refreshSyncSidebar() {
+    const leaves = this.app.workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW);
+    for (const leaf of leaves) {
+      // Ensure the view is loaded
+      if (leaf.view instanceof SyncSidebar) {
+        const view = leaf.view;
+
+        // Check if this view is currently active
+        const isActiveView =
+          this.app.workspace.getActiveViewOfType(SyncSidebar) === view;
+
+        if (!isActiveView) {
+          // Refresh in the background if not the active view
+          setTimeout(() => view.refresh(), 0);
+        } else {
+          view.refresh();
+        }
+      }
+    }
   }
 
   private updateView(updater: (view: SyncSidebar) => void) {
@@ -826,6 +888,29 @@ export default class ArweaveSync extends Plugin {
         `Failed to publish ${folder.name} to Arweave. Error: ${error.message}`,
       );
     }
+  }
+
+  private async getSyncSidebarView(): Promise<SyncSidebar | null> {
+    const leaf = this.app.workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
+    if (leaf) {
+      await this.app.workspace.revealLeaf(leaf);
+      if (leaf.view instanceof SyncSidebar) {
+        return leaf.view;
+      }
+    }
+    return null;
+  }
+
+  private async confirmForcePull(fileName: string): Promise<boolean> {
+    const modal = new ConfirmationModal(
+      this.app,
+      "Confirm Force Pull",
+      `<p>Are you sure you want to force pull <strong>${fileName}</strong> from Arweave? This will overwrite your local copy.</p>`,
+      "Force Pull",
+      "Cancel",
+      false,
+    );
+    return await modal.awaitUserConfirmation();
   }
 
   onunload() {

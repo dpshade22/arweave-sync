@@ -2,6 +2,13 @@ export interface UploadConfig {
   [filePath: string]: FileUploadInfo;
 }
 
+export interface FileVersion {
+  txId: string;
+  content: string;
+  timestamp: number;
+  previousVersionTxId: string | null;
+}
+
 export interface FileUploadInfo {
   txId: string;
   timestamp: number;

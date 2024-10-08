@@ -7,7 +7,7 @@ import {
   MarkdownView,
   normalizePath,
 } from "obsidian";
-import { UploadConfig, FileUploadInfo } from "../types";
+import { UploadConfig, FileUploadInfo, FileVersion } from "../types";
 import { encrypt, decrypt } from "../utils/encryption";
 import CryptoJS from "crypto-js";
 import ArweaveSync from "../main";
@@ -237,12 +237,28 @@ export class VaultSyncManager {
         );
       }
 
-      if (Buffer.isBuffer(decryptedContent)) {
-        await this.plugin.app.vault.modifyBinary(file, decryptedContent.buffer);
-      } else if (typeof decryptedContent === "string") {
-        await this.plugin.app.vault.modify(file, decryptedContent);
+      if (await this.plugin.app.vault.adapter.exists(file.path)) {
+        // File exists, update it
+        if (Buffer.isBuffer(decryptedContent)) {
+          await this.plugin.app.vault.modifyBinary(
+            file,
+            decryptedContent.buffer,
+          );
+        } else if (typeof decryptedContent === "string") {
+          await this.plugin.app.vault.modify(file, decryptedContent);
+        } else {
+          throw new Error(`Unexpected decrypted content type for ${file.path}`);
+        }
       } else {
-        throw new Error(`Unexpected decrypted content type for ${file.path}`);
+        // File doesn't exist, create it
+        if (Buffer.isBuffer(decryptedContent)) {
+          await this.plugin.app.vault.createBinary(
+            file.path,
+            decryptedContent.buffer,
+          );
+        } else if (typeof decryptedContent === "string") {
+          await this.plugin.app.vault.create(file.path, decryptedContent);
+        }
       }
 
       this.plugin.updateLocalConfig(file.path, remoteFileInfo);
@@ -268,6 +284,17 @@ export class VaultSyncManager {
     new Notice(
       `Failed to decrypt ${filePath}. It has been removed from the sync list.`,
     );
+  }
+
+  public async deleteRemoteFile(filePath: string): Promise<void> {
+    console.log(`Removing ${filePath} from remote upload config`);
+
+    let updatedRemoteConfig = this.remoteUploadConfig;
+    delete updatedRemoteConfig[filePath];
+
+    await this.plugin.aoManager.updateUploadConfig(updatedRemoteConfig);
+
+    new Notice(`Deleting ${filePath}. It has been removed from the sync list.`);
   }
 
   private async ensureDirectoryExists(filePath: string): Promise<void> {
@@ -494,77 +521,94 @@ export class VaultSyncManager {
     throw new Error("Unexpected error in fetchEncryptedContent");
   }
 
-  async fetchPreviousVersion(
-    filePath: string,
-    n: number,
-  ): Promise<{ content: string; timestamp: number } | null> {
-    const query = `
-      query($id: ID!) {
-        transaction(id: $id) {
-          id
-          tags {
-            name
-            value
-          }
-          block {
-            height
-            timestamp
-          }
-        }
+  async fetchLatestRemoteFileContent(filePath: string): Promise<string> {
+    const fileInfo = this.remoteUploadConfig[filePath];
+    if (!fileInfo) {
+      throw new Error(`No remote file info found for ${filePath}`);
+    }
+
+    const encryptedContent = await this.fetchEncryptedContent(fileInfo.txId);
+    const decryptedContent = decrypt(encryptedContent, this.encryptionPassword);
+
+    if (typeof decryptedContent === "string") {
+      return decryptedContent;
+    } else {
+      return decryptedContent.toString("utf-8");
+    }
+  }
+
+  async fetchFileVersions(
+    limit: number = 10,
+    filePath?: string,
+    startFromTxId?: string,
+  ): Promise<FileVersion[]> {
+    const versions: FileVersion[] = [];
+    let currentTxId =
+      startFromTxId ||
+      (filePath ? this.getCurrentTransactionId(filePath) : null);
+
+    const fetchVersion = async (txId: string): Promise<void> => {
+      if (versions.length >= limit || !txId) {
+        return;
       }
-    `;
 
-    try {
-      let currentTxId = this.getCurrentTransactionId(filePath);
+      const query = `
+          query($id: ID!) {
+            transaction(id: $id) {
+              id
+              tags {
+                name
+                value
+              }
+              block {
+                height
+                timestamp
+              }
+            }
+          }
+        `;
 
-      if (!currentTxId) {
-        console.error(`No transaction ID found for file: ${filePath}`);
-        return null;
-      }
-
-      for (let i = 0; i < n; i++) {
-        if (!currentTxId) {
-          return null;
-        }
-
-        const variables = { id: currentTxId };
+      try {
+        const variables = { id: txId };
         const results = await this.argql.run(query, variables);
         const transaction = results.data.transaction;
 
         if (!transaction) {
-          return null;
+          return;
         }
 
-        const previousVersionTag = transaction.tags.find(
-          (tag) => tag.name === "Previous-Version",
-        );
-        currentTxId = previousVersionTag ? previousVersionTag.value : null;
+        const data = await this.arweave.transactions.getData(txId, {
+          decode: true,
+          string: true,
+        });
 
-        if (i === n - 1) {
-          const data = await this.plugin
-            .getArweave()
-            .transactions.getData(transaction.id, {
-              decode: true,
-              string: true,
-            });
-          const content =
-            typeof data === "string" ? data : new TextDecoder().decode(data);
-          const decryptedContent = decrypt(content, this.encryptionPassword);
-          return {
-            content:
-              typeof decryptedContent === "string"
-                ? decryptedContent
-                : decryptedContent.toString("utf-8"),
-            timestamp: transaction.block.timestamp,
-          };
-        }
+        const content =
+          typeof data === "string" ? data : new TextDecoder().decode(data);
+        const decryptedContent = decrypt(content, this.encryptionPassword);
+
+        const fileHash = transaction.tags.find(
+          (tag) => tag.name === "File-Hash",
+        )?.value;
+        const previousVersionTxId =
+          transaction.tags.find((tag) => tag.name === "Previous-Version")
+            ?.value || null;
+
+        versions.push({
+          txId,
+          content: decryptedContent,
+          timestamp: transaction.block.timestamp,
+          fileHash,
+          previousVersionTxId,
+        });
+
+        await fetchVersion(previousVersionTxId);
+      } catch (error) {
+        console.error("Error fetching version:", error);
       }
+    };
 
-      return null;
-    } catch (error) {
-      console.error("Error fetching previous version:", error);
-      return null;
-    }
+    await fetchVersion(currentTxId);
+    return versions;
   }
 
   private async remoteRename(

@@ -1,5 +1,14 @@
-import { ItemView, WorkspaceLeaf, TFile, Notice, request } from "obsidian";
+import {
+  ItemView,
+  WorkspaceLeaf,
+  TFile,
+  Notice,
+  Menu,
+  request,
+} from "obsidian";
 import ArweaveSync from "../main";
+import { ConfirmationModal } from "./ConfirmationModal";
+import { RemoteFilePreviewModal } from "./RemoteFilePreviewModal";
 import { FileUploadInfo, UploadConfig } from "../types";
 
 interface FileNode {
@@ -68,6 +77,71 @@ export class SyncSidebar extends ItemView {
     await this.renderContent();
   }
 
+  private async renderContent() {
+    const folderState = this.saveFolderState();
+    this.contentContainer.empty();
+
+    // Create a wrapper for the scrollable content
+    const scrollableContent = this.contentContainer.createEl("div", {
+      cls: "scrollable-content",
+    });
+
+    this.updateNoFilesMessageVisibility();
+
+    if (!this.isEmptyContent()) {
+      this.renderRootFolders(scrollableContent);
+    }
+
+    // Render submit button outside the scrollable content
+    this.renderSubmitButton();
+
+    this.applyFolderState(folderState);
+  }
+
+  private renderRootFolders(container: HTMLElement) {
+    const filesToExportFolder = this.createRootFolder(
+      "Files to Export",
+      this.filesToSync[this.currentTab],
+    );
+    const unsyncedFilesFolder = this.createRootFolder(
+      "Unsynced Files",
+      this.files[this.currentTab],
+    );
+
+    container.appendChild(unsyncedFilesFolder);
+    container.appendChild(filesToExportFolder);
+  }
+
+  private createRootFolder(name: string, files: FileNode[]): HTMLElement {
+    const folderEl = createEl("div", { cls: "root-folder" });
+    const folderHeader = folderEl.createEl("div", {
+      cls: "folder-header nav-folder-title is-clickable",
+    });
+
+    const toggleEl = folderHeader.createEl("div", {
+      cls: "tree-item-icon collapse-icon nav-folder-collapse-indicator",
+    });
+    const chevronSvg = this.createChevronSvg();
+    toggleEl.appendChild(chevronSvg);
+
+    folderHeader.createEl("div", {
+      text: name,
+      cls: "tree-item-inner nav-folder-title-content",
+    });
+
+    const contentEl = folderEl.createEl("div", { cls: "nav-folder-children" });
+    this.renderFileNodes(files, contentEl, name === "Unsynced Files", 0);
+
+    let isExpanded = true;
+    folderHeader.addEventListener("click", () => {
+      isExpanded = !isExpanded;
+      contentEl.style.display = isExpanded ? "block" : "none";
+      this.updateChevronRotation(chevronSvg, isExpanded);
+    });
+
+    return folderEl;
+  }
+
   private renderTabs() {
     const tabContainer = this.containerEl.createEl("div", {
       cls: "tab-container",
@@ -114,20 +188,6 @@ export class SyncSidebar extends ItemView {
     this.files.export = await this.getLocalFilesForExport();
     this.files.import = await this.getRemoteFilesForImport();
     this.filesToSync = { export: [], import: [] };
-  }
-
-  private async renderContent() {
-    const folderState = this.saveFolderState();
-    this.contentContainer.empty();
-
-    this.updateNoFilesMessageVisibility();
-
-    if (!this.isEmptyContent()) {
-      this.renderFileColumns();
-      this.renderSubmitButton();
-    }
-
-    this.applyFolderState(folderState);
   }
 
   private isEmptyContent(): boolean {
@@ -186,35 +246,11 @@ export class SyncSidebar extends ItemView {
   }
 
   private renderSubmitButton() {
-    if (this.currentTab === "export") {
-      const priceInfoBox = this.contentContainer.createEl("div", {
-        cls: "price-info-box",
-      });
+    const submitContainer = this.contentContainer.createEl("div", {
+      cls: "submit-changes-container",
+    });
 
-      priceInfoBox.createEl("div", {
-        cls: "balance-display",
-        attr: {
-          "data-label": "Current Balance:",
-          "data-value": `${this.currentBalance} AR`,
-        },
-      });
-      priceInfoBox.createEl("div", {
-        cls: "total-price-display",
-        attr: {
-          "data-label": "Total Price:",
-          "data-value": `${this.totalPrice} AR`,
-        },
-      });
-      priceInfoBox.createEl("div", {
-        cls: "new-balance-display",
-        attr: {
-          "data-label": "New Balance:",
-          "data-value": `${this.newBalance} AR`,
-        },
-      });
-    }
-
-    const submitButton = this.contentContainer.createEl("button", {
+    const submitButton = submitContainer.createEl("button", {
       text: `${this.currentTab === "export" ? "Export" : "Import"}`,
       cls: "mod-cta submit-changes",
       attr: {
@@ -444,9 +480,17 @@ export class SyncSidebar extends ItemView {
       this.setFileNodeAttributes(contentEl, node);
     }
 
-    contentEl.addEventListener("click", () =>
-      this.toggleFileSelection(node, isSource),
-    );
+    contentEl.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.createContextMenu(node, e);
+    });
+
+    contentEl.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.toggleFileSelection(node, isSource);
+    });
   }
 
   private async setFileNodeAttributes(contentEl: HTMLElement, node: FileNode) {
@@ -502,7 +546,38 @@ export class SyncSidebar extends ItemView {
 
   private updateNoFilesMessageVisibility() {
     const isEmpty = this.isEmptyContent();
-    this.showNoFilesMessage(isEmpty);
+    let messageContainer = this.contentContainer.querySelector(
+      ".no-files-message-container",
+    ) as HTMLElement | null;
+
+    if (!messageContainer) {
+      messageContainer = this.contentContainer.createEl("div", {
+        cls: "no-files-message-container",
+      });
+
+      // Add the icon
+      const iconEl = messageContainer.createEl("div", {
+        cls: "no-files-icon",
+        attr: { "aria-hidden": "true" },
+      });
+      iconEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-edit"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"></path></svg>`;
+
+      // Add the main message
+      messageContainer.createEl("div", {
+        cls: "no-files-text",
+        text: `No notes to ${this.currentTab === "export" ? "export" : "import"}`,
+      });
+
+      // Add the subtext
+      messageContainer.createEl("div", {
+        cls: "no-files-subtext",
+        text: "Your notes will appear here when they're ready to sync.",
+      });
+    }
+
+    if (messageContainer instanceof HTMLElement) {
+      messageContainer.style.display = isEmpty ? "flex" : "none";
+    }
   }
 
   private expandParentFolders(filePath: string, tree: FileNode[]) {
@@ -1021,6 +1096,163 @@ export class SyncSidebar extends ItemView {
         }
       }
     });
+  }
+
+  private createContextMenu(file: FileNode, event: MouseEvent | TouchEvent) {
+    const menu = new Menu();
+    const actualFile = this.plugin.app.vault.getAbstractFileByPath(file.path);
+
+    // Add default Obsidian menu items first
+    if (actualFile instanceof TFile) {
+      this.plugin.app.workspace.trigger(
+        "file-menu",
+        menu,
+        actualFile,
+        "file-explorer",
+      );
+    }
+
+    // Add custom menu items
+    menu.addSeparator();
+
+    if (this.currentTab === "import") {
+      menu.addItem((item) => {
+        item
+          .setTitle("Preview Remote File")
+          .setIcon("eye")
+          .onClick(() => this.previewRemoteFile(file));
+      });
+      if (actualFile instanceof TFile) {
+        menu.addItem((item) => {
+          item
+            .setTitle("Replace remote file with local")
+            .setIcon("upload-cloud")
+            .onClick(() => this.replaceRemoteWithLocal(file));
+        });
+      }
+    } else if (this.currentTab === "export" && actualFile instanceof TFile) {
+      // Add "Open in new tab" option for export files
+      menu.addItem((item) => {
+        item
+          .setTitle("Open in new tab")
+          .setIcon("external-link")
+          .onClick(() => {
+            this.plugin.app.workspace.openLinkText(actualFile.path, "", true);
+          });
+      });
+    }
+
+    if (actualFile instanceof TFile) {
+      menu.addItem((item) => {
+        item
+          .setTitle("Sync with Arweave")
+          .setIcon("refresh-cw")
+          .onClick(() => {
+            // Implement sync with Arweave functionality
+            this.plugin.vaultSyncManager.syncFile(actualFile);
+          });
+      });
+    }
+
+    // Add Arweave-specific options
+    menu.addItem((item) => {
+      item
+        .setTitle("Force Pull from Arweave")
+        .setIcon("download-cloud")
+        .onClick(() => {
+          // Implement force pull from Arweave functionality
+          this.plugin.vaultSyncManager.importFileFromArweave(file.path);
+        });
+    });
+
+    // Add delete operations at the end
+    if (this.currentTab === "import") {
+      menu.addItem((item) => {
+        item
+          .setTitle("Delete file from Arweave")
+          .setIcon("trash")
+          .onClick(() => this.deleteRemoteFile(file));
+      });
+    } else if (this.currentTab === "export") {
+      if (actualFile instanceof TFile) {
+        menu.addItem((item) => {
+          item
+            .setTitle("Delete")
+            .setIcon("trash")
+            .onClick(() => {
+              this.plugin.app.fileManager.trashFile(actualFile);
+            });
+        });
+      }
+    }
+
+    // Show the menu at the determined position
+    let x: number, y: number;
+    if (event instanceof MouseEvent) {
+      x = event.pageX;
+      y = event.pageY;
+    } else if (event instanceof TouchEvent) {
+      if (event.touches.length > 0) {
+        x = event.touches[0].clientX;
+        y = event.touches[0].clientY;
+      } else {
+        x = 0;
+        y = 0;
+      }
+    } else {
+      x = 0;
+      y = 0;
+    }
+
+    menu.showAtPosition({ x, y });
+  }
+
+  private async replaceRemoteWithLocal(file: FileNode) {
+    try {
+      const actualFile = this.plugin.app.vault.getAbstractFileByPath(file.path);
+      if (actualFile instanceof TFile) {
+        await this.plugin.vaultSyncManager.syncFile(actualFile);
+        new Notice(
+          `Replaced remote version of ${file.name} with local version.`,
+        );
+        this.refresh();
+      } else {
+        new Notice(`Error: ${file.name} not found in local vault.`);
+      }
+    } catch (error) {
+      console.error("Error replacing remote file with local:", error);
+      new Notice(`Failed to replace remote file: ${error.message}`);
+    }
+  }
+
+  private async deleteRemoteFile(file: FileNode) {
+    try {
+      const confirmed = await this.confirmDeletion(file.name);
+      if (confirmed) {
+        await this.plugin.vaultSyncManager.deleteRemoteFile(file.path);
+        new Notice(`Deleted remote file: ${file.name}`);
+        this.refresh();
+      }
+    } catch (error) {
+      console.error("Error deleting remote file:", error);
+      new Notice(`Failed to delete remote file: ${error.message}`);
+    }
+  }
+
+  private async confirmDeletion(fileName: string): Promise<boolean> {
+    const modal = new ConfirmationModal(
+      this.app,
+      "Confirm Deletion",
+      `<p>Are you sure you want to delete the remote version of <strong>${fileName}</strong>?</p><p class="warning">This action cannot be undone.</p>`,
+      "Delete",
+      "Cancel",
+      true,
+    );
+    return await modal.awaitUserConfirmation();
+  }
+
+  private previewRemoteFile(file: FileNode) {
+    new RemoteFilePreviewModal(this.app, this.plugin, file.path).open();
   }
 
   async refresh() {
