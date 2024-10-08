@@ -54,7 +54,7 @@ export default class ArweaveSync extends Plugin {
     this.addCommands();
     this.registerView(SYNC_SIDEBAR_VIEW, (leaf) => new SyncSidebar(leaf, this));
 
-    this.addRibbonIcon("wallet", "Arweave Sync", () => {
+    this.addRibbonIcon("wallet", "Arweave sync", () => {
       if (this.walletAddress) {
         this.activateSyncSidebar();
       } else {
@@ -209,7 +209,7 @@ export default class ArweaveSync extends Plugin {
 
     this.addCommand({
       id: "force-pull-current-file",
-      name: "Force Pull Current File from Arweave",
+      name: "Force pull current file from Arweave",
       checkCallback: (checking: boolean) => {
         const activeFile = this.app.workspace.getActiveFile();
         if (activeFile) {
@@ -224,13 +224,13 @@ export default class ArweaveSync extends Plugin {
 
     this.addCommand({
       id: "open-wallet-connect-modal",
-      name: "Connect Arweave Wallet",
+      name: "Connect Arweave wallet",
       callback: () => this.showWalletConnectModal(),
     });
 
     this.addCommand({
       id: "force-refresh-sidebar-files",
-      name: "Force Refresh Sidebar Files",
+      name: "Force refresh sidebar files",
       callback: () => {
         this.refreshSyncSidebar();
         new Notice("Sidebar files refreshed");
@@ -260,7 +260,7 @@ export default class ArweaveSync extends Plugin {
     this.statusBarItem.empty();
     this.walletAddress
       ? this.createConnectedWalletStatus()
-      : this.statusBarItem.setText("Arweave Wallet: Not Connected");
+      : this.statusBarItem.setText("Arweave wallet: Not Connected");
   }
 
   private createConnectedWalletStatus() {
