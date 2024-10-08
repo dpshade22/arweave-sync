@@ -29904,7 +29904,7 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
             item.setTitle("Force pull from Arweave").setIcon("download-cloud").onClick(() => this.forcePullCurrentFile(file));
           });
           menu.addItem((item) => {
-            item.setTitle("Force push to Arweave").setIcon("download-cloud").onClick(() => this.forcePullCurrentFile(file));
+            item.setTitle("Force push to Arweave").setIcon("upload-cloud").onClick(() => this.forcePushCurrentFile(file));
           });
           menu.addItem((item) => {
             item.setTitle("Sync with Arweave").setIcon("sync").onClick(() => this.syncFile(file));

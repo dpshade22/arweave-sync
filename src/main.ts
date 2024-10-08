@@ -154,8 +154,8 @@ export default class ArweaveSync extends Plugin {
           menu.addItem((item) => {
             item
               .setTitle("Force push to Arweave")
-              .setIcon("download-cloud")
-              .onClick(() => this.forcePullCurrentFile(file));
+              .setIcon("upload-cloud")
+              .onClick(() => this.forcePushCurrentFile(file));
           });
           menu.addItem((item) => {
             item
@@ -771,19 +771,6 @@ export default class ArweaveSync extends Plugin {
     return Arweave.utils.bufferTob64Url(await Arweave.crypto.hash(buffer));
   }
 
-  async fetchPreviousVersion(filePath: string, n: number): Promise<any> {
-    const result = await this.vaultSyncManager.fetchPreviousVersion(
-      filePath,
-      n,
-    );
-    if (result) {
-      return {
-        ...result,
-        timestamp: result.timestamp || Date.now() / 1000,
-      };
-    }
-    return null;
-  }
 
   async isFileNeedingSync(file: TFile): Promise<boolean> {
     const { syncState } = await this.vaultSyncManager.checkFileSync(file);
