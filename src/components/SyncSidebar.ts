@@ -1285,17 +1285,6 @@ export class SyncSidebar extends ItemView {
       });
     }
 
-    // Add Arweave-specific options
-    menu.addItem((item) => {
-      item
-        .setTitle("Force Pull from Arweave")
-        .setIcon("download-cloud")
-        .onClick(() => {
-          // Implement force pull from Arweave functionality
-          this.plugin.vaultSyncManager.importFileFromArweave(file.path);
-        });
-    });
-
     // Add delete operations at the end
     if (this.currentTab === "import") {
       menu.addItem((item) => {
