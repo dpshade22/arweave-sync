@@ -27156,7 +27156,9 @@ var VaultSyncManager = class {
         await this.createNewFile(uniquePath, decryptedContent);
         console.log(`Created new file with modified path: ${uniquePath}`);
       } else {
-        await this.ensureDirectoryExists(normalizedPath);
+        if (normalizedPath.includes("/")) {
+          await this.ensureDirectoryExists(normalizedPath);
+        }
         await this.createNewFile(normalizedPath, decryptedContent);
         console.log(`Created new file: ${normalizedPath}`);
       }
@@ -27707,7 +27709,7 @@ var FileHistoryModal = class extends import_obsidian5.Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("file-history-modal");
-    const header = contentEl.createEl("div", { cls: "modal-header" });
+    const header = contentEl.createEl("div", { cls: "modal-header custom" });
     header.createEl("h2", { text: "File history" });
     this.loadingEl = contentEl.createEl("div", { cls: "loading-container" });
     this.loadingEl.createEl("div", {
@@ -27716,7 +27718,7 @@ var FileHistoryModal = class extends import_obsidian5.Modal {
     });
     this.loadingEl.createEl("div", { cls: "loading-dots" });
     this.loadingEl.style.display = "none";
-    this.modalContentEl = contentEl.createEl("div", { cls: "modal-content" });
+    this.modalContentEl = contentEl.createEl("div", { cls: "modal-content custom" });
     this.markdownContainer = this.modalContentEl.createEl("div", {
       cls: "rendered-markdown"
     });
@@ -27892,7 +27894,7 @@ var RemoteFilePreviewModal = class extends import_obsidian7.Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("remote-file-preview-modal");
-    const header = contentEl.createEl("div", { cls: "modal-header" });
+    const header = contentEl.createEl("div", { cls: "modal-header custom" });
     header.createEl("h2", { text: "Remote file preview" });
     this.loadingEl = contentEl.createEl("div", { cls: "loading-container" });
     this.loadingEl.createEl("div", {
@@ -27900,7 +27902,7 @@ var RemoteFilePreviewModal = class extends import_obsidian7.Modal {
       text: "Loading file content"
     });
     this.loadingEl.createEl("div", { cls: "loading-dots" });
-    this.contentEl = contentEl.createEl("div", { cls: "modal-content" });
+    this.contentEl = contentEl.createEl("div", { cls: "modal-content custom" });
     this.contentEl.style.display = "none";
     await this.loadFileContent();
   }
@@ -28910,11 +28912,6 @@ Version: ${node.fileInfo.versionNumber}`
         });
       });
     }
-    menu.addItem((item) => {
-      item.setTitle("Force Pull from Arweave").setIcon("download-cloud").onClick(() => {
-        this.plugin.vaultSyncManager.importFileFromArweave(file.path);
-      });
-    });
     if (this.currentTab === "import") {
       menu.addItem((item) => {
         item.setTitle("Delete file from Arweave").setIcon("trash").onClick(() => this.deleteRemoteFile(file));
