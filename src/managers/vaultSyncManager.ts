@@ -171,7 +171,9 @@ export class VaultSyncManager {
         console.log(`Created new file with modified path: ${uniquePath}`);
       } else {
         // File doesn't exist, create it
-        await this.ensureDirectoryExists(normalizedPath);
+        if (normalizedPath.includes("/")) {
+          await this.ensureDirectoryExists(normalizedPath);
+        }
         await this.createNewFile(normalizedPath, decryptedContent);
         console.log(`Created new file: ${normalizedPath}`);
       }
