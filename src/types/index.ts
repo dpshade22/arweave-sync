@@ -29,6 +29,9 @@ export interface ArweaveSyncSettings {
   remoteUploadConfig: UploadConfig;
   customProcessId: string;
   autoImportUnsyncedChanges: boolean;
+  autoExportOnIdle: boolean;
+  autoExportOnClose: boolean;
+  idleTimeForAutoExport: number; // in minutes
 }
 
 export const DEFAULT_SETTINGS: ArweaveSyncSettings = {
@@ -38,4 +41,7 @@ export const DEFAULT_SETTINGS: ArweaveSyncSettings = {
   localUploadConfig: {},
   remoteUploadConfig: {},
   autoImportUnsyncedChanges: false,
+  autoExportOnIdle: false,
+  autoExportOnClose: false,
+  idleTimeForAutoExport: 5,
 };

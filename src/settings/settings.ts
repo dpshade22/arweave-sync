@@ -42,6 +42,52 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
           }),
       );
 
+    new Setting(containerEl)
+      .setName("Auto-export on idle")
+      .setDesc("Automatically export files when the user is idle")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.autoExportOnIdle)
+          .onChange(async (value) => {
+            this.plugin.settings.autoExportOnIdle = value;
+            await this.plugin.saveSettings();
+            if (value) {
+              this.plugin.startIdleTimer();
+            } else {
+              this.plugin.stopIdleTimer();
+            }
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Auto-export on file close")
+      .setDesc("Automatically export files when they are closed")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.autoExportOnClose)
+          .onChange(async (value) => {
+            this.plugin.settings.autoExportOnClose = value;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Idle time for auto-export")
+      .setDesc("Time in minutes before auto-export triggers")
+      .addSlider((slider) =>
+        slider
+          .setLimits(1, 30, 1)
+          .setValue(this.plugin.settings.idleTimeForAutoExport)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.idleTimeForAutoExport = value;
+            await this.plugin.saveSettings();
+            if (this.plugin.settings.autoExportOnIdle) {
+              this.plugin.restartIdleTimer();
+            }
+          }),
+      );
+
     // new Setting(containerEl)
     //   .setName("Custom Process ID")
     //   .setDesc("Optionally provide a custom AO process ID")

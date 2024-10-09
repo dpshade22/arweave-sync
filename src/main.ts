@@ -42,9 +42,9 @@ export default class ArweaveSync extends Plugin {
   private arweave: Arweave;
   private walletAddress: string | null = null;
   private statusBarItem: HTMLElement;
-  private modifiedFiles: Set<string> = new Set();
   private activeSyncSidebar: SyncSidebar | null = null;
   private isConnecting: boolean = false;
+  private idleTimer: number | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -120,6 +120,14 @@ export default class ArweaveSync extends Plugin {
     this.registerEvent(
       this.app.vault.on("delete", this.handleFileDelete.bind(this)),
     );
+
+    this.registerEvent(
+      this.app.workspace.on("file-open", this.handleFileOpen.bind(this)),
+    );
+
+    if (this.settings.autoExportOnIdle) {
+      this.startIdleTimer();
+    }
 
     // this.registerEvent(
     //   this.app.workspace.on(
@@ -629,7 +637,29 @@ export default class ArweaveSync extends Plugin {
     new Notice(`Failed to sync file: ${error.message}`);
   }
 
+  private handleFileOpen(file: TFile | null) {
+    if (file && this.settings.autoExportOnClose) {
+      this.registerEvent(
+        this.app.workspace.on(
+          "file-open",
+          this.handleFileClose.bind(this, file),
+        ),
+      );
+    }
+  }
+
+  private async handleFileClose(oldFile: TFile, newFile: TFile | null) {
+    if (oldFile !== newFile && this.settings.autoExportOnClose) {
+      console.log(`File closed: ${oldFile.path}, triggering auto-export`);
+      await this.autoExportFile(oldFile);
+    }
+  }
+
   private async handleFileModify(file: TFile) {
+    if (file instanceof TFile) {
+      this.restartIdleTimer();
+    }
+
     const { syncState, fileHash } =
       await this.vaultSyncManager.checkFileSync(file);
 
@@ -770,7 +800,6 @@ export default class ArweaveSync extends Plugin {
     const buffer = Arweave.utils.stringToBuffer(content);
     return Arweave.utils.bufferTob64Url(await Arweave.crypto.hash(buffer));
   }
-
 
   async isFileNeedingSync(file: TFile): Promise<boolean> {
     const { syncState } = await this.vaultSyncManager.checkFileSync(file);
@@ -938,19 +967,119 @@ export default class ArweaveSync extends Plugin {
     }
   }
 
-  private async getSyncSidebarView(): Promise<SyncSidebar | null> {
-    const leaf = this.app.workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
-    if (leaf) {
-      await this.app.workspace.revealLeaf(leaf);
-      if (leaf.view instanceof SyncSidebar) {
-        return leaf.view;
-      }
+  private async performInitialSync() {
+    const filesToSync = await Promise.all(
+      this.app.vault.getFiles().map(async (file) => {
+        const needsSync = await this.vaultSyncManager.isFileNeedingSync(file);
+        return needsSync ? file : null;
+      }),
+    );
+
+    const filesToSyncFiltered = filesToSync.filter(
+      (file): file is TFile => file !== null,
+    );
+
+    for (const file of filesToSyncFiltered) {
+      await this.autoExportFile(file);
     }
-    return null;
   }
 
-  onunload() {
+  private async performFinalSync() {
+    const filesToSync = await Promise.all(
+      this.app.vault.getFiles().map(async (file) => {
+        const needsSync = await this.vaultSyncManager.isFileNeedingSync(file);
+        return needsSync ? file : null;
+      }),
+    );
+
+    const filesToSyncFiltered = filesToSync.filter(
+      (file): file is TFile => file !== null,
+    );
+
+    for (const file of filesToSyncFiltered) {
+      await this.autoExportFile(file);
+    }
+  }
+
+  private handleVisibilityChange() {
+    if (typeof document.hidden !== "undefined") {
+      if (document.hidden) {
+        // Page is hidden (computer might be going to sleep or app is in background)
+        this.performFinalSync();
+      } else {
+        // Page is visible again (computer woke up or app is in foreground)
+        this.performInitialSync();
+      }
+    }
+  }
+
+  public startIdleTimer() {
+    console.log("Starting idle timer");
+    this.stopIdleTimer();
+    this.idleTimer = window.setTimeout(
+      this.handleIdle.bind(this),
+      this.settings.idleTimeForAutoExport * 60 * 1000,
+    );
+  }
+
+  public stopIdleTimer() {
+    if (this.idleTimer !== null) {
+      console.log("Stopping idle timer");
+      window.clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+  }
+
+  private restartIdleTimer() {
+    if (this.settings.autoExportOnIdle) {
+      console.log("Restarting idle timer");
+      this.startIdleTimer();
+    }
+  }
+
+  private async handleIdle() {
+    console.log("Idle timer triggered, starting auto-export");
+    const modifiedFiles = await Promise.all(
+      this.app.vault.getMarkdownFiles().map(async (file) => {
+        const needsSync = await this.vaultSyncManager.isFileNeedingSync(file);
+        return needsSync ? file : null;
+      }),
+    );
+
+    const filesToSync = modifiedFiles.filter(
+      (file): file is TFile => file !== null,
+    );
+    console.log(`Found ${filesToSync.length} files needing sync`);
+
+    for (const file of filesToSync) {
+      await this.autoExportFile(file);
+    }
+    console.log("Auto-export completed");
+  }
+
+  private async autoExportFile(file: TFile) {
+    console.log(`Auto-exporting file: ${file.path}`);
+    try {
+      await this.vaultSyncManager.syncFile(file);
+      console.log(`Successfully auto-exported file: ${file.path}`);
+    } catch (error) {
+      console.error(`Failed to auto-export file ${file.path}:`, error);
+    }
+  }
+
+  async onunload() {
     console.log("Unloading ArweaveSync plugin");
     // Perform any cleanup tasks here
+    if (this.settings.autoExportOnClose) {
+      await this.performFinalSync();
+    }
+
+    // Remove visibility change listener
+    document.removeEventListener(
+      "visibilitychange",
+      this.handleVisibilityChange.bind(this),
+    );
+
+    this.stopIdleTimer();
   }
 }

@@ -27156,7 +27156,9 @@ var VaultSyncManager = class {
         await this.createNewFile(uniquePath, decryptedContent);
         console.log(`Created new file with modified path: ${uniquePath}`);
       } else {
-        await this.ensureDirectoryExists(normalizedPath);
+        if (normalizedPath.includes("/")) {
+          await this.ensureDirectoryExists(normalizedPath);
+        }
         await this.createNewFile(normalizedPath, decryptedContent);
         console.log(`Created new file: ${normalizedPath}`);
       }
@@ -27389,6 +27391,10 @@ var VaultSyncManager = class {
     this.plugin.settings.remoteUploadConfig = remoteConfig || {};
     await this.plugin.saveSettings();
   }
+  async isFileNeedingSync(file) {
+    const { syncState } = await this.checkFileSync(file);
+    return syncState !== "synced";
+  }
   async checkFileSync(file) {
     const currentFileHash = await this.getFileHash(file);
     const remoteFileInfo = this.remoteUploadConfig[file.path];
@@ -27579,7 +27585,10 @@ var DEFAULT_SETTINGS = {
   customProcessId: "",
   localUploadConfig: {},
   remoteUploadConfig: {},
-  autoImportUnsyncedChanges: false
+  autoImportUnsyncedChanges: false,
+  autoExportOnIdle: false,
+  autoExportOnClose: false,
+  idleTimeForAutoExport: 5
 };
 
 // src/components/WalletConnectModal.ts
@@ -27859,6 +27868,32 @@ var ArweaveSyncSettingTab = class extends import_obsidian6.PluginSettingTab {
       (toggle) => toggle.setValue(this.plugin.settings.autoImportUnsyncedChanges).onChange(async (value) => {
         this.plugin.settings.autoImportUnsyncedChanges = value;
         await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian6.Setting(containerEl).setName("Auto-export on idle").setDesc("Automatically export files when the user is idle").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.autoExportOnIdle).onChange(async (value) => {
+        this.plugin.settings.autoExportOnIdle = value;
+        await this.plugin.saveSettings();
+        if (value) {
+          this.plugin.startIdleTimer();
+        } else {
+          this.plugin.stopIdleTimer();
+        }
+      })
+    );
+    new import_obsidian6.Setting(containerEl).setName("Auto-export on file close").setDesc("Automatically export files when they are closed").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.autoExportOnClose).onChange(async (value) => {
+        this.plugin.settings.autoExportOnClose = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian6.Setting(containerEl).setName("Idle time for auto-export").setDesc("Time in minutes before auto-export triggers").addSlider(
+      (slider) => slider.setLimits(1, 30, 1).setValue(this.plugin.settings.idleTimeForAutoExport).setDynamicTooltip().onChange(async (value) => {
+        this.plugin.settings.idleTimeForAutoExport = value;
+        await this.plugin.saveSettings();
+        if (this.plugin.settings.autoExportOnIdle) {
+          this.plugin.restartIdleTimer();
+        }
       })
     );
   }
@@ -29822,9 +29857,9 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
   constructor() {
     super(...arguments);
     this.walletAddress = null;
-    this.modifiedFiles = /* @__PURE__ */ new Set();
     this.activeSyncSidebar = null;
     this.isConnecting = false;
+    this.idleTimer = null;
   }
   async onload() {
     await this.loadSettings();
@@ -29890,6 +29925,12 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
     this.registerEvent(
       this.app.vault.on("delete", this.handleFileDelete.bind(this))
     );
+    this.registerEvent(
+      this.app.workspace.on("file-open", this.handleFileOpen.bind(this))
+    );
+    if (this.settings.autoExportOnIdle) {
+      this.startIdleTimer();
+    }
   }
   setupUI() {
     this.createStatusBarItem();
@@ -30279,7 +30320,26 @@ Check the console for more details.`
   handleSyncError(file, error) {
     new import_obsidian10.Notice(`Failed to sync file: ${error.message}`);
   }
+  handleFileOpen(file) {
+    if (file && this.settings.autoExportOnClose) {
+      this.registerEvent(
+        this.app.workspace.on(
+          "file-open",
+          this.handleFileClose.bind(this, file)
+        )
+      );
+    }
+  }
+  async handleFileClose(oldFile, newFile) {
+    if (oldFile !== newFile && this.settings.autoExportOnClose) {
+      console.log(`File closed: ${oldFile.path}, triggering auto-export`);
+      await this.autoExportFile(oldFile);
+    }
+  }
   async handleFileModify(file) {
+    if (file instanceof import_obsidian10.TFile) {
+      this.restartIdleTimer();
+    }
     const { syncState, fileHash } = await this.vaultSyncManager.checkFileSync(file);
     if (syncState !== "synced") {
       const currentConfig = this.settings.localUploadConfig[file.path];
@@ -30536,18 +30596,98 @@ Check the console for more details.`
       );
     }
   }
-  async getSyncSidebarView() {
-    const leaf = this.app.workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
-    if (leaf) {
-      await this.app.workspace.revealLeaf(leaf);
-      if (leaf.view instanceof SyncSidebar) {
-        return leaf.view;
+  async performInitialSync() {
+    const filesToSync = await Promise.all(
+      this.app.vault.getFiles().map(async (file) => {
+        const needsSync = await this.vaultSyncManager.isFileNeedingSync(file);
+        return needsSync ? file : null;
+      })
+    );
+    const filesToSyncFiltered = filesToSync.filter(
+      (file) => file !== null
+    );
+    for (const file of filesToSyncFiltered) {
+      await this.autoExportFile(file);
+    }
+  }
+  async performFinalSync() {
+    const filesToSync = await Promise.all(
+      this.app.vault.getFiles().map(async (file) => {
+        const needsSync = await this.vaultSyncManager.isFileNeedingSync(file);
+        return needsSync ? file : null;
+      })
+    );
+    const filesToSyncFiltered = filesToSync.filter(
+      (file) => file !== null
+    );
+    for (const file of filesToSyncFiltered) {
+      await this.autoExportFile(file);
+    }
+  }
+  handleVisibilityChange() {
+    if (typeof document.hidden !== "undefined") {
+      if (document.hidden) {
+        this.performFinalSync();
+      } else {
+        this.performInitialSync();
       }
     }
-    return null;
   }
-  onunload() {
+  startIdleTimer() {
+    console.log("Starting idle timer");
+    this.stopIdleTimer();
+    this.idleTimer = window.setTimeout(
+      this.handleIdle.bind(this),
+      this.settings.idleTimeForAutoExport * 60 * 1e3
+    );
+  }
+  stopIdleTimer() {
+    if (this.idleTimer !== null) {
+      console.log("Stopping idle timer");
+      window.clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+  }
+  restartIdleTimer() {
+    if (this.settings.autoExportOnIdle) {
+      console.log("Restarting idle timer");
+      this.startIdleTimer();
+    }
+  }
+  async handleIdle() {
+    console.log("Idle timer triggered, starting auto-export");
+    const modifiedFiles = await Promise.all(
+      this.app.vault.getMarkdownFiles().map(async (file) => {
+        const needsSync = await this.vaultSyncManager.isFileNeedingSync(file);
+        return needsSync ? file : null;
+      })
+    );
+    const filesToSync = modifiedFiles.filter(
+      (file) => file !== null
+    );
+    console.log(`Found ${filesToSync.length} files needing sync`);
+    for (const file of filesToSync) {
+      await this.autoExportFile(file);
+    }
+    console.log("Auto-export completed");
+  }
+  async autoExportFile(file) {
+    console.log(`Auto-exporting file: ${file.path}`);
+    try {
+      await this.vaultSyncManager.syncFile(file);
+      console.log(`Successfully auto-exported file: ${file.path}`);
+    } catch (error) {
+      console.error(`Failed to auto-export file ${file.path}:`, error);
+    }
+  }
+  async onunload() {
     console.log("Unloading ArweaveSync plugin");
+    await this.performFinalSync();
+    document.removeEventListener(
+      "visibilitychange",
+      this.handleVisibilityChange.bind(this)
+    );
+    this.stopIdleTimer();
   }
 };
 /*! Bundled license information:

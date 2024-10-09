@@ -478,6 +478,11 @@ export class VaultSyncManager {
     await this.plugin.saveSettings();
   }
 
+  public async isFileNeedingSync(file: TFile): Promise<boolean> {
+    const { syncState } = await this.checkFileSync(file);
+    return syncState !== "synced";
+  }
+
   async checkFileSync(file: TFile): Promise<{
     syncState:
       | "new-local"
