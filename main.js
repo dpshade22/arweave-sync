@@ -29833,7 +29833,7 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
     this.setupUI();
     this.addCommands();
     this.registerView(SYNC_SIDEBAR_VIEW, (leaf) => new SyncSidebar(leaf, this));
-    this.addRibbonIcon("wallet", "Arweave Sync", () => {
+    this.addRibbonIcon("wallet", "Arweave sync", () => {
       if (this.walletAddress) {
         this.activateSyncSidebar();
       } else {
@@ -29950,7 +29950,7 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
     });
     this.addCommand({
       id: "force-pull-current-file",
-      name: "Force Pull Current File from Arweave",
+      name: "Force pull current file from Arweave",
       checkCallback: (checking) => {
         const activeFile = this.app.workspace.getActiveFile();
         if (activeFile) {
@@ -29964,12 +29964,12 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
     });
     this.addCommand({
       id: "open-wallet-connect-modal",
-      name: "Connect Arweave Wallet",
+      name: "Connect Arweave wallet",
       callback: () => this.showWalletConnectModal()
     });
     this.addCommand({
       id: "force-refresh-sidebar-files",
-      name: "Force Refresh Sidebar Files",
+      name: "Force refresh sidebar files",
       callback: () => {
         this.refreshSyncSidebar();
         new import_obsidian10.Notice("Sidebar files refreshed");
@@ -29992,7 +29992,7 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
   }
   updateStatusBar() {
     this.statusBarItem.empty();
-    this.walletAddress ? this.createConnectedWalletStatus() : this.statusBarItem.setText("Arweave Wallet: Not Connected");
+    this.walletAddress ? this.createConnectedWalletStatus() : this.statusBarItem.setText("Arweave wallet: Not Connected");
   }
   createConnectedWalletStatus() {
     const slicedAddress = `${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)}`;
