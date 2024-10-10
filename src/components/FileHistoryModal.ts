@@ -45,7 +45,9 @@ export class FileHistoryModal extends Modal {
     this.loadingEl.createEl("div", { cls: "loading-dots" });
     this.loadingEl.style.display = "none";
 
-    this.modalContentEl = contentEl.createEl("div", { cls: "modal-content custom" });
+    this.modalContentEl = contentEl.createEl("div", {
+      cls: "modal-content custom",
+    });
 
     this.markdownContainer = this.modalContentEl.createEl("div", {
       cls: "rendered-markdown",
@@ -113,13 +115,45 @@ export class FileHistoryModal extends Modal {
     this.markdownContainer.empty();
 
     const currentVersion = this.versions[this.currentVersionIndex];
-    await MarkdownRenderer.render(
-      this.app,
-      currentVersion.content,
-      this.markdownContainer,
-      this.file.path,
-      new MarkdownRenderChild(this.markdownContainer),
-    );
+    try {
+      await MarkdownRenderer.render(
+        this.app,
+        currentVersion.content.toString(),
+        this.markdownContainer,
+        this.file.path,
+        new MarkdownRenderChild(this.markdownContainer),
+      );
+    } catch (error) {
+      console.error("Failed to render current version:", error);
+      if (currentVersion.previousVersionTxId) {
+        try {
+          const oldContent =
+            await this.plugin.vaultSyncManager.fetchContentForTx(
+              currentVersion.previousVersionTxId,
+            );
+          await MarkdownRenderer.render(
+            this.app,
+            typeof currentVersion.content === "string"
+              ? currentVersion.content
+              : currentVersion.content.toString("utf-8"),
+            this.markdownContainer,
+            this.file.path,
+            new MarkdownRenderChild(this.markdownContainer),
+          );
+        } catch (oldError) {
+          console.error("Failed to render old version:", oldError);
+          this.markdownContainer.createEl("p", {
+            text: "Failed to load content for this version.",
+            cls: "error-message",
+          });
+        }
+      } else {
+        this.markdownContainer.createEl("p", {
+          text: "Failed to load content for this version.",
+          cls: "error-message",
+        });
+      }
+    }
 
     this.updateVersionInfo();
   }
@@ -198,7 +232,7 @@ export class FileHistoryModal extends Modal {
     const currentVersion = this.versions[this.currentVersionIndex];
     const confirmed = await this.plugin.confirmRestore(this.file.name);
     if (confirmed) {
-      await this.app.vault.modify(this.file, currentVersion.content);
+      await this.app.vault.modify(this.file, currentVersion.content.toString());
       new Notice(
         `Restored version of ${this.file.name} from ${new Date(currentVersion.timestamp * 1000).toLocaleString()}`,
       );

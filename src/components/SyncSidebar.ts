@@ -223,17 +223,36 @@ export class SyncSidebar extends ItemView {
       this.isFileSelected(file, isSource),
     );
 
-    files.forEach((file) => {
-      if (file.isFolder) {
-        this.toggleAllFiles(file.children, isSource);
+    const processNode = (node: FileNode) => {
+      if (node.isFolder) {
+        // If it's a folder, process its children
+        node.children = node.children.filter((child) => {
+          if (child.isFolder) {
+            processNode(child);
+            // Keep the folder if it has children after processing
+            return child.children.length > 0;
+          } else {
+            // For files, toggle selection
+            if (allSelected) {
+              this.removeFileFromSelection(child, isSource);
+            } else {
+              this.addFileToSelection(child, isSource);
+            }
+            // Always keep files
+            return true;
+          }
+        });
       } else {
+        // For files at the root level, toggle selection
         if (allSelected) {
-          this.removeFileFromSelection(file, isSource);
+          this.removeFileFromSelection(node, isSource);
         } else {
-          this.addFileToSelection(file, isSource);
+          this.addFileToSelection(node, isSource);
         }
       }
-    });
+    };
+
+    files.forEach(processNode);
 
     this.renderContent();
   }
@@ -835,7 +854,7 @@ export class SyncSidebar extends ItemView {
     return tree;
   }
 
-  private async submitChanges() {
+  async submitChanges() {
     if (!this.plugin.vaultSyncManager.isWalletConnected()) {
       new Notice("Please connect a wallet before syncing.");
       return;

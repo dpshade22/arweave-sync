@@ -206,13 +206,11 @@ export class VaultSyncManager {
     file: TFile,
     content: string | ArrayBuffer,
   ): Promise<void> {
-    const activeLeaf = this.plugin.app.workspace.activeLeaf;
-    if (
-      activeLeaf?.view instanceof MarkdownView &&
-      activeLeaf.view.file === file
-    ) {
+    const activeView =
+      this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+    if (activeView && activeView.file === file) {
       // If the file is currently open and active, use the Editor interface
-      const editor = activeLeaf.view.editor;
+      const editor = activeView.editor;
       if (typeof content === "string") {
         editor.setValue(content);
       } else {
@@ -399,6 +397,17 @@ export class VaultSyncManager {
       isBinary,
     );
 
+    const winston = await this.arweave.transactions.getPrice(
+      Buffer.from(encryptedContent).byteLength,
+    );
+    const ar = Number(winston) / 1000000000000;
+    const precision = 2;
+    const cost = parseFloat(ar.toPrecision(precision));
+    const canProceed = await this.plugin.checkSpendingLimit(Number(cost));
+    if (!canProceed) {
+      throw new Error("Monthly spending limit reached");
+    }
+
     const currentFileInfo = this.localUploadConfig[file.path];
     const previousVersionTxId = currentFileInfo ? currentFileInfo.txId : null;
     const versionNumber = currentFileInfo
@@ -436,6 +445,7 @@ export class VaultSyncManager {
     };
 
     this.plugin.updateLocalConfig(file.path, newFileInfo);
+    await this.plugin.incrementFilesSynced();
 
     console.log(
       `File ${file.path} exported to Arweave. Transaction ID: ${transaction.id}`,
@@ -457,7 +467,7 @@ export class VaultSyncManager {
         if (syncState !== "synced") {
           const newFileInfo = await this.exportFileToArweave(file, fileHash);
           updatedFiles.push(newFileInfo);
-          this.localUploadConfig[file.path] = newFileInfo;
+          this.plugin.updateLocalConfig(filePath, newFileInfo);
           currentRemoteConfig[file.path] = newFileInfo;
         }
       }
@@ -476,6 +486,11 @@ export class VaultSyncManager {
     this.remoteUploadConfig = remoteConfig || {};
     this.plugin.settings.remoteUploadConfig = remoteConfig || {};
     await this.plugin.saveSettings();
+  }
+
+  async fetchContentForTx(txId: string): Promise<string | Buffer> {
+    const encryptedContent = await this.fetchEncryptedContent(txId);
+    return this.decrypt(encryptedContent);
   }
 
   public async isFileNeedingSync(file: TFile): Promise<boolean> {
@@ -604,8 +619,8 @@ export class VaultSyncManager {
       startFromTxId ||
       (filePath ? this.getCurrentTransactionId(filePath) : null);
 
-    const fetchVersion = async (txId: string): Promise<void> => {
-      if (versions.length >= limit || !txId) {
+    const fetchVersion = async (txId: string | null): Promise<void> => {
+      if (!txId || versions.length >= limit) {
         return;
       }
 
@@ -657,7 +672,6 @@ export class VaultSyncManager {
           txId,
           content: decryptedContent,
           timestamp: transaction.block.timestamp,
-          fileHash,
           previousVersionTxId,
         });
 

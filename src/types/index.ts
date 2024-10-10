@@ -31,7 +31,12 @@ export interface ArweaveSyncSettings {
   autoImportUnsyncedChanges: boolean;
   autoExportOnIdle: boolean;
   autoExportOnClose: boolean;
-  idleTimeForAutoExport: number; // in minutes
+  idleTimeForAutoExport: number;
+  monthlyArweaveSpendLimit: number;
+  monthlyFilesSynced: number;
+  lifetimeFilesSynced: number;
+  currentMonthSpend: number;
+  monthlyResetDate: number;
 }
 
 export const DEFAULT_SETTINGS: ArweaveSyncSettings = {
@@ -44,4 +49,9 @@ export const DEFAULT_SETTINGS: ArweaveSyncSettings = {
   autoExportOnIdle: false,
   autoExportOnClose: false,
   idleTimeForAutoExport: 5,
+  monthlyArweaveSpendLimit: 0.2,
+  monthlyFilesSynced: 0,
+  lifetimeFilesSynced: 0,
+  currentMonthSpend: 0,
+  monthlyResetDate: Date.now(),
 };

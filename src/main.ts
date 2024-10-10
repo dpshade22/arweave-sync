@@ -82,9 +82,7 @@ export default class ArweaveSync extends Plugin {
       this.settings.localUploadConfig,
     );
 
-    const jwk = walletManager.getJWK();
     const encryptionPassword = walletManager.getEncryptionPassword();
-    console.log(encryptionPassword);
     if (encryptionPassword) {
       this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
     }
@@ -213,21 +211,6 @@ export default class ArweaveSync extends Plugin {
       id: "open-arweave-sync-sidebar",
       name: "Open Arweave sync sidebar",
       callback: () => this.activateSyncSidebar(),
-    });
-
-    this.addCommand({
-      id: "force-pull-current-file",
-      name: "Force pull current file from Arweave",
-      checkCallback: (checking: boolean) => {
-        const activeFile = this.app.workspace.getActiveFile();
-        if (activeFile) {
-          if (!checking) {
-            this.forcePullCurrentFile(activeFile);
-          }
-          return true;
-        }
-        return false;
-      },
     });
 
     this.addCommand({
@@ -1024,21 +1007,19 @@ export default class ArweaveSync extends Plugin {
 
   public stopIdleTimer() {
     if (this.idleTimer !== null) {
-      console.log("Stopping idle timer");
       window.clearTimeout(this.idleTimer);
       this.idleTimer = null;
     }
   }
 
-  private restartIdleTimer() {
+  public restartIdleTimer() {
     if (this.settings.autoExportOnIdle) {
-      console.log("Restarting idle timer");
       this.startIdleTimer();
     }
   }
 
   private async handleIdle() {
-    console.log("Idle timer triggered, starting auto-export");
+    new Notice("Idle timer triggered, starting auto-export");
     const modifiedFiles = await Promise.all(
       this.app.vault.getMarkdownFiles().map(async (file) => {
         const needsSync = await this.vaultSyncManager.isFileNeedingSync(file);
@@ -1049,37 +1030,81 @@ export default class ArweaveSync extends Plugin {
     const filesToSync = modifiedFiles.filter(
       (file): file is TFile => file !== null,
     );
-    console.log(`Found ${filesToSync.length} files needing sync`);
+
+    new Notice(`Found ${filesToSync.length} files needing sync`);
 
     for (const file of filesToSync) {
       await this.autoExportFile(file);
     }
-    console.log("Auto-export completed");
   }
 
   private async autoExportFile(file: TFile) {
-    console.log(`Auto-exporting file: ${file.path}`);
     try {
-      await this.vaultSyncManager.syncFile(file);
-      console.log(`Successfully auto-exported file: ${file.path}`);
+      const localConfig = this.settings.localUploadConfig[file.path];
+      const remoteConfig = this.settings.remoteUploadConfig[file.path];
+
+      if (
+        !localConfig ||
+        !remoteConfig ||
+        localConfig.fileHash !== remoteConfig.fileHash
+      ) {
+        await this.vaultSyncManager.syncFile(file);
+      } else {
+        console.log(
+          `Skipping auto-export for file: ${file.path} (no changes detected)`,
+        );
+      }
     } catch (error) {
       console.error(`Failed to auto-export file ${file.path}:`, error);
     }
   }
 
+  async incrementFilesSynced() {
+    this.settings.monthlyFilesSynced++;
+    this.settings.lifetimeFilesSynced++;
+    await this.saveSettings();
+  }
+
+  async checkMonthlyReset() {
+    const now = new Date();
+    const lastReset = new Date(this.settings.monthlyResetDate);
+
+    if (
+      now.getMonth() !== lastReset.getMonth() ||
+      now.getFullYear() !== lastReset.getFullYear()
+    ) {
+      this.settings.monthlyFilesSynced = 0;
+      this.settings.currentMonthSpend = 0;
+      this.settings.monthlyResetDate = now.getTime();
+      await this.saveSettings();
+    }
+  }
+
+  public async checkSpendingLimit(cost: number): Promise<boolean> {
+    await this.checkMonthlyReset();
+
+    if (
+      this.settings.currentMonthSpend + cost >
+      this.settings.monthlyArweaveSpendLimit
+    ) {
+      new Notice(`Monthly spending limit reached. Skipping sync.`);
+      return false;
+    }
+
+    this.settings.currentMonthSpend += cost;
+    await this.saveSettings();
+    return true;
+  }
+
   async onunload() {
     console.log("Unloading ArweaveSync plugin");
-    // Perform any cleanup tasks here
     if (this.settings.autoExportOnClose) {
       await this.performFinalSync();
     }
-
-    // Remove visibility change listener
+    this.stopIdleTimer();
     document.removeEventListener(
       "visibilitychange",
       this.handleVisibilityChange.bind(this),
     );
-
-    this.stopIdleTimer();
   }
 }

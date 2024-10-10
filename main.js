@@ -27181,9 +27181,9 @@ var VaultSyncManager = class {
     }
   }
   async updateExistingFile(file, content) {
-    const activeLeaf = this.plugin.app.workspace.activeLeaf;
-    if ((activeLeaf == null ? void 0 : activeLeaf.view) instanceof import_obsidian2.MarkdownView && activeLeaf.view.file === file) {
-      const editor = activeLeaf.view.editor;
+    const activeView = this.plugin.app.workspace.getActiveViewOfType(import_obsidian2.MarkdownView);
+    if (activeView && activeView.file === file) {
+      const editor = activeView.editor;
       if (typeof content === "string") {
         editor.setValue(content);
       } else {
@@ -27330,6 +27330,16 @@ var VaultSyncManager = class {
       content instanceof ArrayBuffer ? import_buffer3.Buffer.from(content) : content,
       isBinary
     );
+    const winston = await this.arweave.transactions.getPrice(
+      import_buffer3.Buffer.from(encryptedContent).byteLength
+    );
+    const ar2 = Number(winston) / 1e12;
+    const precision = 2;
+    const cost = parseFloat(ar2.toPrecision(precision));
+    const canProceed = await this.plugin.checkSpendingLimit(Number(cost));
+    if (!canProceed) {
+      throw new Error("Monthly spending limit reached");
+    }
     const currentFileInfo = this.localUploadConfig[file.path];
     const previousVersionTxId = currentFileInfo ? currentFileInfo.txId : null;
     const versionNumber = currentFileInfo ? currentFileInfo.versionNumber + 1 : 1;
@@ -27359,6 +27369,7 @@ var VaultSyncManager = class {
       versionNumber
     };
     this.plugin.updateLocalConfig(file.path, newFileInfo);
+    await this.plugin.incrementFilesSynced();
     console.log(
       `File ${file.path} exported to Arweave. Transaction ID: ${transaction.id}`
     );
@@ -27374,7 +27385,7 @@ var VaultSyncManager = class {
         if (syncState !== "synced") {
           const newFileInfo = await this.exportFileToArweave(file, fileHash);
           updatedFiles.push(newFileInfo);
-          this.localUploadConfig[file.path] = newFileInfo;
+          this.plugin.updateLocalConfig(filePath, newFileInfo);
           currentRemoteConfig[file.path] = newFileInfo;
         }
       }
@@ -27390,6 +27401,10 @@ var VaultSyncManager = class {
     this.remoteUploadConfig = remoteConfig || {};
     this.plugin.settings.remoteUploadConfig = remoteConfig || {};
     await this.plugin.saveSettings();
+  }
+  async fetchContentForTx(txId) {
+    const encryptedContent = await this.fetchEncryptedContent(txId);
+    return this.decrypt(encryptedContent);
   }
   async isFileNeedingSync(file) {
     const { syncState } = await this.checkFileSync(file);
@@ -27480,7 +27495,7 @@ var VaultSyncManager = class {
     let currentTxId = startFromTxId || (filePath ? this.getCurrentTransactionId(filePath) : null);
     const fetchVersion = async (txId) => {
       var _a7, _b2;
-      if (versions.length >= limit || !txId) {
+      if (!txId || versions.length >= limit) {
         return;
       }
       const query = `
@@ -27522,7 +27537,6 @@ var VaultSyncManager = class {
           txId,
           content: decryptedContent,
           timestamp: transaction.block.timestamp,
-          fileHash,
           previousVersionTxId
         });
         await fetchVersion(previousVersionTxId);
@@ -27588,7 +27602,12 @@ var DEFAULT_SETTINGS = {
   autoImportUnsyncedChanges: false,
   autoExportOnIdle: false,
   autoExportOnClose: false,
-  idleTimeForAutoExport: 5
+  idleTimeForAutoExport: 5,
+  monthlyArweaveSpendLimit: 0.2,
+  monthlyFilesSynced: 0,
+  lifetimeFilesSynced: 0,
+  currentMonthSpend: 0,
+  monthlyResetDate: Date.now()
 };
 
 // src/components/WalletConnectModal.ts
@@ -27725,7 +27744,9 @@ var FileHistoryModal = class extends import_obsidian5.Modal {
     });
     this.loadingEl.createEl("div", { cls: "loading-dots" });
     this.loadingEl.style.display = "none";
-    this.modalContentEl = contentEl.createEl("div", { cls: "modal-content custom" });
+    this.modalContentEl = contentEl.createEl("div", {
+      cls: "modal-content custom"
+    });
     this.markdownContainer = this.modalContentEl.createEl("div", {
       cls: "rendered-markdown"
     });
@@ -27781,13 +27802,42 @@ var FileHistoryModal = class extends import_obsidian5.Modal {
   async renderVersionContent() {
     this.markdownContainer.empty();
     const currentVersion = this.versions[this.currentVersionIndex];
-    await import_obsidian5.MarkdownRenderer.render(
-      this.app,
-      currentVersion.content,
-      this.markdownContainer,
-      this.file.path,
-      new import_obsidian5.MarkdownRenderChild(this.markdownContainer)
-    );
+    try {
+      await import_obsidian5.MarkdownRenderer.render(
+        this.app,
+        currentVersion.content.toString(),
+        this.markdownContainer,
+        this.file.path,
+        new import_obsidian5.MarkdownRenderChild(this.markdownContainer)
+      );
+    } catch (error) {
+      console.error("Failed to render current version:", error);
+      if (currentVersion.previousVersionTxId) {
+        try {
+          const oldContent = await this.plugin.vaultSyncManager.fetchContentForTx(
+            currentVersion.previousVersionTxId
+          );
+          await import_obsidian5.MarkdownRenderer.render(
+            this.app,
+            typeof currentVersion.content === "string" ? currentVersion.content : currentVersion.content.toString("utf-8"),
+            this.markdownContainer,
+            this.file.path,
+            new import_obsidian5.MarkdownRenderChild(this.markdownContainer)
+          );
+        } catch (oldError) {
+          console.error("Failed to render old version:", oldError);
+          this.markdownContainer.createEl("p", {
+            text: "Failed to load content for this version.",
+            cls: "error-message"
+          });
+        }
+      } else {
+        this.markdownContainer.createEl("p", {
+          text: "Failed to load content for this version.",
+          cls: "error-message"
+        });
+      }
+    }
     this.updateVersionInfo();
   }
   updateVersionInfo() {
@@ -27837,7 +27887,7 @@ var FileHistoryModal = class extends import_obsidian5.Modal {
     const currentVersion = this.versions[this.currentVersionIndex];
     const confirmed = await this.plugin.confirmRestore(this.file.name);
     if (confirmed) {
-      await this.app.vault.modify(this.file, currentVersion.content);
+      await this.app.vault.modify(this.file, currentVersion.content.toString());
       new import_obsidian5.Notice(
         `Restored version of ${this.file.name} from ${new Date(currentVersion.timestamp * 1e3).toLocaleString()}`
       );
@@ -27895,6 +27945,33 @@ var ArweaveSyncSettingTab = class extends import_obsidian6.PluginSettingTab {
           this.plugin.restartIdleTimer();
         }
       })
+    );
+    new import_obsidian6.Setting(containerEl).setName("Monthly Arweave Spend Limit").setDesc("Set the maximum amount of AR tokens to spend per month").addText(
+      (text) => text.setPlaceholder("0.2").setValue(this.plugin.settings.monthlyArweaveSpendLimit.toString()).onChange(async (value) => {
+        const numValue = parseFloat(value);
+        if (!isNaN(numValue) && numValue >= 0) {
+          this.plugin.settings.monthlyArweaveSpendLimit = numValue;
+          await this.plugin.saveSettings();
+        }
+      })
+    );
+    new import_obsidian6.Setting(containerEl).setName("Monthly Files Synced").setDesc("Number of files synced this month").addText(
+      (text) => text.setValue(this.plugin.settings.monthlyFilesSynced.toString()).setDisabled(true)
+    );
+    new import_obsidian6.Setting(containerEl).setName("Current Month Spend").setDesc("Amount of AR tokens spent this month").addText(
+      (text) => text.setValue(this.plugin.settings.currentMonthSpend.toFixed(6)).setDisabled(true)
+    );
+    new import_obsidian6.Setting(containerEl).setName("Reset Monthly Counters").setDesc("Reset the monthly files synced and spend counters").addButton(
+      (button) => button.setButtonText("Reset").onClick(async () => {
+        this.plugin.settings.monthlyFilesSynced = 0;
+        this.plugin.settings.currentMonthSpend = 0;
+        this.plugin.settings.monthlyResetDate = Date.now();
+        await this.plugin.saveSettings();
+        this.display();
+      })
+    );
+    new import_obsidian6.Setting(containerEl).setName("Lifetime Files Synced").setDesc("Total number of files synced").addText(
+      (text) => text.setValue(this.plugin.settings.lifetimeFilesSynced.toString()).setDisabled(true)
     );
   }
 };
@@ -28139,17 +28216,30 @@ var SyncSidebar = class extends import_obsidian8.ItemView {
     const allSelected = files.every(
       (file) => this.isFileSelected(file, isSource)
     );
-    files.forEach((file) => {
-      if (file.isFolder) {
-        this.toggleAllFiles(file.children, isSource);
+    const processNode = (node) => {
+      if (node.isFolder) {
+        node.children = node.children.filter((child) => {
+          if (child.isFolder) {
+            processNode(child);
+            return child.children.length > 0;
+          } else {
+            if (allSelected) {
+              this.removeFileFromSelection(child, isSource);
+            } else {
+              this.addFileToSelection(child, isSource);
+            }
+            return true;
+          }
+        });
       } else {
         if (allSelected) {
-          this.removeFileFromSelection(file, isSource);
+          this.removeFileFromSelection(node, isSource);
         } else {
-          this.addFileToSelection(file, isSource);
+          this.addFileToSelection(node, isSource);
         }
       }
-    });
+    };
+    files.forEach(processNode);
     this.renderContent();
   }
   isFileSelected(file, isSource) {
@@ -29886,9 +29976,7 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
       this.settings.remoteUploadConfig,
       this.settings.localUploadConfig
     );
-    const jwk = walletManager.getJWK();
     const encryptionPassword = walletManager.getEncryptionPassword();
-    console.log(encryptionPassword);
     if (encryptionPassword) {
       this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
     }
@@ -29983,20 +30071,6 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
       id: "open-arweave-sync-sidebar",
       name: "Open Arweave sync sidebar",
       callback: () => this.activateSyncSidebar()
-    });
-    this.addCommand({
-      id: "force-pull-current-file",
-      name: "Force pull current file from Arweave",
-      checkCallback: (checking) => {
-        const activeFile = this.app.workspace.getActiveFile();
-        if (activeFile) {
-          if (!checking) {
-            this.forcePullCurrentFile(activeFile);
-          }
-          return true;
-        }
-        return false;
-      }
     });
     this.addCommand({
       id: "open-wallet-connect-modal",
@@ -30638,19 +30712,17 @@ Check the console for more details.`
   }
   stopIdleTimer() {
     if (this.idleTimer !== null) {
-      console.log("Stopping idle timer");
       window.clearTimeout(this.idleTimer);
       this.idleTimer = null;
     }
   }
   restartIdleTimer() {
     if (this.settings.autoExportOnIdle) {
-      console.log("Restarting idle timer");
       this.startIdleTimer();
     }
   }
   async handleIdle() {
-    console.log("Idle timer triggered, starting auto-export");
+    new import_obsidian10.Notice("Idle timer triggered, starting auto-export");
     const modifiedFiles = await Promise.all(
       this.app.vault.getMarkdownFiles().map(async (file) => {
         const needsSync = await this.vaultSyncManager.isFileNeedingSync(file);
@@ -30660,29 +30732,61 @@ Check the console for more details.`
     const filesToSync = modifiedFiles.filter(
       (file) => file !== null
     );
-    console.log(`Found ${filesToSync.length} files needing sync`);
+    new import_obsidian10.Notice(`Found ${filesToSync.length} files needing sync`);
     for (const file of filesToSync) {
       await this.autoExportFile(file);
     }
-    console.log("Auto-export completed");
   }
   async autoExportFile(file) {
-    console.log(`Auto-exporting file: ${file.path}`);
     try {
-      await this.vaultSyncManager.syncFile(file);
-      console.log(`Successfully auto-exported file: ${file.path}`);
+      const localConfig = this.settings.localUploadConfig[file.path];
+      const remoteConfig = this.settings.remoteUploadConfig[file.path];
+      if (!localConfig || !remoteConfig || localConfig.fileHash !== remoteConfig.fileHash) {
+        await this.vaultSyncManager.syncFile(file);
+      } else {
+        console.log(
+          `Skipping auto-export for file: ${file.path} (no changes detected)`
+        );
+      }
     } catch (error) {
       console.error(`Failed to auto-export file ${file.path}:`, error);
     }
   }
+  async incrementFilesSynced() {
+    this.settings.monthlyFilesSynced++;
+    this.settings.lifetimeFilesSynced++;
+    await this.saveSettings();
+  }
+  async checkMonthlyReset() {
+    const now = /* @__PURE__ */ new Date();
+    const lastReset = new Date(this.settings.monthlyResetDate);
+    if (now.getMonth() !== lastReset.getMonth() || now.getFullYear() !== lastReset.getFullYear()) {
+      this.settings.monthlyFilesSynced = 0;
+      this.settings.currentMonthSpend = 0;
+      this.settings.monthlyResetDate = now.getTime();
+      await this.saveSettings();
+    }
+  }
+  async checkSpendingLimit(cost) {
+    await this.checkMonthlyReset();
+    if (this.settings.currentMonthSpend + cost > this.settings.monthlyArweaveSpendLimit) {
+      new import_obsidian10.Notice(`Monthly spending limit reached. Skipping sync.`);
+      return false;
+    }
+    this.settings.currentMonthSpend += cost;
+    await this.saveSettings();
+    return true;
+  }
   async onunload() {
     console.log("Unloading ArweaveSync plugin");
-    await this.performFinalSync();
+    if (this.settings.autoExportOnClose) {
+      await this.performFinalSync();
+    }
+    this.stopIdleTimer();
     document.removeEventListener(
       "visibilitychange",
       this.handleVisibilityChange.bind(this)
     );
-    this.stopIdleTimer();
   }
 };
 /*! Bundled license information:
