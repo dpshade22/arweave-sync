@@ -14,7 +14,7 @@ import ArweaveSync from "../main";
 import { arGql, GQLUrls } from "ar-gql";
 import { walletManager } from "./walletManager";
 import { Buffer } from "buffer";
-import { dirname, basename, join } from "../utils/path";
+import { dirname, basename } from "../utils/path";
 
 export class VaultSyncManager {
   private vault: Vault;
@@ -68,9 +68,134 @@ export class VaultSyncManager {
     }
   }
 
-  async syncFile(file: TFile): Promise<void> {
+  async syncFiles(files: TFile[]): Promise<void> {
+    console.log(`Starting sync for ${files.length} files`);
+    const syncResults = await this.checkMultipleFileSync(files);
+    const filesToActuallySync = files.filter((file) => {
+      const result = syncResults.get(file.path);
+      return result && result.syncState !== "synced";
+    });
+
+    const totalFiles = filesToActuallySync.length;
+    let processedFiles = 0;
+
+    const batchSize = 5; // Adjust based on testing
+    const updatedRemoteConfig: UploadConfig = {};
+    const updatedLocalConfig: UploadConfig = {};
+
+    for (let i = 0; i < filesToActuallySync.length; i += batchSize) {
+      const batch = filesToActuallySync.slice(i, i + batchSize);
+      await Promise.all(
+        batch.map(async (file) => {
+          const result = await this.syncFileInternal(file);
+          if (result) {
+            updatedRemoteConfig[result.filePath] = result.fileInfo;
+            updatedLocalConfig[result.filePath] = result.fileInfo;
+          }
+          processedFiles++;
+          this.updateSyncProgress(processedFiles, totalFiles);
+        }),
+      );
+    }
+
+    // Batch update configs
+    Object.assign(this.remoteUploadConfig, updatedRemoteConfig);
+    Object.assign(this.localUploadConfig, updatedLocalConfig);
+
+    // Update remote config once
+    await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
+
+    // Save settings once
+    await this.plugin.saveSettings();
+
+    console.log(`Completed sync for ${filesToActuallySync.length} files`);
+  }
+
+  private async syncFileInternal(
+    file: TFile,
+  ): Promise<{ filePath: string; fileInfo: FileUploadInfo } | null> {
+    if (!this.shouldSyncFile(file)) {
+      return null;
+    }
+
+    const { syncState, fileHash } = await this.checkFileSync(file);
+
+    if (syncState === "synced") {
+      return null;
+    }
+
+    let newFileInfo: FileUploadInfo | null = null;
+
+    switch (this.plugin.settings.syncDirection) {
+      case "uploadOnly":
+        if (syncState === "new-local" || syncState === "local-newer") {
+          new Notice(`Exporting file ${file.path} to Arweave`);
+          newFileInfo = await this.exportFileToArweave(file, fileHash);
+        }
+        break;
+      case "downloadOnly":
+        if (syncState === "new-remote" || syncState === "remote-newer") {
+          new Notice(`Importing file ${file.path} from Arweave`);
+          await this.importFileFromArweave(file.path);
+          newFileInfo = this.remoteUploadConfig[file.path];
+        }
+        break;
+      case "bidirectional":
+      default:
+        if (syncState === "new-local" || syncState === "local-newer") {
+          new Notice(`Exporting file ${file.path} to Arweave`);
+          newFileInfo = await this.exportFileToArweave(file, fileHash);
+        } else if (syncState === "new-remote" || syncState === "remote-newer") {
+          new Notice(`Importing file ${file.path} from Arweave`);
+          await this.importFileFromArweave(file.path);
+          newFileInfo = this.remoteUploadConfig[file.path];
+        }
+        break;
+    }
+
+    if (newFileInfo) {
+      return { filePath: file.path, fileInfo: newFileInfo };
+    } else {
+      return null;
+    }
+  }
+
+  private updateSyncProgress(processed: number, total: number) {
+    const progress = (processed / total) * 100;
+    console.log(`Sync progress: ${progress.toFixed(2)}%`);
+    // You could emit an event here to update the UI
+  }
+
+  async checkMultipleFileSync(
+    files: TFile[],
+  ): Promise<Map<string, { syncState: string; fileHash: string }>> {
+    const results = new Map();
+    const batchSize = 10;
+
+    for (let i = 0; i < files.length; i += batchSize) {
+      const batch = files.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map((file) => this.checkFileSync(file)),
+      );
+      batchResults.forEach((result, index) => {
+        results.set(batch[index].path, result);
+      });
+    }
+
+    return results;
+  }
+
+  async syncFile(file: TFile, updateConfig: boolean = true): Promise<void> {
+    console.log(`Starting sync for file: ${file.path}`);
+    if (!this.shouldSyncFile(file)) {
+      console.log(`File ${file.path} should not be synced. Skipping.`);
+      return;
+    }
+
+    console.log(`Updating remote config for file: ${file.path}`);
     await this.updateRemoteConfig();
 
+    console.log(`Checking sync state for file: ${file.path}`);
     const { syncState, fileHash } = await this.checkFileSync(file);
 
     if (syncState === "synced") {
@@ -78,36 +203,106 @@ export class VaultSyncManager {
       return;
     }
 
-    switch (syncState) {
-      case "new-local":
-      case "local-newer":
-        console.log(`Exporting local changes for ${file.path}`);
-        let newFileInfo = await this.exportFileToArweave(file, fileHash);
-        let updatedRemoteConfig = {
-          ...this.plugin.settings.remoteUploadConfig,
-          [newFileInfo.filePath]: newFileInfo,
-        };
-        await this.plugin.aoManager.updateUploadConfig(updatedRemoteConfig);
-        break;
-      case "new-remote":
-      case "remote-newer":
-        console.log(`Importing remote changes for ${file.path}`);
-        await this.importFileFromArweave(file.path);
-        const remoteFileInfo = this.remoteUploadConfig[file.path];
-        if (remoteFileInfo) {
-          this.localUploadConfig[file.path] = {
-            ...remoteFileInfo,
-          };
+    console.log(`Sync state for file ${file.path}: ${syncState}`);
+    console.log(`Sync direction: ${this.plugin.settings.syncDirection}`);
+
+    switch (this.plugin.settings.syncDirection) {
+      case "uploadOnly":
+        if (syncState === "new-local" || syncState === "local-newer") {
+          console.log(`Exporting file ${file.path} to Arweave`);
+          const newFileInfo = await this.exportFileToArweave(file, fileHash);
+          this.updateConfigs(file.path, newFileInfo);
+          console.log(`File ${file.path} exported successfully`);
         }
         break;
+      case "downloadOnly":
+        if (syncState === "new-remote" || syncState === "remote-newer") {
+          console.log(`Importing file ${file.path} from Arweave`);
+          await this.importFileFromArweave(file.path);
+          console.log(`File ${file.path} imported successfully`);
+        }
+        break;
+      case "bidirectional":
       default:
-        console.warn(`Unexpected sync state for ${file.path}: ${syncState}`);
-        return;
+        if (syncState === "new-local" || syncState === "local-newer") {
+          console.log(`Exporting file ${file.path} to Arweave (bidirectional)`);
+          const newFileInfo = await this.exportFileToArweave(file, fileHash);
+          this.updateConfigs(file.path, newFileInfo);
+          console.log(
+            `File ${file.path} exported successfully (bidirectional)`,
+          );
+        } else if (syncState === "new-remote" || syncState === "remote-newer") {
+          console.log(
+            `Importing file ${file.path} from Arweave (bidirectional)`,
+          );
+          await this.importFileFromArweave(file.path);
+          console.log(
+            `File ${file.path} imported successfully (bidirectional)`,
+          );
+        }
+        break;
+    }
+
+    if (updateConfig) {
+      console.log(
+        `Updating AO manager with new remote config for file: ${file.path}`,
+      );
+      await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
+      console.log(`Saving plugin settings for file: ${file.path}`);
     }
 
     await this.plugin.saveSettings();
-
     console.log(`File ${file.path} synced successfully.`);
+  }
+
+  private updateConfigs(filePath: string, fileInfo: FileUploadInfo): void {
+    this.localUploadConfig[filePath] = fileInfo;
+    this.remoteUploadConfig[filePath] = fileInfo;
+    this.plugin.updateLocalConfig(filePath, fileInfo);
+  }
+
+  private shouldSyncFile(file: TFile): boolean {
+    const settings = this.plugin.settings;
+
+    if (
+      settings.filesToSync === "selected" &&
+      !settings.selectedFoldersToSync.some((folder) =>
+        file.path.startsWith(folder),
+      )
+    ) {
+      console.log(`File ${file.path} not in selected folders. Skipping sync.`);
+      return false;
+    }
+
+    if (
+      settings.excludedFolders.length > 0 &&
+      settings.excludedFolders.some(
+        (folder) => folder !== "/" && file.path.startsWith(folder + "/"),
+      )
+    ) {
+      console.log(`File ${file.path} in excluded folder. Skipping sync.`);
+      return false;
+    }
+
+    if (!settings.syncFileTypes.includes(`.${file.extension}`)) {
+      console.log(`File ${file.path} not of syncable type. Skipping sync.`);
+      return false;
+    }
+
+    console.log(`File ${file.path} should be synced.`);
+    return true;
+  }
+
+  async performFullSync(): Promise<void> {
+    await this.updateRemoteConfig();
+    const filesToSync = this.getFilesToSync();
+    await this.syncFiles(filesToSync);
+  }
+
+  public getFilesToSync(): TFile[] {
+    return this.plugin.app.vault
+      .getFiles()
+      .filter((file) => this.shouldSyncFile(file));
   }
 
   isWalletConnected(): boolean {
@@ -128,6 +323,7 @@ export class VaultSyncManager {
       }
     }
 
+    await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
     return importedFiles;
   }
 
@@ -178,7 +374,7 @@ export class VaultSyncManager {
         console.log(`Created new file: ${normalizedPath}`);
       }
 
-      this.plugin.updateLocalConfig(filePath, {
+      this.updateConfigs(filePath, {
         ...remoteFileInfo,
         filePath: normalizedPath,
       });
@@ -248,15 +444,8 @@ export class VaultSyncManager {
       const fileHash = await this.getFileHash(file);
       const newFileInfo = await this.exportFileToArweave(file, fileHash);
 
-      // Update both local and remote configs
-      this.localUploadConfig[file.path] = newFileInfo;
-      const currentRemoteConfig =
-        (await this.plugin.aoManager.getUploadConfig()) || {};
-
-      currentRemoteConfig[file.path] = newFileInfo;
-
-      // Update the remote config on AO
-      await this.plugin.aoManager.updateUploadConfig(currentRemoteConfig);
+      this.updateConfigs(file.path, newFileInfo);
+      await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
       console.log(`Force pushed file: ${file.path}`);
     } catch (error) {
       console.error(`Failed to force push file: ${file.path}`, error);
@@ -309,7 +498,7 @@ export class VaultSyncManager {
         }
       }
 
-      this.plugin.updateLocalConfig(file.path, remoteFileInfo);
+      this.updateConfigs(file.path, remoteFileInfo);
       await this.plugin.saveSettings();
 
       console.log(`Force pulled file: ${file.path}`);
@@ -324,10 +513,8 @@ export class VaultSyncManager {
       `Removing ${filePath} from remote upload config due to decryption failure`,
     );
 
-    let updatedRemoteConfig = this.remoteUploadConfig;
-    delete updatedRemoteConfig[filePath];
-
-    await this.plugin.aoManager.updateUploadConfig(updatedRemoteConfig);
+    delete this.remoteUploadConfig[filePath];
+    await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
 
     new Notice(
       `Failed to decrypt ${filePath}. It has been removed from the sync list.`,
@@ -337,10 +524,8 @@ export class VaultSyncManager {
   public async deleteRemoteFile(filePath: string): Promise<void> {
     console.log(`Removing ${filePath} from remote upload config`);
 
-    let updatedRemoteConfig = this.remoteUploadConfig;
-    delete updatedRemoteConfig[filePath];
-
-    await this.plugin.aoManager.updateUploadConfig(updatedRemoteConfig);
+    delete this.remoteUploadConfig[filePath];
+    await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
 
     new Notice(`Deleting ${filePath}. It has been removed from the sync list.`);
   }
@@ -444,7 +629,6 @@ export class VaultSyncManager {
       versionNumber,
     };
 
-    this.plugin.updateLocalConfig(file.path, newFileInfo);
     await this.plugin.incrementFilesSynced();
 
     console.log(
@@ -455,28 +639,18 @@ export class VaultSyncManager {
   }
 
   async exportFilesToArweave(filePaths: string[]): Promise<void> {
-    const updatedFiles: FileUploadInfo[] = [];
-
-    const currentRemoteConfig =
-      (await this.plugin.aoManager.getUploadConfig()) || {};
-
     for (const filePath of filePaths) {
       const file = this.vault.getAbstractFileByPath(filePath);
       if (file instanceof TFile) {
         const { syncState, fileHash } = await this.checkFileSync(file);
         if (syncState !== "synced") {
           const newFileInfo = await this.exportFileToArweave(file, fileHash);
-          updatedFiles.push(newFileInfo);
-          this.plugin.updateLocalConfig(filePath, newFileInfo);
-          currentRemoteConfig[file.path] = newFileInfo;
+          this.updateConfigs(filePath, newFileInfo);
         }
       }
     }
 
-    if (updatedFiles.length > 0) {
-      await this.plugin.aoManager.updateUploadConfig(currentRemoteConfig);
-    }
-
+    await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
     await this.plugin.saveSettings();
   }
 
@@ -727,11 +901,5 @@ export class VaultSyncManager {
       "zip",
     ];
     return binaryExtensions.includes(file.extension.toLowerCase());
-  }
-
-  private async fileExistsCaseInsensitive(filePath: string): Promise<boolean> {
-    const normalizedPath = normalizePath(filePath.toLowerCase());
-    const allFiles = this.plugin.app.vault.getFiles();
-    return allFiles.some((file) => file.path.toLowerCase() === normalizedPath);
   }
 }

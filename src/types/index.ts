@@ -23,7 +23,6 @@ export interface FileUploadInfo {
 }
 
 export interface ArweaveSyncSettings {
-  // encryptionPassword: string;
   lastConfigUploadTxId: string;
   localUploadConfig: UploadConfig;
   remoteUploadConfig: UploadConfig;
@@ -37,10 +36,18 @@ export interface ArweaveSyncSettings {
   lifetimeFilesSynced: number;
   currentMonthSpend: number;
   monthlyResetDate: number;
+  fullAutoSync: boolean;
+  syncInterval: number;
+  syncOnStartup: boolean;
+  syncOnFileChange: boolean;
+  syncDirection: "bidirectional" | "uploadOnly" | "downloadOnly";
+  filesToSync: "all" | "selected";
+  selectedFoldersToSync: string[];
+  excludedFolders: string[];
+  syncFileTypes: string[];
 }
 
 export const DEFAULT_SETTINGS: ArweaveSyncSettings = {
-  // encryptionPassword: "",
   lastConfigUploadTxId: "",
   customProcessId: "",
   localUploadConfig: {},
@@ -54,4 +61,13 @@ export const DEFAULT_SETTINGS: ArweaveSyncSettings = {
   lifetimeFilesSynced: 0,
   currentMonthSpend: 0,
   monthlyResetDate: Date.now(),
+  fullAutoSync: false,
+  syncInterval: 30,
+  syncOnStartup: false,
+  syncOnFileChange: false,
+  syncDirection: "bidirectional",
+  filesToSync: "all",
+  selectedFoldersToSync: [],
+  excludedFolders: [],
+  syncFileTypes: [".md", ".txt", ".png", ".jpg", ".jpeg", ".pdf"],
 };

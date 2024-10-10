@@ -1,9 +1,10 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, PluginSettingTab, Setting, TextComponent } from "obsidian";
 import { ArweaveSyncSettings } from "../types";
 import ArweaveSync from "../main";
 
 export class ArweaveSyncSettingTab extends PluginSettingTab {
   plugin: ArweaveSync;
+  private folderInputEl: TextComponent;
 
   constructor(app: App, plugin: ArweaveSync) {
     super(app, plugin);
@@ -15,68 +16,219 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
 
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "ArweaveSync Settings" });
+    containerEl.createEl("h2", { text: "ArweaveSync settings" });
 
     new Setting(containerEl)
-      .setName("Auto-import Unsynced Changes")
-      .setDesc("Automatically import unsynced changes when connecting wallet")
+      .setName("Full automatic sync")
+      .setDesc("Enable full automatic bidirectional synchronization")
       .addToggle((toggle) =>
         toggle
-          .setValue(this.plugin.settings.autoImportUnsyncedChanges)
+          .setValue(this.plugin.settings.fullAutoSync)
           .onChange(async (value) => {
-            this.plugin.settings.autoImportUnsyncedChanges = value;
-            await this.plugin.saveSettings();
-          }),
-      );
-
-    new Setting(containerEl)
-      .setName("Auto-export on idle")
-      .setDesc("Automatically export files when the user is idle")
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.autoExportOnIdle)
-          .onChange(async (value) => {
-            this.plugin.settings.autoExportOnIdle = value;
-            await this.plugin.saveSettings();
+            this.plugin.settings.fullAutoSync = value;
             if (value) {
-              this.plugin.startIdleTimer();
-            } else {
-              this.plugin.stopIdleTimer();
+              this.plugin.settings.syncDirection = "bidirectional";
+              this.plugin.settings.syncOnStartup = true;
+              this.plugin.settings.syncOnFileChange = true;
+              this.plugin.settings.autoImportUnsyncedChanges = false;
+              this.plugin.settings.autoExportOnIdle = false;
+              this.plugin.settings.autoExportOnClose = false;
             }
+            await this.plugin.saveSettings();
+            this.display(); // Refresh the settings display
           }),
       );
 
+    if (this.plugin.settings.fullAutoSync) {
+      new Setting(containerEl)
+        .setName("Sync interval")
+        .setDesc("Time in minutes between automatic syncs")
+        .addSlider((slider) =>
+          slider
+            .setLimits(5, 120, 5)
+            .setValue(this.plugin.settings.syncInterval)
+            .setDynamicTooltip()
+            .onChange(async (value) => {
+              this.plugin.settings.syncInterval = value;
+              await this.plugin.saveSettings();
+            }),
+        );
+    } else {
+      new Setting(containerEl)
+        .setName("Sync on startup")
+        .setDesc("Automatically sync when Obsidian starts")
+        .addToggle((toggle) =>
+          toggle
+            .setValue(this.plugin.settings.syncOnStartup)
+            .onChange(async (value) => {
+              this.plugin.settings.syncOnStartup = value;
+              await this.plugin.saveSettings();
+            }),
+        );
+
+      new Setting(containerEl)
+        .setName("Sync direction")
+        .setDesc("Choose the direction of synchronization")
+        .addDropdown((dropdown) =>
+          dropdown
+            .addOption("bidirectional", "Bidirectional")
+            .addOption("uploadOnly", "Upload only")
+            .addOption("downloadOnly", "Download only")
+            .setValue(this.plugin.settings.syncDirection)
+            .onChange(
+              async (
+                value: "bidirectional" | "uploadOnly" | "downloadOnly",
+              ) => {
+                this.plugin.settings.syncDirection = value;
+                if (value === "uploadOnly") {
+                  this.plugin.settings.autoImportUnsyncedChanges = false;
+                } else if (value === "downloadOnly") {
+                  this.plugin.settings.autoExportOnIdle = false;
+                  this.plugin.settings.autoExportOnClose = false;
+                }
+                await this.plugin.saveSettings();
+                this.display(); // Refresh the settings display
+              },
+            ),
+        );
+
+      new Setting(containerEl).setName("Sync behavior").setHeading();
+
+      if (this.plugin.settings.syncDirection !== "uploadOnly") {
+        new Setting(containerEl)
+          .setName("Auto-import unsynced changes")
+          .setDesc(
+            "Automatically import unsynced changes when connecting wallet",
+          )
+          .addToggle((toggle) =>
+            toggle
+              .setValue(this.plugin.settings.autoImportUnsyncedChanges)
+              .onChange(async (value) => {
+                this.plugin.settings.autoImportUnsyncedChanges = value;
+                await this.plugin.saveSettings();
+              }),
+          );
+      }
+
+      if (this.plugin.settings.syncDirection !== "downloadOnly") {
+        new Setting(containerEl)
+          .setName("Auto-export on idle")
+          .setDesc("Automatically export files when the user is idle")
+          .addToggle((toggle) =>
+            toggle
+              .setValue(this.plugin.settings.autoExportOnIdle)
+              .onChange(async (value) => {
+                this.plugin.settings.autoExportOnIdle = value;
+                await this.plugin.saveSettings();
+                if (value) {
+                  this.plugin.startIdleTimer();
+                } else {
+                  this.plugin.stopIdleTimer();
+                }
+                this.display(); // Refresh the settings display
+              }),
+          );
+
+        new Setting(containerEl)
+          .setName("Auto-export on file close")
+          .setDesc("Automatically export files when they are closed")
+          .addToggle((toggle) =>
+            toggle
+              .setValue(this.plugin.settings.autoExportOnClose)
+              .onChange(async (value) => {
+                this.plugin.settings.autoExportOnClose = value;
+                await this.plugin.saveSettings();
+              }),
+          );
+
+        if (this.plugin.settings.autoExportOnIdle) {
+          new Setting(containerEl)
+            .setName("Idle time for auto-export")
+            .setDesc("Time in minutes before auto-export triggers")
+            .addSlider((slider) =>
+              slider
+                .setLimits(1, 30, 1)
+                .setValue(this.plugin.settings.idleTimeForAutoExport)
+                .setDynamicTooltip()
+                .onChange(async (value) => {
+                  this.plugin.settings.idleTimeForAutoExport = value;
+                  await this.plugin.saveSettings();
+                  if (this.plugin.settings.autoExportOnIdle) {
+                    this.plugin.restartIdleTimer();
+                  }
+                }),
+            );
+        }
+      }
+    }
+
     new Setting(containerEl)
-      .setName("Auto-export on file close")
-      .setDesc("Automatically export files when they are closed")
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.autoExportOnClose)
+      .setName("Files to sync")
+      .setDesc("Choose which files to sync")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("all", "All files")
+          .addOption("selected", "Selected folders")
+          .setValue(this.plugin.settings.filesToSync)
+          .onChange(async (value: "all" | "selected") => {
+            this.plugin.settings.filesToSync = value;
+            await this.plugin.saveSettings();
+            this.display(); // Refresh the settings display
+          }),
+      );
+
+    if (this.plugin.settings.filesToSync === "selected") {
+      new Setting(containerEl)
+        .setName("Selected folders to sync")
+        .setDesc("Enter folder paths to sync, separated by commas")
+        .addText((text) => {
+          this.folderInputEl = text;
+          text
+            .setPlaceholder("folder1, folder2/subfolder, folder3")
+            .setValue(this.plugin.settings.selectedFoldersToSync.join(", "))
+            .onChange(async (value) => {
+              this.plugin.settings.selectedFoldersToSync = value
+                .split(",")
+                .map((folder) => folder.trim());
+              await this.plugin.saveSettings();
+            });
+        });
+    }
+
+    new Setting(containerEl)
+      .setName("Excluded folders")
+      .setDesc("Enter folder paths to exclude from sync, separated by commas")
+      .addText((text) =>
+        text
+          .setPlaceholder("folder1, folder2/subfolder, folder3")
+          .setValue(this.plugin.settings.excludedFolders.join(", "))
           .onChange(async (value) => {
-            this.plugin.settings.autoExportOnClose = value;
+            this.plugin.settings.excludedFolders = value
+              .split(",")
+              .map((folder) => folder.trim());
             await this.plugin.saveSettings();
           }),
       );
 
     new Setting(containerEl)
-      .setName("Idle time for auto-export")
-      .setDesc("Time in minutes before auto-export triggers")
-      .addSlider((slider) =>
-        slider
-          .setLimits(1, 30, 1)
-          .setValue(this.plugin.settings.idleTimeForAutoExport)
-          .setDynamicTooltip()
+      .setName("File types to sync")
+      .setDesc("Enter file extensions to sync, separated by commas")
+      .addText((text) =>
+        text
+          .setPlaceholder(".md, .txt, .png, .jpg, .pdf")
+          .setValue(this.plugin.settings.syncFileTypes.join(", "))
           .onChange(async (value) => {
-            this.plugin.settings.idleTimeForAutoExport = value;
+            this.plugin.settings.syncFileTypes = value
+              .split(",")
+              .map((ext) => ext.trim());
             await this.plugin.saveSettings();
-            if (this.plugin.settings.autoExportOnIdle) {
-              this.plugin.restartIdleTimer();
-            }
           }),
       );
 
+    new Setting(containerEl).setName("Cost management").setHeading();
+
     new Setting(containerEl)
-      .setName("Monthly Arweave Spend Limit")
+      .setName("Monthly Arweave spend limit")
       .setDesc("Set the maximum amount of AR tokens to spend per month")
       .addText((text) =>
         text
@@ -92,7 +244,7 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Monthly Files Synced")
+      .setName("Monthly files synced")
       .setDesc("Number of files synced this month")
       .addText((text) =>
         text
@@ -101,7 +253,7 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Current Month Spend")
+      .setName("Current month spend")
       .setDesc("Amount of AR tokens spent this month")
       .addText((text) =>
         text
@@ -110,7 +262,7 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Reset Monthly Counters")
+      .setName("Reset monthly counters")
       .setDesc("Reset the monthly files synced and spend counters")
       .addButton((button) =>
         button.setButtonText("Reset").onClick(async () => {
@@ -118,12 +270,14 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
           this.plugin.settings.currentMonthSpend = 0;
           this.plugin.settings.monthlyResetDate = Date.now();
           await this.plugin.saveSettings();
-          this.display(); // Refresh the settings display
+          this.display();
         }),
       );
 
+    new Setting(containerEl).setName("Usage statistics").setHeading();
+
     new Setting(containerEl)
-      .setName("Lifetime Files Synced")
+      .setName("Lifetime files synced")
       .setDesc("Total number of files synced")
       .addText((text) =>
         text

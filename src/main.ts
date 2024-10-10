@@ -45,6 +45,7 @@ export default class ArweaveSync extends Plugin {
   private activeSyncSidebar: SyncSidebar | null = null;
   private isConnecting: boolean = false;
   private idleTimer: number | null = null;
+  private autoSyncInterval: number | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -63,6 +64,14 @@ export default class ArweaveSync extends Plugin {
     });
 
     this.updateSyncUI();
+
+    if (this.settings.syncOnStartup) {
+      this.performInitialSync();
+    }
+
+    if (this.settings.fullAutoSync) {
+      this.startAutoSync();
+    }
   }
 
   private initializeManagers() {
@@ -962,8 +971,8 @@ export default class ArweaveSync extends Plugin {
       (file): file is TFile => file !== null,
     );
 
-    for (const file of filesToSyncFiltered) {
-      await this.autoExportFile(file);
+    if (filesToSyncFiltered.length > 0) {
+      await this.vaultSyncManager.syncFiles(filesToSyncFiltered);
     }
   }
 
@@ -979,8 +988,8 @@ export default class ArweaveSync extends Plugin {
       (file): file is TFile => file !== null,
     );
 
-    for (const file of filesToSyncFiltered) {
-      await this.autoExportFile(file);
+    if (filesToSyncFiltered.length > 0) {
+      await this.vaultSyncManager.syncFiles(filesToSyncFiltered);
     }
   }
 
@@ -1031,10 +1040,11 @@ export default class ArweaveSync extends Plugin {
       (file): file is TFile => file !== null,
     );
 
-    new Notice(`Found ${filesToSync.length} files needing sync`);
-
-    for (const file of filesToSync) {
-      await this.autoExportFile(file);
+    if (filesToSync.length > 0) {
+      new Notice(`Found ${filesToSync.length} files needing sync`);
+      await this.vaultSyncManager.syncFiles(filesToSync);
+    } else {
+      new Notice("No files need syncing");
     }
   }
 
@@ -1057,6 +1067,29 @@ export default class ArweaveSync extends Plugin {
     } catch (error) {
       console.error(`Failed to auto-export file ${file.path}:`, error);
     }
+  }
+
+  private startAutoSync() {
+    this.stopAutoSync(); // Clear any existing interval
+    const interval = this.settings.syncInterval * 60 * 1000; // Convert minutes to milliseconds
+    this.autoSyncInterval = window.setInterval(
+      () => this.performFullSync(),
+      interval,
+    );
+  }
+
+  private stopAutoSync() {
+    if (this.autoSyncInterval) {
+      window.clearInterval(this.autoSyncInterval);
+      this.autoSyncInterval = null;
+    }
+  }
+
+  private async performFullSync() {
+    console.log("Performing full sync...");
+    const filesToSync = this.vaultSyncManager.getFilesToSync();
+    await this.vaultSyncManager.syncFiles(filesToSync);
+    this.updateSyncUI();
   }
 
   async incrementFilesSynced() {
@@ -1101,6 +1134,7 @@ export default class ArweaveSync extends Plugin {
     if (this.settings.autoExportOnClose) {
       await this.performFinalSync();
     }
+    this.stopAutoSync(); // Stop auto-sync when unloading the plugin
     this.stopIdleTimer();
     document.removeEventListener(
       "visibilitychange",
