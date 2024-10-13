@@ -6,6 +6,7 @@ import {
   WorkspaceLeaf,
   TFolder,
   Modal,
+  Events,
 } from "obsidian";
 import { AOManager } from "./managers/aoManager";
 import {
@@ -29,9 +30,8 @@ import { debounce } from "./utils/helpers";
 import { SyncSidebar, SYNC_SIDEBAR_VIEW } from "./components/SyncSidebar";
 import { testEncryptionWithSpecificFile } from "./utils/testEncryption";
 import { ArPublishManager } from "./managers/arPublishManager";
+import { LogManager } from "./utils/logManager";
 
-import "buffer";
-import "process";
 import "./styles.css";
 
 export default class ArweaveSync extends Plugin {
@@ -46,6 +46,7 @@ export default class ArweaveSync extends Plugin {
   private isConnecting: boolean = false;
   private idleTimer: number | null = null;
   private autoSyncInterval: number | null = null;
+  emitter: Events;
 
   async onload() {
     await this.loadSettings();
@@ -72,6 +73,8 @@ export default class ArweaveSync extends Plugin {
     if (this.settings.fullAutoSync) {
       this.startAutoSync();
     }
+
+    this.emitter = new Events();
   }
 
   private initializeManagers() {
@@ -89,6 +92,7 @@ export default class ArweaveSync extends Plugin {
       this,
       this.settings.remoteUploadConfig,
       this.settings.localUploadConfig,
+      new LogManager(this, "VaultSyncManager"),
     );
 
     const encryptionPassword = walletManager.getEncryptionPassword();
@@ -128,20 +132,9 @@ export default class ArweaveSync extends Plugin {
       this.app.vault.on("delete", this.handleFileDelete.bind(this)),
     );
 
-    this.registerEvent(
-      this.app.workspace.on("file-open", this.handleFileOpen.bind(this)),
-    );
-
     if (this.settings.autoExportOnIdle) {
       this.startIdleTimer();
     }
-
-    // this.registerEvent(
-    //   this.app.workspace.on(
-    //     "editor-change",
-    //     this.handleEditorChange.bind(this),
-    //   ),
-    // );
   }
 
   private setupUI() {
@@ -451,9 +444,6 @@ export default class ArweaveSync extends Plugin {
     }
     this.isConnecting = true;
 
-    await walletManager.connect(new File([walletJson], "wallet.json"));
-    this.walletAddress = walletManager.getAddress();
-
     try {
       await walletManager.connect(new File([walletJson], "wallet.json"));
       const encryptionPassword = walletManager.getEncryptionPassword();
@@ -468,26 +458,21 @@ export default class ArweaveSync extends Plugin {
 
       this.updateStatusBar();
 
-      // this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
-      this.vaultSyncManager.updateRemoteConfig();
-      const newOrModifiedFiles = await this.checkForNewFiles();
+      await this.vaultSyncManager.updateRemoteConfig();
 
-      if (
-        this.settings.autoImportUnsyncedChanges &&
-        newOrModifiedFiles.length > 0
-      ) {
-        await this.importFilesFromArweave(newOrModifiedFiles);
-        new Notice(
-          `Automatically imported ${newOrModifiedFiles.length} new or modified files.`,
-        );
-      } else if (newOrModifiedFiles.length > 0) {
-        new Notice(
-          `${newOrModifiedFiles.length} new or modified files available for import.`,
-        );
-        this.refreshSyncSidebar();
-        await this.openSyncSidebarWithImportTab();
+      if (this.settings.autoImportUnsyncedChanges) {
+        await this.performAutoImport();
       } else {
-        new Notice("Wallet connected. No new files to import.");
+        const newOrModifiedFiles = await this.checkForNewFiles();
+        if (newOrModifiedFiles.length > 0) {
+          new Notice(
+            `${newOrModifiedFiles.length} new or modified files available for import.`,
+          );
+          this.refreshSyncSidebar();
+          await this.openSyncSidebarWithImportTab();
+        } else {
+          new Notice("Wallet connected. No new files to import.");
+        }
       }
     } catch (error) {
       console.error("Error during wallet connection:", error);
@@ -507,10 +492,22 @@ export default class ArweaveSync extends Plugin {
     new Notice("Wallet disconnected successfully");
   }
 
-  private async checkForNewFiles() {
+  private async performAutoImport(): Promise<void> {
+    const newOrModifiedFiles = await this.checkForNewFiles();
+    if (newOrModifiedFiles.length > 0) {
+      await this.vaultSyncManager.importFilesFromArweave(newOrModifiedFiles);
+      new Notice(
+        `Automatically imported ${newOrModifiedFiles.length} new or modified files.`,
+      );
+      this.refreshSyncSidebar();
+    } else {
+      new Notice("Wallet connected. No new files to import.");
+    }
+  }
+
+  private async checkForNewFiles(): Promise<string[]> {
     const newOrModifiedFiles: string[] = [];
 
-    // Iterate through remote upload config
     for (const [filePath, remoteFileInfo] of Object.entries(
       this.settings.remoteUploadConfig,
     )) {
@@ -532,15 +529,6 @@ export default class ArweaveSync extends Plugin {
           newOrModifiedFiles.push(filePath);
         }
       }
-    }
-
-    if (newOrModifiedFiles.length > 0) {
-      new Notice(
-        `Wallet connected. ${newOrModifiedFiles.length} new or modified files available for import.`,
-      );
-      this.refreshSyncSidebar();
-      if (!this.settings.autoImportUnsyncedChanges)
-        await this.openSyncSidebarWithImportTab();
     }
 
     return newOrModifiedFiles;
@@ -627,24 +615,6 @@ export default class ArweaveSync extends Plugin {
 
   private handleSyncError(file: TFile, error: Error) {
     new Notice(`Failed to sync file: ${error.message}`);
-  }
-
-  private handleFileOpen(file: TFile | null) {
-    if (file && this.settings.autoExportOnClose) {
-      this.registerEvent(
-        this.app.workspace.on(
-          "file-open",
-          this.handleFileClose.bind(this, file),
-        ),
-      );
-    }
-  }
-
-  private async handleFileClose(oldFile: TFile, newFile: TFile | null) {
-    if (oldFile !== newFile && this.settings.autoExportOnClose) {
-      console.log(`File closed: ${oldFile.path}, triggering auto-export`);
-      await this.autoExportFile(oldFile);
-    }
   }
 
   private async handleFileModify(file: TFile) {
@@ -960,49 +930,17 @@ export default class ArweaveSync extends Plugin {
   }
 
   private async performInitialSync() {
-    const filesToSync = await Promise.all(
-      this.app.vault.getFiles().map(async (file) => {
-        const needsSync = await this.vaultSyncManager.isFileNeedingSync(file);
-        return needsSync ? file : null;
-      }),
-    );
-
-    const filesToSyncFiltered = filesToSync.filter(
-      (file): file is TFile => file !== null,
-    );
-
-    if (filesToSyncFiltered.length > 0) {
-      await this.vaultSyncManager.syncFiles(filesToSyncFiltered);
-    }
+    await this.vaultSyncManager.syncAllFiles();
   }
 
   private async performFinalSync() {
-    const filesToSync = await Promise.all(
-      this.app.vault.getFiles().map(async (file) => {
-        const needsSync = await this.vaultSyncManager.isFileNeedingSync(file);
-        return needsSync ? file : null;
-      }),
-    );
-
-    const filesToSyncFiltered = filesToSync.filter(
-      (file): file is TFile => file !== null,
-    );
-
-    if (filesToSyncFiltered.length > 0) {
-      await this.vaultSyncManager.syncFiles(filesToSyncFiltered);
-    }
+    await this.vaultSyncManager.syncAllFiles();
   }
 
-  private handleVisibilityChange() {
-    if (typeof document.hidden !== "undefined") {
-      if (document.hidden) {
-        // Page is hidden (computer might be going to sleep or app is in background)
-        this.performFinalSync();
-      } else {
-        // Page is visible again (computer woke up or app is in foreground)
-        this.performInitialSync();
-      }
-    }
+  private async handleIdle() {
+    new Notice("Idle timer triggered, starting auto-export");
+    await this.vaultSyncManager.syncAllFiles();
+    new Notice("Auto-export completed");
   }
 
   public startIdleTimer() {
@@ -1027,55 +965,16 @@ export default class ArweaveSync extends Plugin {
     }
   }
 
-  private async handleIdle() {
-    new Notice("Idle timer triggered, starting auto-export");
-    const modifiedFiles = await Promise.all(
-      this.app.vault.getMarkdownFiles().map(async (file) => {
-        const needsSync = await this.vaultSyncManager.isFileNeedingSync(file);
-        return needsSync ? file : null;
-      }),
-    );
-
-    const filesToSync = modifiedFiles.filter(
-      (file): file is TFile => file !== null,
-    );
-
-    if (filesToSync.length > 0) {
-      new Notice(`Found ${filesToSync.length} files needing sync`);
-      await this.vaultSyncManager.syncFiles(filesToSync);
-    } else {
-      new Notice("No files need syncing");
-    }
-  }
-
-  private async autoExportFile(file: TFile) {
-    try {
-      const localConfig = this.settings.localUploadConfig[file.path];
-      const remoteConfig = this.settings.remoteUploadConfig[file.path];
-
-      if (
-        !localConfig ||
-        !remoteConfig ||
-        localConfig.fileHash !== remoteConfig.fileHash
-      ) {
-        await this.vaultSyncManager.syncFile(file);
-      } else {
-        console.log(
-          `Skipping auto-export for file: ${file.path} (no changes detected)`,
-        );
-      }
-    } catch (error) {
-      console.error(`Failed to auto-export file ${file.path}:`, error);
-    }
-  }
-
   private startAutoSync() {
-    this.stopAutoSync(); // Clear any existing interval
-    const interval = this.settings.syncInterval * 60 * 1000; // Convert minutes to milliseconds
-    this.autoSyncInterval = window.setInterval(
-      () => this.performFullSync(),
-      interval,
-    );
+    console.log("Starting auto sync...");
+    this.stopAutoSync();
+    const interval = this.settings.syncInterval * 60 * 1000;
+    console.log(`Auto sync interval set to ${interval / 1000} seconds`);
+    this.autoSyncInterval = window.setInterval(() => {
+      console.log("Auto sync interval triggered");
+      this.performFullSync();
+    }, interval);
+    console.log("Auto sync started successfully");
   }
 
   private stopAutoSync() {
@@ -1087,8 +986,13 @@ export default class ArweaveSync extends Plugin {
 
   private async performFullSync() {
     console.log("Performing full sync...");
-    const filesToSync = this.vaultSyncManager.getFilesToSync();
-    await this.vaultSyncManager.syncFiles(filesToSync);
+    // Export local changes and import remote changes
+    await this.vaultSyncManager.syncAllFiles();
+
+    // Import remote changes
+    await this.vaultSyncManager.updateRemoteConfig();
+    await this.performAutoImport();
+
     this.updateSyncUI();
   }
 
@@ -1134,11 +1038,8 @@ export default class ArweaveSync extends Plugin {
     if (this.settings.autoExportOnClose) {
       await this.performFinalSync();
     }
-    this.stopAutoSync(); // Stop auto-sync when unloading the plugin
+    this.stopAutoSync();
     this.stopIdleTimer();
-    document.removeEventListener(
-      "visibilitychange",
-      this.handleVisibilityChange.bind(this),
-    );
+
   }
 }

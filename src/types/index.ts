@@ -22,6 +22,15 @@ export interface FileUploadInfo {
   versionNumber: number;
 }
 
+export enum SyncState {
+  NewLocal = "new-local",
+  NewRemote = "new-remote",
+  LocalNewer = "local-newer",
+  RemoteNewer = "remote-newer",
+  Synced = "synced",
+  DecryptFailed = "decrypt-failed",
+}
+
 export interface ArweaveSyncSettings {
   lastConfigUploadTxId: string;
   localUploadConfig: UploadConfig;
@@ -45,6 +54,7 @@ export interface ArweaveSyncSettings {
   selectedFoldersToSync: string[];
   excludedFolders: string[];
   syncFileTypes: string[];
+  debugMode: boolean;
 }
 
 export const DEFAULT_SETTINGS: ArweaveSyncSettings = {
@@ -70,4 +80,5 @@ export const DEFAULT_SETTINGS: ArweaveSyncSettings = {
   selectedFoldersToSync: [],
   excludedFolders: [],
   syncFileTypes: [".md", ".txt", ".png", ".jpg", ".jpeg", ".pdf"],
+  debugMode: false,
 };

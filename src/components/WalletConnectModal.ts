@@ -3,14 +3,17 @@ import { walletManager } from "../managers/walletManager";
 import { JWKInterface } from "arweave/node/lib/wallet";
 import Arweave from "arweave";
 import ArweaveSync from "../main";
+import { LogManager } from "../utils/logManager";
 
 export class WalletConnectModal extends Modal {
   private dragArea: HTMLDivElement;
   private plugin: ArweaveSync;
+  private logger: LogManager;
 
   constructor(app: App, plugin: ArweaveSync) {
     super(app);
     this.plugin = plugin;
+    this.logger = new LogManager(plugin, "WalletConnectModal");
   }
 
   onOpen() {
@@ -69,9 +72,10 @@ export class WalletConnectModal extends Modal {
   async handleFileUpload(file: File) {
     try {
       await walletManager.connect(file);
+      this.logger.info("Wallet connected successfully");
       this.close();
     } catch (error) {
-      console.error("Failed to connect wallet:", error);
+      this.logger.error("Failed to connect wallet:", error);
       new Notice("Failed to connect wallet. Please try again.");
     }
   }

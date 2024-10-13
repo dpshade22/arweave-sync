@@ -15,44 +15,48 @@ import { arGql, GQLUrls } from "ar-gql";
 import { walletManager } from "./walletManager";
 import { Buffer } from "buffer";
 import { dirname, basename } from "../utils/path";
+import { LogManager } from "../utils/logManager";
 
 export class VaultSyncManager {
   private vault: Vault;
   private arweave: Arweave;
   private argql: ReturnType<typeof arGql>;
   private encryptionPassword: string | null = null;
+  private logger: LogManager;
 
   constructor(
     private plugin: ArweaveSync,
     private remoteUploadConfig: UploadConfig,
     private localUploadConfig: UploadConfig,
+    logger?: LogManager,
   ) {
     this.vault = plugin.app.vault;
-    this.remoteUploadConfig = remoteUploadConfig;
-    this.localUploadConfig = localUploadConfig;
     this.arweave = Arweave.init({
       host: "arweave.net",
       port: 443,
       protocol: "https",
     });
     this.argql = arGql();
+    this.logger = logger || new LogManager(plugin, "VaultSyncManager");
   }
 
-  isWalletSet(): boolean {
-    return walletManager.isConnected();
+  private ensureWalletConnected(): void {
+    if (!walletManager.isConnected()) {
+      throw new Error(
+        "Wallet not connected. Please connect a wallet before proceeding.",
+      );
+    }
   }
 
-  encrypt(data: string | Buffer, isBinary: boolean = false): string {
-    this.ensureEncryptionPassword();
-    return encrypt(data, this.encryptionPassword!, isBinary);
+  private ensureEncryptionPassword(): void {
+    if (!this.encryptionPassword) {
+      throw new Error(
+        "Encryption password is not set. Please connect a wallet first.",
+      );
+    }
   }
 
-  decrypt(encryptedData: string): string | Buffer {
-    this.ensureEncryptionPassword();
-    return decrypt(encryptedData, this.encryptionPassword!);
-  }
-
-  setEncryptionPassword(password: string) {
+  setEncryptionPassword(password: string): void {
     this.encryptionPassword = password;
   }
 
@@ -60,55 +64,53 @@ export class VaultSyncManager {
     return this.encryptionPassword !== null;
   }
 
-  private ensureEncryptionPassword(): void {
-    if (!this.isEncryptionPasswordSet()) {
-      throw new Error(
-        "Encryption password is not set. Please connect a wallet first.",
-      );
-    }
-  }
-
   async syncFiles(files: TFile[]): Promise<void> {
-    console.log(`Starting sync for ${files.length} files`);
+    this.logger.info(`Starting sync for ${files.length} files`);
     const syncResults = await this.checkMultipleFileSync(files);
-    const filesToActuallySync = files.filter((file) => {
+    const filesToSync = files.filter((file) => {
       const result = syncResults.get(file.path);
       return result && result.syncState !== "synced";
     });
 
-    const totalFiles = filesToActuallySync.length;
+    await this.syncFilesInternal(filesToSync);
+    this.logger.info(`Completed sync for ${filesToSync.length} files`);
+  }
+
+  private async syncFilesInternal(files: TFile[]): Promise<void> {
+    const totalFiles = files.length;
     let processedFiles = 0;
+    const batchSize = 5;
+    const updatedConfigs: { [key: string]: FileUploadInfo } = {};
 
-    const batchSize = 5; // Adjust based on testing
-    const updatedRemoteConfig: UploadConfig = {};
-    const updatedLocalConfig: UploadConfig = {};
+    try {
+      for (let i = 0; i < files.length; i += batchSize) {
+        const batch = files.slice(i, i + batchSize);
+        await Promise.all(
+          batch.map(async (file) => {
+            try {
+              const result = await this.syncFileInternal(file);
+              if (result) {
+                updatedConfigs[result.filePath] = result.fileInfo;
+              }
+            } catch (error) {
+              this.logger.error(`Failed to sync file ${file.path}:`, error);
+            } finally {
+              processedFiles++;
+              this.updateSyncProgress(processedFiles, totalFiles);
+            }
+          }),
+        );
+      }
 
-    for (let i = 0; i < filesToActuallySync.length; i += batchSize) {
-      const batch = filesToActuallySync.slice(i, i + batchSize);
-      await Promise.all(
-        batch.map(async (file) => {
-          const result = await this.syncFileInternal(file);
-          if (result) {
-            updatedRemoteConfig[result.filePath] = result.fileInfo;
-            updatedLocalConfig[result.filePath] = result.fileInfo;
-          }
-          processedFiles++;
-          this.updateSyncProgress(processedFiles, totalFiles);
-        }),
-      );
+      Object.assign(this.remoteUploadConfig, updatedConfigs);
+      Object.assign(this.localUploadConfig, updatedConfigs);
+
+      await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
+      await this.plugin.saveSettings();
+    } catch (error) {
+      this.logger.error("Error during file sync:", error);
+      throw error;
     }
-
-    // Batch update configs
-    Object.assign(this.remoteUploadConfig, updatedRemoteConfig);
-    Object.assign(this.localUploadConfig, updatedLocalConfig);
-
-    // Update remote config once
-    await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
-
-    // Save settings once
-    await this.plugin.saveSettings();
-
-    console.log(`Completed sync for ${filesToActuallySync.length} files`);
   }
 
   private async syncFileInternal(
@@ -129,13 +131,11 @@ export class VaultSyncManager {
     switch (this.plugin.settings.syncDirection) {
       case "uploadOnly":
         if (syncState === "new-local" || syncState === "local-newer") {
-          new Notice(`Exporting file ${file.path} to Arweave`);
           newFileInfo = await this.exportFileToArweave(file, fileHash);
         }
         break;
       case "downloadOnly":
         if (syncState === "new-remote" || syncState === "remote-newer") {
-          new Notice(`Importing file ${file.path} from Arweave`);
           await this.importFileFromArweave(file.path);
           newFileInfo = this.remoteUploadConfig[file.path];
         }
@@ -143,27 +143,21 @@ export class VaultSyncManager {
       case "bidirectional":
       default:
         if (syncState === "new-local" || syncState === "local-newer") {
-          new Notice(`Exporting file ${file.path} to Arweave`);
           newFileInfo = await this.exportFileToArweave(file, fileHash);
         } else if (syncState === "new-remote" || syncState === "remote-newer") {
-          new Notice(`Importing file ${file.path} from Arweave`);
           await this.importFileFromArweave(file.path);
           newFileInfo = this.remoteUploadConfig[file.path];
         }
         break;
     }
 
-    if (newFileInfo) {
-      return { filePath: file.path, fileInfo: newFileInfo };
-    } else {
-      return null;
-    }
+    return newFileInfo ? { filePath: file.path, fileInfo: newFileInfo } : null;
   }
 
-  private updateSyncProgress(processed: number, total: number) {
+  private updateSyncProgress(processed: number, total: number): void {
     const progress = (processed / total) * 100;
-    console.log(`Sync progress: ${progress.toFixed(2)}%`);
-    // You could emit an event here to update the UI
+    this.logger.debug(`Sync progress: ${progress.toFixed(2)}%`);
+    this.plugin.emitter.trigger("syncProgress", { processed, total });
   }
 
   async checkMultipleFileSync(
@@ -186,73 +180,20 @@ export class VaultSyncManager {
   }
 
   async syncFile(file: TFile, updateConfig: boolean = true): Promise<void> {
-    console.log(`Starting sync for file: ${file.path}`);
-    if (!this.shouldSyncFile(file)) {
-      console.log(`File ${file.path} should not be synced. Skipping.`);
-      return;
+    this.logger.info(`Starting sync for file: ${file.path}`);
+
+    const result = await this.syncFileInternal(file);
+
+    if (result) {
+      this.updateConfigs(result.filePath, result.fileInfo);
+
+      if (updateConfig) {
+        await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
+        await this.plugin.saveSettings();
+      }
     }
 
-    console.log(`Updating remote config for file: ${file.path}`);
-    await this.updateRemoteConfig();
-
-    console.log(`Checking sync state for file: ${file.path}`);
-    const { syncState, fileHash } = await this.checkFileSync(file);
-
-    if (syncState === "synced") {
-      console.log(`File ${file.path} is already synced.`);
-      return;
-    }
-
-    console.log(`Sync state for file ${file.path}: ${syncState}`);
-    console.log(`Sync direction: ${this.plugin.settings.syncDirection}`);
-
-    switch (this.plugin.settings.syncDirection) {
-      case "uploadOnly":
-        if (syncState === "new-local" || syncState === "local-newer") {
-          console.log(`Exporting file ${file.path} to Arweave`);
-          const newFileInfo = await this.exportFileToArweave(file, fileHash);
-          this.updateConfigs(file.path, newFileInfo);
-          console.log(`File ${file.path} exported successfully`);
-        }
-        break;
-      case "downloadOnly":
-        if (syncState === "new-remote" || syncState === "remote-newer") {
-          console.log(`Importing file ${file.path} from Arweave`);
-          await this.importFileFromArweave(file.path);
-          console.log(`File ${file.path} imported successfully`);
-        }
-        break;
-      case "bidirectional":
-      default:
-        if (syncState === "new-local" || syncState === "local-newer") {
-          console.log(`Exporting file ${file.path} to Arweave (bidirectional)`);
-          const newFileInfo = await this.exportFileToArweave(file, fileHash);
-          this.updateConfigs(file.path, newFileInfo);
-          console.log(
-            `File ${file.path} exported successfully (bidirectional)`,
-          );
-        } else if (syncState === "new-remote" || syncState === "remote-newer") {
-          console.log(
-            `Importing file ${file.path} from Arweave (bidirectional)`,
-          );
-          await this.importFileFromArweave(file.path);
-          console.log(
-            `File ${file.path} imported successfully (bidirectional)`,
-          );
-        }
-        break;
-    }
-
-    if (updateConfig) {
-      console.log(
-        `Updating AO manager with new remote config for file: ${file.path}`,
-      );
-      await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
-      console.log(`Saving plugin settings for file: ${file.path}`);
-    }
-
-    await this.plugin.saveSettings();
-    console.log(`File ${file.path} synced successfully.`);
+    this.logger.info(`Completed sync for file: ${file.path}`);
   }
 
   private updateConfigs(filePath: string, fileInfo: FileUploadInfo): void {
@@ -270,7 +211,9 @@ export class VaultSyncManager {
         file.path.startsWith(folder),
       )
     ) {
-      console.log(`File ${file.path} not in selected folders. Skipping sync.`);
+      this.logger.debug(
+        `File ${file.path} not in selected folders. Skipping sync.`,
+      );
       return false;
     }
 
@@ -280,16 +223,18 @@ export class VaultSyncManager {
         (folder) => folder !== "/" && file.path.startsWith(folder + "/"),
       )
     ) {
-      console.log(`File ${file.path} in excluded folder. Skipping sync.`);
+      this.logger.debug(`File ${file.path} in excluded folder. Skipping sync.`);
       return false;
     }
 
     if (!settings.syncFileTypes.includes(`.${file.extension}`)) {
-      console.log(`File ${file.path} not of syncable type. Skipping sync.`);
+      this.logger.debug(
+        `File ${file.path} not of syncable type. Skipping sync.`,
+      );
       return false;
     }
 
-    console.log(`File ${file.path} should be synced.`);
+    this.logger.debug(`File ${file.path} should be synced.`);
     return true;
   }
 
@@ -305,10 +250,6 @@ export class VaultSyncManager {
       .filter((file) => this.shouldSyncFile(file));
   }
 
-  isWalletConnected(): boolean {
-    return walletManager.isConnected();
-  }
-
   async importFilesFromArweave(filePaths: string[]): Promise<string[]> {
     const importedFiles: string[] = [];
 
@@ -316,9 +257,9 @@ export class VaultSyncManager {
       try {
         await this.importFileFromArweave(filePath);
         importedFiles.push(filePath);
-        console.log(`Successfully imported: ${filePath}`);
+        this.logger.info(`Successfully imported: ${filePath}`);
       } catch (error) {
-        console.error(`Failed to import file: ${filePath}`, error);
+        this.logger.error(`Failed to import file: ${filePath}`, error);
         new Notice(`Failed to import ${filePath}. Error: ${error.message}`);
       }
     }
@@ -337,7 +278,6 @@ export class VaultSyncManager {
         throw new Error(`No remote file info found for ${filePath}`);
       }
 
-      // Check for remote rename
       await this.remoteRename(normalizedPath, remoteFileInfo);
 
       const encryptedContent = await this.fetchEncryptedContent(
@@ -348,7 +288,7 @@ export class VaultSyncManager {
       try {
         decryptedContent = this.decrypt(encryptedContent);
       } catch (decryptError) {
-        console.error(`Failed to decrypt ${filePath}:`, decryptError);
+        this.logger.error(`Failed to decrypt ${filePath}:`, decryptError);
         await this.handleDecryptionFailure(filePath);
         return;
       }
@@ -357,21 +297,18 @@ export class VaultSyncManager {
         this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
 
       if (existingFile instanceof TFile) {
-        // File exists, update it
         await this.updateExistingFile(existingFile, decryptedContent);
-        console.log(`Updated existing file: ${normalizedPath}`);
+        this.logger.info(`Updated existing file: ${normalizedPath}`);
       } else if (existingFile instanceof TFolder) {
-        // A folder exists with the same name, create file with a unique name
         const uniquePath = this.generateUniqueFilePath(normalizedPath);
         await this.createNewFile(uniquePath, decryptedContent);
-        console.log(`Created new file with modified path: ${uniquePath}`);
+        this.logger.info(`Created new file with modified path: ${uniquePath}`);
       } else {
-        // File doesn't exist, create it
         if (normalizedPath.includes("/")) {
           await this.ensureDirectoryExists(normalizedPath);
         }
         await this.createNewFile(normalizedPath, decryptedContent);
-        console.log(`Created new file: ${normalizedPath}`);
+        this.logger.info(`Created new file: ${normalizedPath}`);
       }
 
       this.updateConfigs(filePath, {
@@ -380,9 +317,9 @@ export class VaultSyncManager {
       });
       await this.plugin.saveSettings();
 
-      console.log(`Imported file: ${normalizedPath}`);
+      this.logger.info(`Imported file: ${normalizedPath}`);
     } catch (error) {
-      console.error(`Failed to import file: ${filePath}`, error);
+      this.logger.error(`Failed to import file: ${filePath}`, error);
       throw error;
     }
   }
@@ -405,19 +342,16 @@ export class VaultSyncManager {
     const activeView =
       this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
     if (activeView && activeView.file === file) {
-      // If the file is currently open and active, use the Editor interface
       const editor = activeView.editor;
       if (typeof content === "string") {
         editor.setValue(content);
       } else {
-        // Handle binary content
         new Notice(`Binary file ${file.name} has been updated.`);
         await this.plugin.app.vault.modifyBinary(file, content);
       }
     } else {
-      // If the file is not active, use Vault.process for text files and modifyBinary for binary files
       if (typeof content === "string") {
-        await this.plugin.app.vault.process(file, () => content);
+        await this.plugin.app.vault.modify(file, content);
       } else {
         await this.plugin.app.vault.modifyBinary(file, content);
       }
@@ -429,7 +363,7 @@ export class VaultSyncManager {
     let counter = 1;
     while (this.plugin.app.vault.getAbstractFileByPath(newPath)) {
       const dir = dirname(originalPath);
-      const name = basename(originalPath).replace(/\.[^/.]+$/, ""); // Remove extension
+      const name = basename(originalPath).replace(/\.[^/.]+$/, "");
       const ext = basename(originalPath).split(".").pop() || "";
       newPath = normalizePath(
         `${dir}/${name}_${counter}${ext ? "." + ext : ""}`,
@@ -446,9 +380,9 @@ export class VaultSyncManager {
 
       this.updateConfigs(file.path, newFileInfo);
       await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
-      console.log(`Force pushed file: ${file.path}`);
+      this.logger.info(`Force pushed file: ${file.path}`);
     } catch (error) {
-      console.error(`Failed to force push file: ${file.path}`, error);
+      this.logger.error(`Failed to force push file: ${file.path}`, error);
       throw error;
     }
   }
@@ -468,14 +402,13 @@ export class VaultSyncManager {
       try {
         decryptedContent = this.decrypt(encryptedContent);
       } catch (decryptError) {
-        console.error(`Failed to decrypt ${file.path}:`, decryptError);
+        this.logger.error(`Failed to decrypt ${file.path}:`, decryptError);
         throw new Error(
           `Failed to decrypt ${file.path}. Please check your encryption password.`,
         );
       }
 
       if (await this.plugin.app.vault.adapter.exists(file.path)) {
-        // File exists, update it
         if (Buffer.isBuffer(decryptedContent)) {
           await this.plugin.app.vault.modifyBinary(
             file,
@@ -487,7 +420,6 @@ export class VaultSyncManager {
           throw new Error(`Unexpected decrypted content type for ${file.path}`);
         }
       } else {
-        // File doesn't exist, create it
         if (Buffer.isBuffer(decryptedContent)) {
           await this.plugin.app.vault.createBinary(
             file.path,
@@ -501,15 +433,15 @@ export class VaultSyncManager {
       this.updateConfigs(file.path, remoteFileInfo);
       await this.plugin.saveSettings();
 
-      console.log(`Force pulled file: ${file.path}`);
+      this.logger.info(`Force pulled file: ${file.path}`);
     } catch (error) {
-      console.error(`Failed to force pull file: ${file.path}`, error);
+      this.logger.error(`Failed to force pull file: ${file.path}`, error);
       throw error;
     }
   }
 
   private async handleDecryptionFailure(filePath: string): Promise<void> {
-    console.log(
+    this.logger.warn(
       `Removing ${filePath} from remote upload config due to decryption failure`,
     );
 
@@ -522,7 +454,7 @@ export class VaultSyncManager {
   }
 
   public async deleteRemoteFile(filePath: string): Promise<void> {
-    console.log(`Removing ${filePath} from remote upload config`);
+    this.logger.info(`Removing ${filePath} from remote upload config`);
 
     delete this.remoteUploadConfig[filePath];
     await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
@@ -548,7 +480,6 @@ export class VaultSyncManager {
             if (error.message !== "Folder already exists.") {
               throw error;
             }
-            // If the folder already exists, we can continue to the next subfolder
           }
         } else if (!(folderFile instanceof TFolder)) {
           throw new Error(`${currentPath} exists but is not a folder`);
@@ -561,18 +492,14 @@ export class VaultSyncManager {
     file: TFile,
     fileHash: string,
   ): Promise<FileUploadInfo> {
-    if (!walletManager.isConnected()) {
-      throw new Error(
-        "Wallet not connected. Please connect a wallet before uploading.",
-      );
-    }
+    this.ensureWalletConnected();
+    this.ensureEncryptionPassword();
 
     const wallet = walletManager.getJWK();
     if (!wallet) {
       throw new Error("Unable to retrieve wallet. Please try reconnecting.");
     }
 
-    this.ensureEncryptionPassword();
     const isBinary = this.isBinaryFile(file);
     const content = isBinary
       ? await this.vault.readBinary(file)
@@ -582,34 +509,12 @@ export class VaultSyncManager {
       isBinary,
     );
 
-    const winston = await this.arweave.transactions.getPrice(
-      Buffer.from(encryptedContent).byteLength,
-    );
-    const ar = Number(winston) / 1000000000000;
-    const precision = 2;
-    const cost = parseFloat(ar.toPrecision(precision));
-    const canProceed = await this.plugin.checkSpendingLimit(Number(cost));
-    if (!canProceed) {
-      throw new Error("Monthly spending limit reached");
-    }
-
-    const currentFileInfo = this.localUploadConfig[file.path];
-    const previousVersionTxId = currentFileInfo ? currentFileInfo.txId : null;
-    const versionNumber = currentFileInfo
-      ? currentFileInfo.versionNumber + 1
-      : 1;
-
-    const transaction = await this.arweave.createTransaction(
-      { data: encryptedContent },
+    const transaction = await this.createArweaveTransaction(
+      encryptedContent,
       wallet,
+      file,
+      fileHash,
     );
-
-    transaction.addTag("Content-Type", "text/markdown");
-    transaction.addTag("App-Name", "ArweaveSync");
-    transaction.addTag("File-Hash", fileHash);
-    transaction.addTag("Previous-Version", previousVersionTxId || "");
-    transaction.addTag("Version-Number", versionNumber.toString());
-
     await this.arweave.transactions.sign(transaction, wallet);
     const response = await this.arweave.transactions.post(transaction);
 
@@ -625,17 +530,58 @@ export class VaultSyncManager {
       fileHash,
       encrypted: true,
       filePath: file.path,
-      previousVersionTxId,
-      versionNumber,
+      previousVersionTxId: this.getPreviousVersionTxId(file.path),
+      versionNumber: this.getNextVersionNumber(file.path),
     };
 
     await this.plugin.incrementFilesSynced();
 
-    console.log(
+    this.logger.info(
       `File ${file.path} exported to Arweave. Transaction ID: ${transaction.id}`,
     );
 
     return newFileInfo;
+  }
+
+  private async createArweaveTransaction(
+    encryptedContent: string,
+    wallet: any,
+    file: TFile,
+    fileHash: string,
+  ): Promise<any> {
+    const transaction = await this.arweave.createTransaction(
+      { data: encryptedContent },
+      wallet,
+    );
+
+    const tags = [
+      { name: "Content-Type", value: "text/markdown" },
+      { name: "App-Name", value: "ArweaveSync" },
+      { name: "File-Hash", value: fileHash },
+      {
+        name: "Previous-Version",
+        value: this.getPreviousVersionTxId(file.path) || "",
+      },
+      {
+        name: "Version-Number",
+        value: this.getNextVersionNumber(file.path).toString(),
+      },
+      { name: "File-Path", value: file.path },
+    ];
+
+    tags.forEach((tag) => transaction.addTag(tag.name, tag.value));
+
+    return transaction;
+  }
+
+  private getPreviousVersionTxId(filePath: string): string | null {
+    const currentFileInfo = this.localUploadConfig[filePath];
+    return currentFileInfo ? currentFileInfo.txId : null;
+  }
+
+  private getNextVersionNumber(filePath: string): number {
+    const currentFileInfo = this.localUploadConfig[filePath];
+    return currentFileInfo ? currentFileInfo.versionNumber + 1 : 1;
   }
 
   async exportFilesToArweave(filePaths: string[]): Promise<void> {
@@ -656,7 +602,7 @@ export class VaultSyncManager {
 
   public async updateRemoteConfig(): Promise<void> {
     const remoteConfig = await this.plugin.aoManager.getUploadConfig();
-    console.log(remoteConfig);
+    this.logger.debug("Remote config:", remoteConfig);
     this.remoteUploadConfig = remoteConfig || {};
     this.plugin.settings.remoteUploadConfig = remoteConfig || {};
     await this.plugin.saveSettings();
@@ -704,7 +650,7 @@ export class VaultSyncManager {
         this.decrypt(encryptedContent);
         syncState = "new-remote";
       } catch (decryptError) {
-        console.error(`Failed to decrypt ${file.path}:`, decryptError);
+        this.logger.error(`Failed to decrypt ${file.path}:`, decryptError);
         await this.handleDecryptionFailure(file.path);
         syncState = "decrypt-failed";
       }
@@ -748,7 +694,7 @@ export class VaultSyncManager {
         });
         return transaction as string;
       } catch (error) {
-        console.warn(
+        this.logger.warn(
           `Attempt ${attempt + 1} failed to fetch content for txId ${txId}:`,
           error,
         );
@@ -758,7 +704,7 @@ export class VaultSyncManager {
           );
         }
         await new Promise((resolve) =>
-          setTimeout(resolve, 1000 * (attempt + 1)),
+          setTimeout(resolve, 1000 * Math.pow(2, attempt)),
         );
       }
     }
@@ -799,20 +745,20 @@ export class VaultSyncManager {
       }
 
       const query = `
-          query($id: ID!) {
-            transaction(id: $id) {
-              id
-              tags {
-                name
-                value
-              }
-              block {
-                height
-                timestamp
-              }
+        query($id: ID!) {
+          transaction(id: $id) {
+            id
+            tags {
+              name
+              value
+            }
+            block {
+              height
+              timestamp
             }
           }
-        `;
+        }
+      `;
 
       try {
         const variables = { id: txId };
@@ -851,7 +797,7 @@ export class VaultSyncManager {
 
         await fetchVersion(previousVersionTxId);
       } catch (error) {
-        console.error("Error fetching version:", error);
+        this.logger.error("Error fetching version:", error);
       }
     };
 
@@ -870,11 +816,11 @@ export class VaultSyncManager {
       if (oldFile instanceof TFile) {
         try {
           await this.plugin.app.fileManager.renameFile(oldFile, filePath);
-          console.log(
+          this.logger.info(
             `Renamed file from ${remoteFileInfo.oldFilePath} to ${filePath}`,
           );
         } catch (error) {
-          console.error(
+          this.logger.error(
             `Failed to rename file from ${remoteFileInfo.oldFilePath} to ${filePath}:`,
             error,
           );
@@ -889,7 +835,7 @@ export class VaultSyncManager {
     return fileInfo ? fileInfo.txId : null;
   }
 
-  private isBinaryFile(file: TFile): boolean {
+  public isBinaryFile(file: TFile): boolean {
     const binaryExtensions = [
       "png",
       "jpg",
@@ -901,5 +847,25 @@ export class VaultSyncManager {
       "zip",
     ];
     return binaryExtensions.includes(file.extension.toLowerCase());
+  }
+
+  async syncAllFiles(): Promise<void> {
+    const filesToSync = this.getFilesToSync();
+    await this.syncFiles(filesToSync);
+  }
+
+  // Helper methods for encryption and decryption
+  public encrypt(data: string | Buffer, isBinary: boolean = false): string {
+    this.ensureEncryptionPassword();
+    return encrypt(data, this.encryptionPassword!, isBinary);
+  }
+
+  public decrypt(encryptedData: string): string | Buffer {
+    this.ensureEncryptionPassword();
+    return decrypt(encryptedData, this.encryptionPassword!);
+  }
+
+  public isWalletConnected(): boolean {
+    return walletManager.isConnected();
   }
 }

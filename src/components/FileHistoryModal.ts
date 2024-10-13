@@ -9,6 +9,7 @@ import {
 } from "obsidian";
 import ArweaveSync from "../main";
 import { FileVersion } from "../types";
+import { LogManager } from "../utils/logManager";
 
 export class FileHistoryModal extends Modal {
   private versions: FileVersion[] = [];
@@ -20,6 +21,7 @@ export class FileHistoryModal extends Modal {
   private hasMoreVersions: boolean = true;
   private modalContentEl: HTMLElement;
   private markdownContainer: HTMLElement;
+  private logger: LogManager;
 
   constructor(
     app: App,
@@ -27,6 +29,7 @@ export class FileHistoryModal extends Modal {
     private file: TFile,
   ) {
     super(app);
+    this.logger = new LogManager(plugin, "FileHistoryModal");
   }
 
   async onOpen() {
@@ -124,7 +127,7 @@ export class FileHistoryModal extends Modal {
         new MarkdownRenderChild(this.markdownContainer),
       );
     } catch (error) {
-      console.error("Failed to render current version:", error);
+      this.logger.error("Failed to render current version:", error);
       if (currentVersion.previousVersionTxId) {
         try {
           const oldContent =
@@ -141,7 +144,7 @@ export class FileHistoryModal extends Modal {
             new MarkdownRenderChild(this.markdownContainer),
           );
         } catch (oldError) {
-          console.error("Failed to render old version:", oldError);
+          this.logger.error("Failed to render old version:", oldError);
           this.markdownContainer.createEl("p", {
             text: "Failed to load content for this version.",
             cls: "error-message",

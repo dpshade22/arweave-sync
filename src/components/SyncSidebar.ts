@@ -10,6 +10,7 @@ import ArweaveSync from "../main";
 import { ConfirmationModal } from "./ConfirmationModal";
 import { RemoteFilePreviewModal } from "./RemoteFilePreviewModal";
 import { FileUploadInfo, UploadConfig } from "../types";
+import { LogManager } from "../utils/logManager";
 
 interface FileNode {
   name: string;
@@ -40,10 +41,12 @@ export class SyncSidebar extends ItemView {
   private exportFiles: Set<string> = new Set();
   private currentBalance: string = "0";
   private newBalance: string = "0";
+  private logManager: LogManager;
 
   constructor(leaf: WorkspaceLeaf, plugin: ArweaveSync) {
     super(leaf);
     this.plugin = plugin;
+    this.logManager = new LogManager(this.plugin, "SyncSidebar");
     this.totalExportSize = 0;
     this.totalPrice = "0";
     this.exportFiles = new Set();
@@ -659,9 +662,6 @@ export class SyncSidebar extends ItemView {
         const syncState =
           await this.plugin.vaultSyncManager.checkFileSync(file);
         contentEl.addClass(syncState.syncState);
-        // console.log(
-        //   `File name: ${file.name}, Sync state: ${syncState.syncState}`,
-        // );
       }
     }
   }
@@ -788,9 +788,7 @@ export class SyncSidebar extends ItemView {
     // Asynchronously update the file size and price
     if (this.currentTab === "export") {
       const isAddingToExport = isSource;
-      // console.log(
-      //   `Toggling file selection: ${file.path}, isAddingToExport: ${isAddingToExport}`,
-      // );
+
       this.updateFileSizeAndPrice(file, isAddingToExport).then(() => {
         // Update the price display after the calculation is complete
         this.updatePriceDisplay();
@@ -813,7 +811,6 @@ export class SyncSidebar extends ItemView {
 
   private addFileToTree(tree: FileNode[], file: FileNode): FileNode[] {
     if (!file.path) {
-      console.error("Path is undefined for file:", file);
       return tree;
     }
 
@@ -902,7 +899,6 @@ export class SyncSidebar extends ItemView {
         `${this.currentTab === "export" ? "Export" : "Import"} completed successfully.`,
       );
     } catch (error) {
-      console.error("Error during submission:", error);
       new Notice(`Error during ${this.currentTab}: ${error.message}`);
     } finally {
       submitButton.setAttribute("data-state", "ready");
@@ -1104,7 +1100,6 @@ export class SyncSidebar extends ItemView {
         }
       }
     } catch (error) {
-      console.error("Error getting file sync state:", error);
       this.removeFileFromSidebar(file.path);
     }
 
@@ -1359,7 +1354,6 @@ export class SyncSidebar extends ItemView {
         new Notice(`Error: ${file.name} not found in local vault.`);
       }
     } catch (error) {
-      console.error("Error replacing remote file with local:", error);
       new Notice(`Failed to replace remote file: ${error.message}`);
     }
   }
@@ -1373,7 +1367,6 @@ export class SyncSidebar extends ItemView {
         this.refresh();
       }
     } catch (error) {
-      console.error("Error deleting remote file:", error);
       new Notice(`Failed to delete remote file: ${error.message}`);
     }
   }
@@ -1413,7 +1406,7 @@ export class SyncSidebar extends ItemView {
         this.plugin.app.vault.getAbstractFileByPath(filePath);
 
       if (!(abstractFile instanceof TFile)) {
-        console.error(`File not found: ${filePath}`);
+        this.logManager.error(`File not found: ${filePath}`);
         return;
       }
 
@@ -1461,7 +1454,10 @@ export class SyncSidebar extends ItemView {
           this.newBalance = (balanceAR - ar).toFixed(decimalPlaces);
         }
       } catch (error) {
-        console.error("Error fetching Arweave price or balance:", error);
+        this.logManager.error(
+          "Error fetching Arweave price or balance:",
+          error,
+        );
         this.totalPrice = "Error";
         this.currentBalance = "Error";
         this.newBalance = "Error";

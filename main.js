@@ -11892,168 +11892,6 @@ var require_web = __commonJS({
   }
 });
 
-// node_modules/process/browser.js
-var require_browser2 = __commonJS({
-  "node_modules/process/browser.js"(exports, module2) {
-    var process2 = module2.exports = {};
-    var cachedSetTimeout;
-    var cachedClearTimeout;
-    function defaultSetTimout() {
-      throw new Error("setTimeout has not been defined");
-    }
-    function defaultClearTimeout() {
-      throw new Error("clearTimeout has not been defined");
-    }
-    (function() {
-      try {
-        if (typeof setTimeout === "function") {
-          cachedSetTimeout = setTimeout;
-        } else {
-          cachedSetTimeout = defaultSetTimout;
-        }
-      } catch (e) {
-        cachedSetTimeout = defaultSetTimout;
-      }
-      try {
-        if (typeof clearTimeout === "function") {
-          cachedClearTimeout = clearTimeout;
-        } else {
-          cachedClearTimeout = defaultClearTimeout;
-        }
-      } catch (e) {
-        cachedClearTimeout = defaultClearTimeout;
-      }
-    })();
-    function runTimeout(fun) {
-      if (cachedSetTimeout === setTimeout) {
-        return setTimeout(fun, 0);
-      }
-      if ((cachedSetTimeout === defaultSetTimout || !cachedSetTimeout) && setTimeout) {
-        cachedSetTimeout = setTimeout;
-        return setTimeout(fun, 0);
-      }
-      try {
-        return cachedSetTimeout(fun, 0);
-      } catch (e) {
-        try {
-          return cachedSetTimeout.call(null, fun, 0);
-        } catch (e2) {
-          return cachedSetTimeout.call(this, fun, 0);
-        }
-      }
-    }
-    function runClearTimeout(marker) {
-      if (cachedClearTimeout === clearTimeout) {
-        return clearTimeout(marker);
-      }
-      if ((cachedClearTimeout === defaultClearTimeout || !cachedClearTimeout) && clearTimeout) {
-        cachedClearTimeout = clearTimeout;
-        return clearTimeout(marker);
-      }
-      try {
-        return cachedClearTimeout(marker);
-      } catch (e) {
-        try {
-          return cachedClearTimeout.call(null, marker);
-        } catch (e2) {
-          return cachedClearTimeout.call(this, marker);
-        }
-      }
-    }
-    var queue = [];
-    var draining = false;
-    var currentQueue;
-    var queueIndex = -1;
-    function cleanUpNextTick() {
-      if (!draining || !currentQueue) {
-        return;
-      }
-      draining = false;
-      if (currentQueue.length) {
-        queue = currentQueue.concat(queue);
-      } else {
-        queueIndex = -1;
-      }
-      if (queue.length) {
-        drainQueue();
-      }
-    }
-    function drainQueue() {
-      if (draining) {
-        return;
-      }
-      var timeout = runTimeout(cleanUpNextTick);
-      draining = true;
-      var len = queue.length;
-      while (len) {
-        currentQueue = queue;
-        queue = [];
-        while (++queueIndex < len) {
-          if (currentQueue) {
-            currentQueue[queueIndex].run();
-          }
-        }
-        queueIndex = -1;
-        len = queue.length;
-      }
-      currentQueue = null;
-      draining = false;
-      runClearTimeout(timeout);
-    }
-    process2.nextTick = function(fun) {
-      var args = new Array(arguments.length - 1);
-      if (arguments.length > 1) {
-        for (var i = 1; i < arguments.length; i++) {
-          args[i - 1] = arguments[i];
-        }
-      }
-      queue.push(new Item(fun, args));
-      if (queue.length === 1 && !draining) {
-        runTimeout(drainQueue);
-      }
-    };
-    function Item(fun, array) {
-      this.fun = fun;
-      this.array = array;
-    }
-    Item.prototype.run = function() {
-      this.fun.apply(null, this.array);
-    };
-    process2.title = "browser";
-    process2.browser = true;
-    process2.env = {};
-    process2.argv = [];
-    process2.version = "";
-    process2.versions = {};
-    function noop() {
-    }
-    process2.on = noop;
-    process2.addListener = noop;
-    process2.once = noop;
-    process2.off = noop;
-    process2.removeListener = noop;
-    process2.removeAllListeners = noop;
-    process2.emit = noop;
-    process2.prependListener = noop;
-    process2.prependOnceListener = noop;
-    process2.listeners = function(name) {
-      return [];
-    };
-    process2.binding = function(name) {
-      throw new Error("process.binding is not supported");
-    };
-    process2.cwd = function() {
-      return "/";
-    };
-    process2.chdir = function(dir) {
-      throw new Error("process.chdir is not supported");
-    };
-    process2.umask = function() {
-      return 0;
-    };
-  }
-});
-
 // src/main.ts
 var main_exports = {};
 __export(main_exports, {
@@ -26929,7 +26767,6 @@ var WalletManager = class extends import_obsidian.Events {
       const jwkJson = await this._readJWKFile(jwkFile);
       await this.initializeWallet(jwkJson);
       if (this.address) {
-        console.log("Wallet connected successfully:", this.address);
         if (!this.isConnected()) {
           this.trigger("wallet-connected", this.getWalletJson());
         }
@@ -27033,33 +26870,60 @@ function relative(from, to) {
   return relativePath.join("/") || ".";
 }
 
+// src/utils/logManager.ts
+var LogManager = class {
+  constructor(plugin, context) {
+    this.plugin = plugin;
+    this.context = context;
+  }
+  log(level, message2, ...args) {
+    console.log(`[${this.context}] [${level}] ${message2}`, ...args);
+  }
+  info(message2, ...args) {
+    this.log("INFO", message2, ...args);
+  }
+  warn(message2, ...args) {
+    this.log("WARN", message2, ...args);
+  }
+  error(message2, ...args) {
+    this.log("ERROR", message2, ...args);
+  }
+  debug(message2, ...args) {
+    if (this.plugin.settings.debugMode) {
+      this.log("DEBUG", message2, ...args);
+    }
+  }
+};
+
 // src/managers/vaultSyncManager.ts
 var VaultSyncManager = class {
-  constructor(plugin, remoteUploadConfig, localUploadConfig) {
+  constructor(plugin, remoteUploadConfig, localUploadConfig, logger) {
     this.plugin = plugin;
     this.remoteUploadConfig = remoteUploadConfig;
     this.localUploadConfig = localUploadConfig;
     this.encryptionPassword = null;
     this.vault = plugin.app.vault;
-    this.remoteUploadConfig = remoteUploadConfig;
-    this.localUploadConfig = localUploadConfig;
     this.arweave = import_arweave2.default.init({
       host: "arweave.net",
       port: 443,
       protocol: "https"
     });
     this.argql = (0, import_ar_gql2.arGql)();
+    this.logger = logger || new LogManager(plugin, "VaultSyncManager");
   }
-  isWalletSet() {
-    return walletManager.isConnected();
+  ensureWalletConnected() {
+    if (!walletManager.isConnected()) {
+      throw new Error(
+        "Wallet not connected. Please connect a wallet before proceeding."
+      );
+    }
   }
-  encrypt(data, isBinary = false) {
-    this.ensureEncryptionPassword();
-    return encrypt(data, this.encryptionPassword, isBinary);
-  }
-  decrypt(encryptedData) {
-    this.ensureEncryptionPassword();
-    return decrypt(encryptedData, this.encryptionPassword);
+  ensureEncryptionPassword() {
+    if (!this.encryptionPassword) {
+      throw new Error(
+        "Encryption password is not set. Please connect a wallet first."
+      );
+    }
   }
   setEncryptionPassword(password) {
     this.encryptionPassword = password;
@@ -27067,44 +26931,48 @@ var VaultSyncManager = class {
   isEncryptionPasswordSet() {
     return this.encryptionPassword !== null;
   }
-  ensureEncryptionPassword() {
-    if (!this.isEncryptionPasswordSet()) {
-      throw new Error(
-        "Encryption password is not set. Please connect a wallet first."
-      );
-    }
-  }
   async syncFiles(files) {
-    console.log(`Starting sync for ${files.length} files`);
+    this.logger.info(`Starting sync for ${files.length} files`);
     const syncResults = await this.checkMultipleFileSync(files);
-    const filesToActuallySync = files.filter((file) => {
+    const filesToSync = files.filter((file) => {
       const result2 = syncResults.get(file.path);
       return result2 && result2.syncState !== "synced";
     });
-    const totalFiles = filesToActuallySync.length;
+    await this.syncFilesInternal(filesToSync);
+    this.logger.info(`Completed sync for ${filesToSync.length} files`);
+  }
+  async syncFilesInternal(files) {
+    const totalFiles = files.length;
     let processedFiles = 0;
     const batchSize = 5;
-    const updatedRemoteConfig = {};
-    const updatedLocalConfig = {};
-    for (let i = 0; i < filesToActuallySync.length; i += batchSize) {
-      const batch = filesToActuallySync.slice(i, i + batchSize);
-      await Promise.all(
-        batch.map(async (file) => {
-          const result2 = await this.syncFileInternal(file);
-          if (result2) {
-            updatedRemoteConfig[result2.filePath] = result2.fileInfo;
-            updatedLocalConfig[result2.filePath] = result2.fileInfo;
-          }
-          processedFiles++;
-          this.updateSyncProgress(processedFiles, totalFiles);
-        })
-      );
+    const updatedConfigs = {};
+    try {
+      for (let i = 0; i < files.length; i += batchSize) {
+        const batch = files.slice(i, i + batchSize);
+        await Promise.all(
+          batch.map(async (file) => {
+            try {
+              const result2 = await this.syncFileInternal(file);
+              if (result2) {
+                updatedConfigs[result2.filePath] = result2.fileInfo;
+              }
+            } catch (error) {
+              this.logger.error(`Failed to sync file ${file.path}:`, error);
+            } finally {
+              processedFiles++;
+              this.updateSyncProgress(processedFiles, totalFiles);
+            }
+          })
+        );
+      }
+      Object.assign(this.remoteUploadConfig, updatedConfigs);
+      Object.assign(this.localUploadConfig, updatedConfigs);
+      await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
+      await this.plugin.saveSettings();
+    } catch (error) {
+      this.logger.error("Error during file sync:", error);
+      throw error;
     }
-    Object.assign(this.remoteUploadConfig, updatedRemoteConfig);
-    Object.assign(this.localUploadConfig, updatedLocalConfig);
-    await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
-    await this.plugin.saveSettings();
-    console.log(`Completed sync for ${filesToActuallySync.length} files`);
   }
   async syncFileInternal(file) {
     if (!this.shouldSyncFile(file)) {
@@ -27118,13 +26986,11 @@ var VaultSyncManager = class {
     switch (this.plugin.settings.syncDirection) {
       case "uploadOnly":
         if (syncState === "new-local" || syncState === "local-newer") {
-          new import_obsidian2.Notice(`Exporting file ${file.path} to Arweave`);
           newFileInfo = await this.exportFileToArweave(file, fileHash);
         }
         break;
       case "downloadOnly":
         if (syncState === "new-remote" || syncState === "remote-newer") {
-          new import_obsidian2.Notice(`Importing file ${file.path} from Arweave`);
           await this.importFileFromArweave(file.path);
           newFileInfo = this.remoteUploadConfig[file.path];
         }
@@ -27132,24 +26998,19 @@ var VaultSyncManager = class {
       case "bidirectional":
       default:
         if (syncState === "new-local" || syncState === "local-newer") {
-          new import_obsidian2.Notice(`Exporting file ${file.path} to Arweave`);
           newFileInfo = await this.exportFileToArweave(file, fileHash);
         } else if (syncState === "new-remote" || syncState === "remote-newer") {
-          new import_obsidian2.Notice(`Importing file ${file.path} from Arweave`);
           await this.importFileFromArweave(file.path);
           newFileInfo = this.remoteUploadConfig[file.path];
         }
         break;
     }
-    if (newFileInfo) {
-      return { filePath: file.path, fileInfo: newFileInfo };
-    } else {
-      return null;
-    }
+    return newFileInfo ? { filePath: file.path, fileInfo: newFileInfo } : null;
   }
   updateSyncProgress(processed, total) {
     const progress = processed / total * 100;
-    console.log(`Sync progress: ${progress.toFixed(2)}%`);
+    this.logger.debug(`Sync progress: ${progress.toFixed(2)}%`);
+    this.plugin.emitter.trigger("syncProgress", { processed, total });
   }
   async checkMultipleFileSync(files) {
     const results2 = /* @__PURE__ */ new Map();
@@ -27166,66 +27027,16 @@ var VaultSyncManager = class {
     return results2;
   }
   async syncFile(file, updateConfig = true) {
-    console.log(`Starting sync for file: ${file.path}`);
-    if (!this.shouldSyncFile(file)) {
-      console.log(`File ${file.path} should not be synced. Skipping.`);
-      return;
+    this.logger.info(`Starting sync for file: ${file.path}`);
+    const result2 = await this.syncFileInternal(file);
+    if (result2) {
+      this.updateConfigs(result2.filePath, result2.fileInfo);
+      if (updateConfig) {
+        await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
+        await this.plugin.saveSettings();
+      }
     }
-    console.log(`Updating remote config for file: ${file.path}`);
-    await this.updateRemoteConfig();
-    console.log(`Checking sync state for file: ${file.path}`);
-    const { syncState, fileHash } = await this.checkFileSync(file);
-    if (syncState === "synced") {
-      console.log(`File ${file.path} is already synced.`);
-      return;
-    }
-    console.log(`Sync state for file ${file.path}: ${syncState}`);
-    console.log(`Sync direction: ${this.plugin.settings.syncDirection}`);
-    switch (this.plugin.settings.syncDirection) {
-      case "uploadOnly":
-        if (syncState === "new-local" || syncState === "local-newer") {
-          console.log(`Exporting file ${file.path} to Arweave`);
-          const newFileInfo = await this.exportFileToArweave(file, fileHash);
-          this.updateConfigs(file.path, newFileInfo);
-          console.log(`File ${file.path} exported successfully`);
-        }
-        break;
-      case "downloadOnly":
-        if (syncState === "new-remote" || syncState === "remote-newer") {
-          console.log(`Importing file ${file.path} from Arweave`);
-          await this.importFileFromArweave(file.path);
-          console.log(`File ${file.path} imported successfully`);
-        }
-        break;
-      case "bidirectional":
-      default:
-        if (syncState === "new-local" || syncState === "local-newer") {
-          console.log(`Exporting file ${file.path} to Arweave (bidirectional)`);
-          const newFileInfo = await this.exportFileToArweave(file, fileHash);
-          this.updateConfigs(file.path, newFileInfo);
-          console.log(
-            `File ${file.path} exported successfully (bidirectional)`
-          );
-        } else if (syncState === "new-remote" || syncState === "remote-newer") {
-          console.log(
-            `Importing file ${file.path} from Arweave (bidirectional)`
-          );
-          await this.importFileFromArweave(file.path);
-          console.log(
-            `File ${file.path} imported successfully (bidirectional)`
-          );
-        }
-        break;
-    }
-    if (updateConfig) {
-      console.log(
-        `Updating AO manager with new remote config for file: ${file.path}`
-      );
-      await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
-      console.log(`Saving plugin settings for file: ${file.path}`);
-    }
-    await this.plugin.saveSettings();
-    console.log(`File ${file.path} synced successfully.`);
+    this.logger.info(`Completed sync for file: ${file.path}`);
   }
   updateConfigs(filePath, fileInfo) {
     this.localUploadConfig[filePath] = fileInfo;
@@ -27237,20 +27048,24 @@ var VaultSyncManager = class {
     if (settings.filesToSync === "selected" && !settings.selectedFoldersToSync.some(
       (folder) => file.path.startsWith(folder)
     )) {
-      console.log(`File ${file.path} not in selected folders. Skipping sync.`);
+      this.logger.debug(
+        `File ${file.path} not in selected folders. Skipping sync.`
+      );
       return false;
     }
     if (settings.excludedFolders.length > 0 && settings.excludedFolders.some(
       (folder) => folder !== "/" && file.path.startsWith(folder + "/")
     )) {
-      console.log(`File ${file.path} in excluded folder. Skipping sync.`);
+      this.logger.debug(`File ${file.path} in excluded folder. Skipping sync.`);
       return false;
     }
     if (!settings.syncFileTypes.includes(`.${file.extension}`)) {
-      console.log(`File ${file.path} not of syncable type. Skipping sync.`);
+      this.logger.debug(
+        `File ${file.path} not of syncable type. Skipping sync.`
+      );
       return false;
     }
-    console.log(`File ${file.path} should be synced.`);
+    this.logger.debug(`File ${file.path} should be synced.`);
     return true;
   }
   async performFullSync() {
@@ -27261,18 +27076,15 @@ var VaultSyncManager = class {
   getFilesToSync() {
     return this.plugin.app.vault.getFiles().filter((file) => this.shouldSyncFile(file));
   }
-  isWalletConnected() {
-    return walletManager.isConnected();
-  }
   async importFilesFromArweave(filePaths) {
     const importedFiles = [];
     for (const filePath of filePaths) {
       try {
         await this.importFileFromArweave(filePath);
         importedFiles.push(filePath);
-        console.log(`Successfully imported: ${filePath}`);
+        this.logger.info(`Successfully imported: ${filePath}`);
       } catch (error) {
-        console.error(`Failed to import file: ${filePath}`, error);
+        this.logger.error(`Failed to import file: ${filePath}`, error);
         new import_obsidian2.Notice(`Failed to import ${filePath}. Error: ${error.message}`);
       }
     }
@@ -27295,33 +27107,33 @@ var VaultSyncManager = class {
       try {
         decryptedContent = this.decrypt(encryptedContent);
       } catch (decryptError) {
-        console.error(`Failed to decrypt ${filePath}:`, decryptError);
+        this.logger.error(`Failed to decrypt ${filePath}:`, decryptError);
         await this.handleDecryptionFailure(filePath);
         return;
       }
       const existingFile = this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
       if (existingFile instanceof import_obsidian2.TFile) {
         await this.updateExistingFile(existingFile, decryptedContent);
-        console.log(`Updated existing file: ${normalizedPath}`);
+        this.logger.info(`Updated existing file: ${normalizedPath}`);
       } else if (existingFile instanceof import_obsidian2.TFolder) {
         const uniquePath = this.generateUniqueFilePath(normalizedPath);
         await this.createNewFile(uniquePath, decryptedContent);
-        console.log(`Created new file with modified path: ${uniquePath}`);
+        this.logger.info(`Created new file with modified path: ${uniquePath}`);
       } else {
         if (normalizedPath.includes("/")) {
           await this.ensureDirectoryExists(normalizedPath);
         }
         await this.createNewFile(normalizedPath, decryptedContent);
-        console.log(`Created new file: ${normalizedPath}`);
+        this.logger.info(`Created new file: ${normalizedPath}`);
       }
       this.updateConfigs(filePath, {
         ...remoteFileInfo,
         filePath: normalizedPath
       });
       await this.plugin.saveSettings();
-      console.log(`Imported file: ${normalizedPath}`);
+      this.logger.info(`Imported file: ${normalizedPath}`);
     } catch (error) {
-      console.error(`Failed to import file: ${filePath}`, error);
+      this.logger.error(`Failed to import file: ${filePath}`, error);
       throw error;
     }
   }
@@ -27344,7 +27156,7 @@ var VaultSyncManager = class {
       }
     } else {
       if (typeof content === "string") {
-        await this.plugin.app.vault.process(file, () => content);
+        await this.plugin.app.vault.modify(file, content);
       } else {
         await this.plugin.app.vault.modifyBinary(file, content);
       }
@@ -27370,9 +27182,9 @@ var VaultSyncManager = class {
       const newFileInfo = await this.exportFileToArweave(file, fileHash);
       this.updateConfigs(file.path, newFileInfo);
       await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
-      console.log(`Force pushed file: ${file.path}`);
+      this.logger.info(`Force pushed file: ${file.path}`);
     } catch (error) {
-      console.error(`Failed to force push file: ${file.path}`, error);
+      this.logger.error(`Failed to force push file: ${file.path}`, error);
       throw error;
     }
   }
@@ -27389,7 +27201,7 @@ var VaultSyncManager = class {
       try {
         decryptedContent = this.decrypt(encryptedContent);
       } catch (decryptError) {
-        console.error(`Failed to decrypt ${file.path}:`, decryptError);
+        this.logger.error(`Failed to decrypt ${file.path}:`, decryptError);
         throw new Error(
           `Failed to decrypt ${file.path}. Please check your encryption password.`
         );
@@ -27417,14 +27229,14 @@ var VaultSyncManager = class {
       }
       this.updateConfigs(file.path, remoteFileInfo);
       await this.plugin.saveSettings();
-      console.log(`Force pulled file: ${file.path}`);
+      this.logger.info(`Force pulled file: ${file.path}`);
     } catch (error) {
-      console.error(`Failed to force pull file: ${file.path}`, error);
+      this.logger.error(`Failed to force pull file: ${file.path}`, error);
       throw error;
     }
   }
   async handleDecryptionFailure(filePath) {
-    console.log(
+    this.logger.warn(
       `Removing ${filePath} from remote upload config due to decryption failure`
     );
     delete this.remoteUploadConfig[filePath];
@@ -27434,7 +27246,7 @@ var VaultSyncManager = class {
     );
   }
   async deleteRemoteFile(filePath) {
-    console.log(`Removing ${filePath} from remote upload config`);
+    this.logger.info(`Removing ${filePath} from remote upload config`);
     delete this.remoteUploadConfig[filePath];
     await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
     new import_obsidian2.Notice(`Deleting ${filePath}. It has been removed from the sync list.`);
@@ -27462,44 +27274,24 @@ var VaultSyncManager = class {
     }
   }
   async exportFileToArweave(file, fileHash) {
-    if (!walletManager.isConnected()) {
-      throw new Error(
-        "Wallet not connected. Please connect a wallet before uploading."
-      );
-    }
+    this.ensureWalletConnected();
+    this.ensureEncryptionPassword();
     const wallet = walletManager.getJWK();
     if (!wallet) {
       throw new Error("Unable to retrieve wallet. Please try reconnecting.");
     }
-    this.ensureEncryptionPassword();
     const isBinary = this.isBinaryFile(file);
     const content = isBinary ? await this.vault.readBinary(file) : await this.vault.read(file);
     const encryptedContent = this.encrypt(
       content instanceof ArrayBuffer ? import_buffer3.Buffer.from(content) : content,
       isBinary
     );
-    const winston = await this.arweave.transactions.getPrice(
-      import_buffer3.Buffer.from(encryptedContent).byteLength
+    const transaction = await this.createArweaveTransaction(
+      encryptedContent,
+      wallet,
+      file,
+      fileHash
     );
-    const ar2 = Number(winston) / 1e12;
-    const precision = 2;
-    const cost = parseFloat(ar2.toPrecision(precision));
-    const canProceed = await this.plugin.checkSpendingLimit(Number(cost));
-    if (!canProceed) {
-      throw new Error("Monthly spending limit reached");
-    }
-    const currentFileInfo = this.localUploadConfig[file.path];
-    const previousVersionTxId = currentFileInfo ? currentFileInfo.txId : null;
-    const versionNumber = currentFileInfo ? currentFileInfo.versionNumber + 1 : 1;
-    const transaction = await this.arweave.createTransaction(
-      { data: encryptedContent },
-      wallet
-    );
-    transaction.addTag("Content-Type", "text/markdown");
-    transaction.addTag("App-Name", "ArweaveSync");
-    transaction.addTag("File-Hash", fileHash);
-    transaction.addTag("Previous-Version", previousVersionTxId || "");
-    transaction.addTag("Version-Number", versionNumber.toString());
     await this.arweave.transactions.sign(transaction, wallet);
     const response = await this.arweave.transactions.post(transaction);
     if (response.status !== 200) {
@@ -27513,14 +27305,44 @@ var VaultSyncManager = class {
       fileHash,
       encrypted: true,
       filePath: file.path,
-      previousVersionTxId,
-      versionNumber
+      previousVersionTxId: this.getPreviousVersionTxId(file.path),
+      versionNumber: this.getNextVersionNumber(file.path)
     };
     await this.plugin.incrementFilesSynced();
-    console.log(
+    this.logger.info(
       `File ${file.path} exported to Arweave. Transaction ID: ${transaction.id}`
     );
     return newFileInfo;
+  }
+  async createArweaveTransaction(encryptedContent, wallet, file, fileHash) {
+    const transaction = await this.arweave.createTransaction(
+      { data: encryptedContent },
+      wallet
+    );
+    const tags = [
+      { name: "Content-Type", value: "text/markdown" },
+      { name: "App-Name", value: "ArweaveSync" },
+      { name: "File-Hash", value: fileHash },
+      {
+        name: "Previous-Version",
+        value: this.getPreviousVersionTxId(file.path) || ""
+      },
+      {
+        name: "Version-Number",
+        value: this.getNextVersionNumber(file.path).toString()
+      },
+      { name: "File-Path", value: file.path }
+    ];
+    tags.forEach((tag) => transaction.addTag(tag.name, tag.value));
+    return transaction;
+  }
+  getPreviousVersionTxId(filePath) {
+    const currentFileInfo = this.localUploadConfig[filePath];
+    return currentFileInfo ? currentFileInfo.txId : null;
+  }
+  getNextVersionNumber(filePath) {
+    const currentFileInfo = this.localUploadConfig[filePath];
+    return currentFileInfo ? currentFileInfo.versionNumber + 1 : 1;
   }
   async exportFilesToArweave(filePaths) {
     for (const filePath of filePaths) {
@@ -27538,7 +27360,7 @@ var VaultSyncManager = class {
   }
   async updateRemoteConfig() {
     const remoteConfig = await this.plugin.aoManager.getUploadConfig();
-    console.log(remoteConfig);
+    this.logger.debug("Remote config:", remoteConfig);
     this.remoteUploadConfig = remoteConfig || {};
     this.plugin.settings.remoteUploadConfig = remoteConfig || {};
     await this.plugin.saveSettings();
@@ -27566,7 +27388,7 @@ var VaultSyncManager = class {
         this.decrypt(encryptedContent);
         syncState = "new-remote";
       } catch (decryptError) {
-        console.error(`Failed to decrypt ${file.path}:`, decryptError);
+        this.logger.error(`Failed to decrypt ${file.path}:`, decryptError);
         await this.handleDecryptionFailure(file.path);
         syncState = "decrypt-failed";
       }
@@ -27601,7 +27423,7 @@ var VaultSyncManager = class {
         });
         return transaction;
       } catch (error) {
-        console.warn(
+        this.logger.warn(
           `Attempt ${attempt + 1} failed to fetch content for txId ${txId}:`,
           error
         );
@@ -27611,7 +27433,7 @@ var VaultSyncManager = class {
           );
         }
         await new Promise(
-          (resolve) => setTimeout(resolve, 1e3 * (attempt + 1))
+          (resolve) => setTimeout(resolve, 1e3 * Math.pow(2, attempt))
         );
       }
     }
@@ -27640,20 +27462,20 @@ var VaultSyncManager = class {
         return;
       }
       const query = `
-          query($id: ID!) {
-            transaction(id: $id) {
-              id
-              tags {
-                name
-                value
-              }
-              block {
-                height
-                timestamp
-              }
+        query($id: ID!) {
+          transaction(id: $id) {
+            id
+            tags {
+              name
+              value
+            }
+            block {
+              height
+              timestamp
             }
           }
-        `;
+        }
+      `;
       try {
         const variables = { id: txId };
         const results2 = await (0, import_ar_gql2.arGql)({ endpointUrl: import_ar_gql2.GQLUrls.goldsky }).run(
@@ -27682,7 +27504,7 @@ var VaultSyncManager = class {
         });
         await fetchVersion(previousVersionTxId);
       } catch (error) {
-        console.error("Error fetching version:", error);
+        this.logger.error("Error fetching version:", error);
       }
     };
     await fetchVersion(currentTxId);
@@ -27696,11 +27518,11 @@ var VaultSyncManager = class {
       if (oldFile instanceof import_obsidian2.TFile) {
         try {
           await this.plugin.app.fileManager.renameFile(oldFile, filePath);
-          console.log(
+          this.logger.info(
             `Renamed file from ${remoteFileInfo.oldFilePath} to ${filePath}`
           );
         } catch (error) {
-          console.error(
+          this.logger.error(
             `Failed to rename file from ${remoteFileInfo.oldFilePath} to ${filePath}:`,
             error
           );
@@ -27725,6 +27547,22 @@ var VaultSyncManager = class {
       "zip"
     ];
     return binaryExtensions.includes(file.extension.toLowerCase());
+  }
+  async syncAllFiles() {
+    const filesToSync = this.getFilesToSync();
+    await this.syncFiles(filesToSync);
+  }
+  // Helper methods for encryption and decryption
+  encrypt(data, isBinary = false) {
+    this.ensureEncryptionPassword();
+    return encrypt(data, this.encryptionPassword, isBinary);
+  }
+  decrypt(encryptedData) {
+    this.ensureEncryptionPassword();
+    return decrypt(encryptedData, this.encryptionPassword);
+  }
+  isWalletConnected() {
+    return walletManager.isConnected();
   }
 };
 
@@ -27751,7 +27589,8 @@ var DEFAULT_SETTINGS = {
   filesToSync: "all",
   selectedFoldersToSync: [],
   excludedFolders: [],
-  syncFileTypes: [".md", ".txt", ".png", ".jpg", ".jpeg", ".pdf"]
+  syncFileTypes: [".md", ".txt", ".png", ".jpg", ".jpeg", ".pdf"],
+  debugMode: false
 };
 
 // src/components/WalletConnectModal.ts
@@ -27760,6 +27599,7 @@ var WalletConnectModal = class extends import_obsidian3.Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
+    this.logger = new LogManager(plugin, "WalletConnectModal");
   }
   onOpen() {
     const { contentEl } = this;
@@ -27808,9 +27648,10 @@ var WalletConnectModal = class extends import_obsidian3.Modal {
   async handleFileUpload(file) {
     try {
       await walletManager.connect(file);
+      this.logger.info("Wallet connected successfully");
       this.close();
     } catch (error) {
-      console.error("Failed to connect wallet:", error);
+      this.logger.error("Failed to connect wallet:", error);
       new import_obsidian3.Notice("Failed to connect wallet. Please try again.");
     }
   }
@@ -27874,6 +27715,7 @@ var FileHistoryModal = class extends import_obsidian5.Modal {
     this.currentVersionIndex = 0;
     this.isLoading = false;
     this.hasMoreVersions = true;
+    this.logger = new LogManager(plugin, "FileHistoryModal");
   }
   async onOpen() {
     const { contentEl } = this;
@@ -27955,7 +27797,7 @@ var FileHistoryModal = class extends import_obsidian5.Modal {
         new import_obsidian5.MarkdownRenderChild(this.markdownContainer)
       );
     } catch (error) {
-      console.error("Failed to render current version:", error);
+      this.logger.error("Failed to render current version:", error);
       if (currentVersion.previousVersionTxId) {
         try {
           const oldContent = await this.plugin.vaultSyncManager.fetchContentForTx(
@@ -27969,7 +27811,7 @@ var FileHistoryModal = class extends import_obsidian5.Modal {
             new import_obsidian5.MarkdownRenderChild(this.markdownContainer)
           );
         } catch (oldError) {
-          console.error("Failed to render old version:", oldError);
+          this.logger.error("Failed to render old version:", oldError);
           this.markdownContainer.createEl("p", {
             text: "Failed to load content for this version.",
             cls: "error-message"
@@ -28075,7 +27917,7 @@ var ArweaveSyncSettingTab = class extends import_obsidian6.PluginSettingTab {
     );
     if (this.plugin.settings.fullAutoSync) {
       new import_obsidian6.Setting(containerEl).setName("Sync interval").setDesc("Time in minutes between automatic syncs").addSlider(
-        (slider) => slider.setLimits(5, 120, 5).setValue(this.plugin.settings.syncInterval).setDynamicTooltip().onChange(async (value) => {
+        (slider) => slider.setLimits(1, 60, 1).setValue(this.plugin.settings.syncInterval).setDynamicTooltip().onChange(async (value) => {
           this.plugin.settings.syncInterval = value;
           await this.plugin.saveSettings();
         })
@@ -28124,12 +27966,6 @@ var ArweaveSyncSettingTab = class extends import_obsidian6.PluginSettingTab {
               this.plugin.stopIdleTimer();
             }
             this.display();
-          })
-        );
-        new import_obsidian6.Setting(containerEl).setName("Auto-export on file close").setDesc("Automatically export files when they are closed").addToggle(
-          (toggle) => toggle.setValue(this.plugin.settings.autoExportOnClose).onChange(async (value) => {
-            this.plugin.settings.autoExportOnClose = value;
-            await this.plugin.saveSettings();
           })
         );
         if (this.plugin.settings.autoExportOnIdle) {
@@ -28202,6 +28038,12 @@ var ArweaveSyncSettingTab = class extends import_obsidian6.PluginSettingTab {
     new import_obsidian6.Setting(containerEl).setName("Lifetime files synced").setDesc("Total number of files synced").addText(
       (text) => text.setValue(this.plugin.settings.lifetimeFilesSynced.toString()).setDisabled(true)
     );
+    new import_obsidian6.Setting(containerEl).setName("Debug mode").setDesc("Enable debug logging (may impact performance)").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.debugMode).onChange(async (value) => {
+        this.plugin.settings.debugMode = value;
+        await this.plugin.saveSettings();
+      })
+    );
   }
 };
 
@@ -28228,6 +28070,7 @@ var RemoteFilePreviewModal = class extends import_obsidian7.Modal {
     super(app);
     this.plugin = plugin;
     this.filePath = filePath;
+    this.logger = new LogManager(plugin, "RemoteFilePreviewModal");
   }
   async onOpen() {
     const { contentEl } = this;
@@ -28271,6 +28114,7 @@ var RemoteFilePreviewModal = class extends import_obsidian7.Modal {
       this.loadingEl.style.display = "none";
       this.contentEl.style.display = "block";
     } catch (error) {
+      this.logger.error("Error loading remote file:", error);
       this.loadingEl.style.display = "none";
       this.contentEl.style.display = "block";
       this.contentEl.createEl("p", {
@@ -28305,6 +28149,7 @@ var SyncSidebar = class extends import_obsidian8.ItemView {
     this.currentBalance = "0";
     this.newBalance = "0";
     this.plugin = plugin;
+    this.logManager = new LogManager(this.plugin, "SyncSidebar");
     this.totalExportSize = 0;
     this.totalPrice = "0";
     this.exportFiles = /* @__PURE__ */ new Set();
@@ -28888,7 +28733,6 @@ Version: ${node.fileInfo.versionNumber}`
   }
   addFileToTree(tree, file) {
     if (!file.path) {
-      console.error("Path is undefined for file:", file);
       return tree;
     }
     const parts = file.path.split("/");
@@ -28957,7 +28801,6 @@ Version: ${node.fileInfo.versionNumber}`
         `${this.currentTab === "export" ? "Export" : "Import"} completed successfully.`
       );
     } catch (error) {
-      console.error("Error during submission:", error);
       new import_obsidian8.Notice(`Error during ${this.currentTab}: ${error.message}`);
     } finally {
       submitButton.setAttribute("data-state", "ready");
@@ -29108,7 +28951,6 @@ Version: ${node.fileInfo.versionNumber}`
         }
       }
     } catch (error) {
-      console.error("Error getting file sync state:", error);
       this.removeFileFromSidebar(file.path);
     }
     this.applyFolderState(folderState);
@@ -29308,7 +29150,6 @@ Version: ${node.fileInfo.versionNumber}`
         new import_obsidian8.Notice(`Error: ${file.name} not found in local vault.`);
       }
     } catch (error) {
-      console.error("Error replacing remote file with local:", error);
       new import_obsidian8.Notice(`Failed to replace remote file: ${error.message}`);
     }
   }
@@ -29321,7 +29162,6 @@ Version: ${node.fileInfo.versionNumber}`
         this.refresh();
       }
     } catch (error) {
-      console.error("Error deleting remote file:", error);
       new import_obsidian8.Notice(`Failed to delete remote file: ${error.message}`);
     }
   }
@@ -29350,7 +29190,7 @@ Version: ${node.fileInfo.versionNumber}`
       const filePath = file.path;
       const abstractFile = this.plugin.app.vault.getAbstractFileByPath(filePath);
       if (!(abstractFile instanceof import_obsidian8.TFile)) {
-        console.error(`File not found: ${filePath}`);
+        this.logManager.error(`File not found: ${filePath}`);
         return;
       }
       const fileSize = abstractFile.stat.size;
@@ -29391,7 +29231,10 @@ Version: ${node.fileInfo.versionNumber}`
           this.newBalance = (balanceAR - ar2).toFixed(decimalPlaces);
         }
       } catch (error) {
-        console.error("Error fetching Arweave price or balance:", error);
+        this.logManager.error(
+          "Error fetching Arweave price or balance:",
+          error
+        );
         this.totalPrice = "Error";
         this.currentBalance = "Error";
         this.newBalance = "Error";
@@ -30165,8 +30008,6 @@ var ArPublishManager = class {
 };
 
 // src/main.ts
-var import_buffer4 = __toESM(require_buffer2());
-var import_process = __toESM(require_browser2());
 var ArweaveSync = class extends import_obsidian10.Plugin {
   constructor() {
     super(...arguments);
@@ -30197,6 +30038,7 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
     if (this.settings.fullAutoSync) {
       this.startAutoSync();
     }
+    this.emitter = new import_obsidian10.Events();
   }
   initializeManagers() {
     initializeWalletManager();
@@ -30210,7 +30052,8 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
     this.vaultSyncManager = new VaultSyncManager(
       this,
       this.settings.remoteUploadConfig,
-      this.settings.localUploadConfig
+      this.settings.localUploadConfig,
+      new LogManager(this, "VaultSyncManager")
     );
     const encryptionPassword = walletManager.getEncryptionPassword();
     if (encryptionPassword) {
@@ -30243,9 +30086,6 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
     );
     this.registerEvent(
       this.app.vault.on("delete", this.handleFileDelete.bind(this))
-    );
-    this.registerEvent(
-      this.app.workspace.on("file-open", this.handleFileOpen.bind(this))
     );
     if (this.settings.autoExportOnIdle) {
       this.startIdleTimer();
@@ -30486,8 +30326,6 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
       return;
     }
     this.isConnecting = true;
-    await walletManager.connect(new File([walletJson], "wallet.json"));
-    this.walletAddress = walletManager.getAddress();
     try {
       await walletManager.connect(new File([walletJson], "wallet.json"));
       const encryptionPassword = walletManager.getEncryptionPassword();
@@ -30499,21 +30337,20 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
       this.walletAddress = walletManager.getAddress();
       await this.aoManager.initialize(walletManager.getJWK());
       this.updateStatusBar();
-      this.vaultSyncManager.updateRemoteConfig();
-      const newOrModifiedFiles = await this.checkForNewFiles();
-      if (this.settings.autoImportUnsyncedChanges && newOrModifiedFiles.length > 0) {
-        await this.importFilesFromArweave(newOrModifiedFiles);
-        new import_obsidian10.Notice(
-          `Automatically imported ${newOrModifiedFiles.length} new or modified files.`
-        );
-      } else if (newOrModifiedFiles.length > 0) {
-        new import_obsidian10.Notice(
-          `${newOrModifiedFiles.length} new or modified files available for import.`
-        );
-        this.refreshSyncSidebar();
-        await this.openSyncSidebarWithImportTab();
+      await this.vaultSyncManager.updateRemoteConfig();
+      if (this.settings.autoImportUnsyncedChanges) {
+        await this.performAutoImport();
       } else {
-        new import_obsidian10.Notice("Wallet connected. No new files to import.");
+        const newOrModifiedFiles = await this.checkForNewFiles();
+        if (newOrModifiedFiles.length > 0) {
+          new import_obsidian10.Notice(
+            `${newOrModifiedFiles.length} new or modified files available for import.`
+          );
+          this.refreshSyncSidebar();
+          await this.openSyncSidebarWithImportTab();
+        } else {
+          new import_obsidian10.Notice("Wallet connected. No new files to import.");
+        }
       }
     } catch (error) {
       console.error("Error during wallet connection:", error);
@@ -30531,6 +30368,18 @@ Check the console for more details.`
     this.updateStatusBar();
     new import_obsidian10.Notice("Wallet disconnected successfully");
   }
+  async performAutoImport() {
+    const newOrModifiedFiles = await this.checkForNewFiles();
+    if (newOrModifiedFiles.length > 0) {
+      await this.vaultSyncManager.importFilesFromArweave(newOrModifiedFiles);
+      new import_obsidian10.Notice(
+        `Automatically imported ${newOrModifiedFiles.length} new or modified files.`
+      );
+      this.refreshSyncSidebar();
+    } else {
+      new import_obsidian10.Notice("Wallet connected. No new files to import.");
+    }
+  }
   async checkForNewFiles() {
     const newOrModifiedFiles = [];
     for (const [filePath, remoteFileInfo] of Object.entries(
@@ -30546,14 +30395,6 @@ Check the console for more details.`
           newOrModifiedFiles.push(filePath);
         }
       }
-    }
-    if (newOrModifiedFiles.length > 0) {
-      new import_obsidian10.Notice(
-        `Wallet connected. ${newOrModifiedFiles.length} new or modified files available for import.`
-      );
-      this.refreshSyncSidebar();
-      if (!this.settings.autoImportUnsyncedChanges)
-        await this.openSyncSidebarWithImportTab();
     }
     return newOrModifiedFiles;
   }
@@ -30624,22 +30465,6 @@ Check the console for more details.`
   }
   handleSyncError(file, error) {
     new import_obsidian10.Notice(`Failed to sync file: ${error.message}`);
-  }
-  handleFileOpen(file) {
-    if (file && this.settings.autoExportOnClose) {
-      this.registerEvent(
-        this.app.workspace.on(
-          "file-open",
-          this.handleFileClose.bind(this, file)
-        )
-      );
-    }
-  }
-  async handleFileClose(oldFile, newFile) {
-    if (oldFile !== newFile && this.settings.autoExportOnClose) {
-      console.log(`File closed: ${oldFile.path}, triggering auto-export`);
-      await this.autoExportFile(oldFile);
-    }
   }
   async handleFileModify(file) {
     if (file instanceof import_obsidian10.TFile) {
@@ -30902,41 +30727,15 @@ Check the console for more details.`
     }
   }
   async performInitialSync() {
-    const filesToSync = await Promise.all(
-      this.app.vault.getFiles().map(async (file) => {
-        const needsSync = await this.vaultSyncManager.isFileNeedingSync(file);
-        return needsSync ? file : null;
-      })
-    );
-    const filesToSyncFiltered = filesToSync.filter(
-      (file) => file !== null
-    );
-    if (filesToSyncFiltered.length > 0) {
-      await this.vaultSyncManager.syncFiles(filesToSyncFiltered);
-    }
+    await this.vaultSyncManager.syncAllFiles();
   }
   async performFinalSync() {
-    const filesToSync = await Promise.all(
-      this.app.vault.getFiles().map(async (file) => {
-        const needsSync = await this.vaultSyncManager.isFileNeedingSync(file);
-        return needsSync ? file : null;
-      })
-    );
-    const filesToSyncFiltered = filesToSync.filter(
-      (file) => file !== null
-    );
-    if (filesToSyncFiltered.length > 0) {
-      await this.vaultSyncManager.syncFiles(filesToSyncFiltered);
-    }
+    await this.vaultSyncManager.syncAllFiles();
   }
-  handleVisibilityChange() {
-    if (typeof document.hidden !== "undefined") {
-      if (document.hidden) {
-        this.performFinalSync();
-      } else {
-        this.performInitialSync();
-      }
-    }
+  async handleIdle() {
+    new import_obsidian10.Notice("Idle timer triggered, starting auto-export");
+    await this.vaultSyncManager.syncAllFiles();
+    new import_obsidian10.Notice("Auto-export completed");
   }
   startIdleTimer() {
     console.log("Starting idle timer");
@@ -30957,46 +30756,16 @@ Check the console for more details.`
       this.startIdleTimer();
     }
   }
-  async handleIdle() {
-    new import_obsidian10.Notice("Idle timer triggered, starting auto-export");
-    const modifiedFiles = await Promise.all(
-      this.app.vault.getMarkdownFiles().map(async (file) => {
-        const needsSync = await this.vaultSyncManager.isFileNeedingSync(file);
-        return needsSync ? file : null;
-      })
-    );
-    const filesToSync = modifiedFiles.filter(
-      (file) => file !== null
-    );
-    if (filesToSync.length > 0) {
-      new import_obsidian10.Notice(`Found ${filesToSync.length} files needing sync`);
-      await this.vaultSyncManager.syncFiles(filesToSync);
-    } else {
-      new import_obsidian10.Notice("No files need syncing");
-    }
-  }
-  async autoExportFile(file) {
-    try {
-      const localConfig = this.settings.localUploadConfig[file.path];
-      const remoteConfig = this.settings.remoteUploadConfig[file.path];
-      if (!localConfig || !remoteConfig || localConfig.fileHash !== remoteConfig.fileHash) {
-        await this.vaultSyncManager.syncFile(file);
-      } else {
-        console.log(
-          `Skipping auto-export for file: ${file.path} (no changes detected)`
-        );
-      }
-    } catch (error) {
-      console.error(`Failed to auto-export file ${file.path}:`, error);
-    }
-  }
   startAutoSync() {
+    console.log("Starting auto sync...");
     this.stopAutoSync();
     const interval = this.settings.syncInterval * 60 * 1e3;
-    this.autoSyncInterval = window.setInterval(
-      () => this.performFullSync(),
-      interval
-    );
+    console.log(`Auto sync interval set to ${interval / 1e3} seconds`);
+    this.autoSyncInterval = window.setInterval(() => {
+      console.log("Auto sync interval triggered");
+      this.performFullSync();
+    }, interval);
+    console.log("Auto sync started successfully");
   }
   stopAutoSync() {
     if (this.autoSyncInterval) {
@@ -31006,8 +30775,9 @@ Check the console for more details.`
   }
   async performFullSync() {
     console.log("Performing full sync...");
-    const filesToSync = this.vaultSyncManager.getFilesToSync();
-    await this.vaultSyncManager.syncFiles(filesToSync);
+    await this.vaultSyncManager.syncAllFiles();
+    await this.vaultSyncManager.updateRemoteConfig();
+    await this.performAutoImport();
     this.updateSyncUI();
   }
   async incrementFilesSynced() {
@@ -31042,10 +30812,6 @@ Check the console for more details.`
     }
     this.stopAutoSync();
     this.stopIdleTimer();
-    document.removeEventListener(
-      "visibilitychange",
-      this.handleVisibilityChange.bind(this)
-    );
   }
 };
 /*! Bundled license information:

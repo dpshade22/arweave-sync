@@ -57,7 +57,6 @@ export class WalletManager extends Events {
       const jwkJson = await this._readJWKFile(jwkFile);
       await this.initializeWallet(jwkJson);
       if (this.address) {
-        console.log("Wallet connected successfully:", this.address);
         if (!this.isConnected()) {
           this.trigger("wallet-connected", this.getWalletJson());
         }

@@ -35,7 +35,7 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
               this.plugin.settings.autoExportOnClose = false;
             }
             await this.plugin.saveSettings();
-            this.display(); // Refresh the settings display
+            this.display();
           }),
       );
 
@@ -45,7 +45,7 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
         .setDesc("Time in minutes between automatic syncs")
         .addSlider((slider) =>
           slider
-            .setLimits(5, 120, 5)
+            .setLimits(1, 60, 1)
             .setValue(this.plugin.settings.syncInterval)
             .setDynamicTooltip()
             .onChange(async (value) => {
@@ -87,7 +87,7 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
                   this.plugin.settings.autoExportOnClose = false;
                 }
                 await this.plugin.saveSettings();
-                this.display(); // Refresh the settings display
+                this.display();
               },
             ),
         );
@@ -125,21 +125,21 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
                 } else {
                   this.plugin.stopIdleTimer();
                 }
-                this.display(); // Refresh the settings display
+                this.display();
               }),
           );
 
-        new Setting(containerEl)
-          .setName("Auto-export on file close")
-          .setDesc("Automatically export files when they are closed")
-          .addToggle((toggle) =>
-            toggle
-              .setValue(this.plugin.settings.autoExportOnClose)
-              .onChange(async (value) => {
-                this.plugin.settings.autoExportOnClose = value;
-                await this.plugin.saveSettings();
-              }),
-          );
+        // new Setting(containerEl)
+        //   .setName("Auto-export on file close")
+        //   .setDesc("Automatically export files when they are closed")
+        //   .addToggle((toggle) =>
+        //     toggle
+        //       .setValue(this.plugin.settings.autoExportOnClose)
+        //       .onChange(async (value) => {
+        //         this.plugin.settings.autoExportOnClose = value;
+        //         await this.plugin.saveSettings();
+        //       }),
+        //   );
 
         if (this.plugin.settings.autoExportOnIdle) {
           new Setting(containerEl)
@@ -283,6 +283,18 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
         text
           .setValue(this.plugin.settings.lifetimeFilesSynced.toString())
           .setDisabled(true),
+      );
+
+    new Setting(containerEl)
+      .setName("Debug mode")
+      .setDesc("Enable debug logging (may impact performance)")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.debugMode)
+          .onChange(async (value) => {
+            this.plugin.settings.debugMode = value;
+            await this.plugin.saveSettings();
+          })
       );
   }
 }
