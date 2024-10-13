@@ -5,11 +5,13 @@ import {
   Notice,
   WorkspaceLeaf,
   TFolder,
-  Modal,
   Events,
+  App,
+  PluginManifest,
 } from "obsidian";
 import { AOManager } from "./managers/aoManager";
 import {
+  WalletManager,
   initializeWalletManager,
   walletManager,
 } from "./managers/walletManager";
@@ -17,7 +19,6 @@ import { VaultSyncManager } from "./managers/vaultSyncManager";
 import {
   UploadConfig,
   FileUploadInfo,
-  FileVersion,
   ArweaveSyncSettings,
   DEFAULT_SETTINGS,
 } from "./types";
@@ -28,7 +29,6 @@ import Arweave from "arweave";
 import { ArweaveSyncSettingTab } from "./settings/settings";
 import { debounce } from "./utils/helpers";
 import { SyncSidebar, SYNC_SIDEBAR_VIEW } from "./components/SyncSidebar";
-import { testEncryptionWithSpecificFile } from "./utils/testEncryption";
 import { ArPublishManager } from "./managers/arPublishManager";
 import { LogManager } from "./utils/logManager";
 
@@ -46,6 +46,7 @@ export default class ArweaveSync extends Plugin {
   private isConnecting: boolean = false;
   private idleTimer: number | null = null;
   private autoSyncInterval: number | null = null;
+  private logger: LogManager;
   emitter: Events;
 
   async onload() {
@@ -66,9 +67,8 @@ export default class ArweaveSync extends Plugin {
 
     this.updateSyncUI();
 
-    if (this.settings.syncOnStartup) {
-      this.performInitialSync();
-    }
+    // Ensure AOManager is initialized before syncing
+    await this.vaultSyncManager.syncAllFiles();
 
     if (this.settings.fullAutoSync) {
       this.startAutoSync();
@@ -475,7 +475,7 @@ export default class ArweaveSync extends Plugin {
         }
       }
     } catch (error) {
-      console.error("Error during wallet connection:", error);
+      this.logger.error("Error during wallet connection:", error);
       new Notice(
         `Error: ${error.message}\nCheck the console for more details.`,
       );
@@ -569,7 +569,7 @@ export default class ArweaveSync extends Plugin {
     try {
       await this.vaultSyncManager.importFilesFromArweave(selectedFiles);
     } catch (error) {
-      console.error("Error during file import:", error);
+      this.logger.error("Error during file import:", error);
       new Notice(
         `Error: ${error.message}\nCheck the console for more details.`,
       );
@@ -583,7 +583,7 @@ export default class ArweaveSync extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
-    console.log("Settings saved");
+    this.logger.info("Settings saved");
   }
 
   async syncFile(file: TFile) {
@@ -653,7 +653,7 @@ export default class ArweaveSync extends Plugin {
       delete this.settings.localUploadConfig[oldPath];
     }
 
-    console.log(`File renamed from ${oldPath} to ${file.path}`);
+    this.logger.info(`File renamed from ${oldPath} to ${file.path}`);
     await this.saveSettings();
 
     // Check if the file exists in the remote config
@@ -670,7 +670,10 @@ export default class ArweaveSync extends Plugin {
       try {
         await this.aoManager.updateUploadConfig(remoteConfig);
       } catch (error) {
-        console.error("Error updating remote config after file rename:", error);
+        this.logger.error(
+          "Error updating remote config after file rename:",
+          error,
+        );
         new Notice(
           `Failed to update remote config after rename ${file.path}. Please try again later.`,
         );
@@ -683,7 +686,7 @@ export default class ArweaveSync extends Plugin {
   async handleFileDelete(file: TFile) {
     // Update local config
     delete this.settings.localUploadConfig[file.path];
-    console.log("File deleted:", file.path);
+    this.logger.info("File deleted:", file.path);
 
     await this.saveSettings();
 
@@ -696,7 +699,7 @@ export default class ArweaveSync extends Plugin {
       try {
         await this.aoManager.updateUploadConfig(remoteConfig);
       } catch (error) {
-        console.error(
+        this.logger.error(
           "Error updating remote config after file deletion:",
           error,
         );
@@ -780,7 +783,7 @@ export default class ArweaveSync extends Plugin {
       new Notice(`Successfully pushed ${file.name} to Arweave`);
       this.updateSyncUI();
     } catch (error) {
-      console.error("Error force pushing file:", error);
+      this.logger.error("Error force pushing file:", error);
       new Notice(`Failed to push ${file.name} to Arweave: ${error.message}`);
     }
   }
@@ -811,7 +814,7 @@ export default class ArweaveSync extends Plugin {
       );
       this.updateSyncUI();
     } catch (error) {
-      console.error("Error force pulling file:", error);
+      this.logger.error("Error force pulling file:", error);
       new Notice(`Failed to pull ${file.name} from Arweave: ${error.message}`);
     }
   }
@@ -919,7 +922,7 @@ export default class ArweaveSync extends Plugin {
       await this.arPublishManager.publishWebsiteToArweave(folder);
       new Notice(`Folder "${folder.name}" published to Arweave as a website.`);
     } catch (error) {
-      console.error(
+      this.logger.error(
         `Error publishing folder ${folder.name} to Arweave:`,
         error,
       );
@@ -929,14 +932,6 @@ export default class ArweaveSync extends Plugin {
     }
   }
 
-  private async performInitialSync() {
-    await this.vaultSyncManager.syncAllFiles();
-  }
-
-  private async performFinalSync() {
-    await this.vaultSyncManager.syncAllFiles();
-  }
-
   private async handleIdle() {
     new Notice("Idle timer triggered, starting auto-export");
     await this.vaultSyncManager.syncAllFiles();
@@ -944,7 +939,7 @@ export default class ArweaveSync extends Plugin {
   }
 
   public startIdleTimer() {
-    console.log("Starting idle timer");
+    this.logger.info("Starting idle timer");
     this.stopIdleTimer();
     this.idleTimer = window.setTimeout(
       this.handleIdle.bind(this),
@@ -966,15 +961,15 @@ export default class ArweaveSync extends Plugin {
   }
 
   private startAutoSync() {
-    console.log("Starting auto sync...");
+    this.logger.info("Starting auto sync...");
     this.stopAutoSync();
     const interval = this.settings.syncInterval * 60 * 1000;
-    console.log(`Auto sync interval set to ${interval / 1000} seconds`);
+    this.logger.info(`Auto sync interval set to ${interval / 1000} seconds`);
     this.autoSyncInterval = window.setInterval(() => {
-      console.log("Auto sync interval triggered");
+      this.logger.info("Auto sync interval triggered");
       this.performFullSync();
     }, interval);
-    console.log("Auto sync started successfully");
+    this.logger.info("Auto sync started successfully");
   }
 
   private stopAutoSync() {
@@ -985,7 +980,7 @@ export default class ArweaveSync extends Plugin {
   }
 
   private async performFullSync() {
-    console.log("Performing full sync...");
+    this.logger.info("Performing full sync...");
     // Export local changes and import remote changes
     await this.vaultSyncManager.syncAllFiles();
 
@@ -1034,12 +1029,11 @@ export default class ArweaveSync extends Plugin {
   }
 
   async onunload() {
-    console.log("Unloading ArweaveSync plugin");
+    this.logger.info("Unloading ArweaveSync plugin");
     if (this.settings.autoExportOnClose) {
-      await this.performFinalSync();
+      await this.vaultSyncManager.syncAllFiles();
     }
     this.stopAutoSync();
     this.stopIdleTimer();
-
   }
 }

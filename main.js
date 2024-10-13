@@ -26391,8 +26391,17 @@ var AOManager = class {
   constructor(plugin) {
     this.processId = null;
     this.initialized = false;
+    this.initializationPromise = null;
     this.plugin = plugin;
     this.argql = (0, import_ar_gql.arGql)();
+  }
+  async ensureInitialized() {
+    if (!this.initializationPromise) {
+      this.initializationPromise = this.initialize(
+        this.plugin.walletManager.getJWK()
+      );
+    }
+    return this.initializationPromise;
   }
   async initialize(wallet) {
     if (wallet) {
@@ -26727,8 +26736,16 @@ var WalletManager = class extends import_obsidian.Events {
     this.address = null;
     this.jwk = null;
     this.walletJson = null;
+    this.isInitialized = false;
+    this.initPromise = null;
     this.arweave = import_arweave.default.init({});
-    this.loadCachedWallet();
+  }
+  async initialize() {
+    if (this.isInitialized) return;
+    if (this.initPromise) return this.initPromise;
+    this.initPromise = this.loadCachedWallet();
+    await this.initPromise;
+    this.isInitialized = true;
   }
   getEncryptionPassword() {
     if (this.jwk) {
@@ -30009,13 +30026,15 @@ var ArPublishManager = class {
 
 // src/main.ts
 var ArweaveSync = class extends import_obsidian10.Plugin {
-  constructor() {
-    super(...arguments);
+  constructor(app, manifest) {
+    super(app, manifest);
     this.walletAddress = null;
     this.activeSyncSidebar = null;
     this.isConnecting = false;
     this.idleTimer = null;
     this.autoSyncInterval = null;
+    this.logger = new LogManager(this, "ArweaveSync");
+    this.walletManager = initializeWalletManager();
   }
   async onload() {
     await this.loadSettings();
@@ -30032,16 +30051,14 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
       }
     });
     this.updateSyncUI();
-    if (this.settings.syncOnStartup) {
-      this.performInitialSync();
-    }
+    await this.aoManager.ensureInitialized();
+    await this.vaultSyncManager.syncAllFiles();
     if (this.settings.fullAutoSync) {
       this.startAutoSync();
     }
     this.emitter = new import_obsidian10.Events();
   }
   initializeManagers() {
-    initializeWalletManager();
     this.arPublishManager = new ArPublishManager(this.app, this);
     this.aoManager = new AOManager(this);
     this.arweave = import_arweave3.default.init({
@@ -30055,23 +30072,19 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
       this.settings.localUploadConfig,
       new LogManager(this, "VaultSyncManager")
     );
-    const encryptionPassword = walletManager.getEncryptionPassword();
-    if (encryptionPassword) {
-      this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
-    }
   }
   setupEventListeners() {
-    if (walletManager.isWalletLoaded()) {
-      const cachedWalletJson = walletManager.getWalletJson();
+    if (this.walletManager.isWalletLoaded()) {
+      const cachedWalletJson = this.walletManager.getWalletJson();
       if (cachedWalletJson) {
         this.handleWalletConnection(cachedWalletJson);
       }
     }
-    walletManager.on(
+    this.walletManager.on(
       "wallet-connected",
       this.handleWalletConnection.bind(this)
     );
-    walletManager.on(
+    this.walletManager.on(
       "wallet-disconnected",
       this.handleWalletDisconnection.bind(this)
     );
@@ -30211,7 +30224,7 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
     }
   }
   async disconnectWallet() {
-    await walletManager.disconnect();
+    await this.walletManager.disconnect();
     this.updateStatusBar();
     new import_obsidian10.Notice("Wallet disconnected");
   }
@@ -30327,15 +30340,15 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
     }
     this.isConnecting = true;
     try {
-      await walletManager.connect(new File([walletJson], "wallet.json"));
-      const encryptionPassword = walletManager.getEncryptionPassword();
+      await this.walletManager.connect(new File([walletJson], "wallet.json"));
+      const encryptionPassword = this.walletManager.getEncryptionPassword();
       if (encryptionPassword) {
         this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
       } else {
         throw new Error("Failed to derive encryption password from wallet");
       }
-      this.walletAddress = walletManager.getAddress();
-      await this.aoManager.initialize(walletManager.getJWK());
+      this.walletAddress = this.walletManager.getAddress();
+      await this.aoManager.ensureInitialized();
       this.updateStatusBar();
       await this.vaultSyncManager.updateRemoteConfig();
       if (this.settings.autoImportUnsyncedChanges) {
@@ -30353,7 +30366,7 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
         }
       }
     } catch (error) {
-      console.error("Error during wallet connection:", error);
+      this.logger.error("Error during wallet connection:", error);
       new import_obsidian10.Notice(
         `Error: ${error.message}
 Check the console for more details.`
@@ -30426,7 +30439,7 @@ Check the console for more details.`
     try {
       await this.vaultSyncManager.importFilesFromArweave(selectedFiles);
     } catch (error) {
-      console.error("Error during file import:", error);
+      this.logger.error("Error during file import:", error);
       new import_obsidian10.Notice(
         `Error: ${error.message}
 Check the console for more details.`
@@ -30439,7 +30452,7 @@ Check the console for more details.`
   }
   async saveSettings() {
     await this.saveData(this.settings);
-    console.log("Settings saved");
+    this.logger.info("Settings saved");
   }
   async syncFile(file) {
     const syncButton = this.getSyncButtonForFile();
@@ -30495,7 +30508,7 @@ Check the console for more details.`
       };
       delete this.settings.localUploadConfig[oldPath];
     }
-    console.log(`File renamed from ${oldPath} to ${file.path}`);
+    this.logger.info(`File renamed from ${oldPath} to ${file.path}`);
     await this.saveSettings();
     const remoteConfig = await this.aoManager.getUploadConfig();
     if (remoteConfig && remoteConfig[oldPath]) {
@@ -30508,7 +30521,10 @@ Check the console for more details.`
       try {
         await this.aoManager.updateUploadConfig(remoteConfig);
       } catch (error) {
-        console.error("Error updating remote config after file rename:", error);
+        this.logger.error(
+          "Error updating remote config after file rename:",
+          error
+        );
         new import_obsidian10.Notice(
           `Failed to update remote config after rename ${file.path}. Please try again later.`
         );
@@ -30518,7 +30534,7 @@ Check the console for more details.`
   }
   async handleFileDelete(file) {
     delete this.settings.localUploadConfig[file.path];
-    console.log("File deleted:", file.path);
+    this.logger.info("File deleted:", file.path);
     await this.saveSettings();
     const remoteConfig = await this.aoManager.getUploadConfig();
     if (remoteConfig && remoteConfig[file.path]) {
@@ -30526,7 +30542,7 @@ Check the console for more details.`
       try {
         await this.aoManager.updateUploadConfig(remoteConfig);
       } catch (error) {
-        console.error(
+        this.logger.error(
           "Error updating remote config after file deletion:",
           error
         );
@@ -30601,7 +30617,7 @@ Check the console for more details.`
       new import_obsidian10.Notice(`Successfully pushed ${file.name} to Arweave`);
       this.updateSyncUI();
     } catch (error) {
-      console.error("Error force pushing file:", error);
+      this.logger.error("Error force pushing file:", error);
       new import_obsidian10.Notice(`Failed to push ${file.name} to Arweave: ${error.message}`);
     }
   }
@@ -30629,7 +30645,7 @@ Check the console for more details.`
       );
       this.updateSyncUI();
     } catch (error) {
-      console.error("Error force pulling file:", error);
+      this.logger.error("Error force pulling file:", error);
       new import_obsidian10.Notice(`Failed to pull ${file.name} from Arweave: ${error.message}`);
     }
   }
@@ -30717,7 +30733,7 @@ Check the console for more details.`
       await this.arPublishManager.publishWebsiteToArweave(folder);
       new import_obsidian10.Notice(`Folder "${folder.name}" published to Arweave as a website.`);
     } catch (error) {
-      console.error(
+      this.logger.error(
         `Error publishing folder ${folder.name} to Arweave:`,
         error
       );
@@ -30726,19 +30742,13 @@ Check the console for more details.`
       );
     }
   }
-  async performInitialSync() {
-    await this.vaultSyncManager.syncAllFiles();
-  }
-  async performFinalSync() {
-    await this.vaultSyncManager.syncAllFiles();
-  }
   async handleIdle() {
     new import_obsidian10.Notice("Idle timer triggered, starting auto-export");
     await this.vaultSyncManager.syncAllFiles();
     new import_obsidian10.Notice("Auto-export completed");
   }
   startIdleTimer() {
-    console.log("Starting idle timer");
+    this.logger.info("Starting idle timer");
     this.stopIdleTimer();
     this.idleTimer = window.setTimeout(
       this.handleIdle.bind(this),
@@ -30757,15 +30767,15 @@ Check the console for more details.`
     }
   }
   startAutoSync() {
-    console.log("Starting auto sync...");
+    this.logger.info("Starting auto sync...");
     this.stopAutoSync();
     const interval = this.settings.syncInterval * 60 * 1e3;
-    console.log(`Auto sync interval set to ${interval / 1e3} seconds`);
+    this.logger.info(`Auto sync interval set to ${interval / 1e3} seconds`);
     this.autoSyncInterval = window.setInterval(() => {
-      console.log("Auto sync interval triggered");
+      this.logger.info("Auto sync interval triggered");
       this.performFullSync();
     }, interval);
-    console.log("Auto sync started successfully");
+    this.logger.info("Auto sync started successfully");
   }
   stopAutoSync() {
     if (this.autoSyncInterval) {
@@ -30774,7 +30784,7 @@ Check the console for more details.`
     }
   }
   async performFullSync() {
-    console.log("Performing full sync...");
+    this.logger.info("Performing full sync...");
     await this.vaultSyncManager.syncAllFiles();
     await this.vaultSyncManager.updateRemoteConfig();
     await this.performAutoImport();
@@ -30806,9 +30816,9 @@ Check the console for more details.`
     return true;
   }
   async onunload() {
-    console.log("Unloading ArweaveSync plugin");
+    this.logger.info("Unloading ArweaveSync plugin");
     if (this.settings.autoExportOnClose) {
-      await this.performFinalSync();
+      await this.vaultSyncManager.syncAllFiles();
     }
     this.stopAutoSync();
     this.stopIdleTimer();
