@@ -1,9 +1,11 @@
 import { App, Modal, MarkdownRenderer, MarkdownRenderChild } from "obsidian";
 import ArweaveSync from "../main";
+import { LogManager } from "../utils/logManager";
 
 export class RemoteFilePreviewModal extends Modal {
   private loadingEl: HTMLElement;
   public contentEl: HTMLElement;
+  private logger: LogManager;
 
   constructor(
     app: App,
@@ -11,6 +13,7 @@ export class RemoteFilePreviewModal extends Modal {
     private filePath: string,
   ) {
     super(app);
+    this.logger = new LogManager(plugin, "RemoteFilePreviewModal");
   }
 
   async onOpen() {
@@ -68,6 +71,7 @@ export class RemoteFilePreviewModal extends Modal {
       this.loadingEl.style.display = "none";
       this.contentEl.style.display = "block";
     } catch (error) {
+      this.logger.error("Error loading remote file:", error);
       this.loadingEl.style.display = "none";
       this.contentEl.style.display = "block";
       this.contentEl.createEl("p", {

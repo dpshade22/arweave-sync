@@ -517,22 +517,22 @@
 }
 
 /* Root Folder Styles */
-.root-folder>.nav-folder-title {
+.root-folder > .nav-folder-title {
     padding-left: 4px;
     display: flex;
     align-items: center;
 }
 
-.root-folder>.nav-folder-title .tree-item-icon {
+.root-folder > .nav-folder-title .tree-item-icon {
     margin-left: 4px;
 }
 
-.root-folder>.nav-folder-title .tree-item-inner {
+.root-folder > .nav-folder-title .tree-item-inner {
     font-weight: bold;
     margin-left: 6px;
 }
 
-.root-folder>.nav-folder-children {
+.root-folder > .nav-folder-children {
     padding-left: 20px;
 }
 
@@ -618,7 +618,6 @@ button:not(.clickable-icon).delete-confirm-button:hover {
     display: flex;
     flex-direction: column;
     height: 80vh;
-    width: 80vw;
     max-width: 800px;
 }
 
@@ -840,7 +839,7 @@ button:not(.clickable-icon).delete-confirm-button:hover {
     text-overflow: ellipsis;
 }
 
-.file-history-modal .rendered-markdown>hr:first-child {
+.file-history-modal .rendered-markdown > hr:first-child {
     margin-top: 0;
 }
 

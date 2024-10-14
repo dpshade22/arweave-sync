@@ -1,8 +1,11 @@
-import { Modal, App, TFile, Editor } from "obsidian";
+import { Modal, App, TFile } from "obsidian";
 import ArweaveSync from "../main";
+import { LogManager } from "../utils/logManager";
 
 export class RemoteNewerVersionModal extends Modal {
   private result: "import" | "proceed" | null = null;
+  private logger: LogManager;
+  private resolvePromise: ((value: "import" | "proceed") => void) | null = null;
 
   constructor(
     app: App,
@@ -10,6 +13,7 @@ export class RemoteNewerVersionModal extends Modal {
     private plugin: ArweaveSync,
   ) {
     super(app);
+    this.logger = new LogManager(plugin, "RemoteNewerVersionModal");
   }
 
   onOpen() {
@@ -42,13 +46,15 @@ export class RemoteNewerVersionModal extends Modal {
   onClose() {
     const { contentEl } = this;
     contentEl.empty();
+    if (this.resolvePromise) {
+      this.logger.debug(`User choice: ${this.result || "proceed"}`);
+      this.resolvePromise(this.result || "proceed");
+    }
   }
 
   async awaitChoice(): Promise<"import" | "proceed"> {
     return new Promise((resolve) => {
-      this.plugin.app.workspace.on("modal-close", () => {
-        resolve(this.result || "proceed");
-      });
+      this.resolvePromise = resolve;
     });
   }
 }

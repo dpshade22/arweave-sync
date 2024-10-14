@@ -5,10 +5,13 @@ import {
   Notice,
   WorkspaceLeaf,
   TFolder,
-  Modal,
+  Events,
+  App,
+  PluginManifest,
 } from "obsidian";
 import { AOManager } from "./managers/aoManager";
 import {
+  WalletManager,
   initializeWalletManager,
   walletManager,
 } from "./managers/walletManager";
@@ -16,7 +19,6 @@ import { VaultSyncManager } from "./managers/vaultSyncManager";
 import {
   UploadConfig,
   FileUploadInfo,
-  FileVersion,
   ArweaveSyncSettings,
   DEFAULT_SETTINGS,
 } from "./types";
@@ -27,11 +29,9 @@ import Arweave from "arweave";
 import { ArweaveSyncSettingTab } from "./settings/settings";
 import { debounce } from "./utils/helpers";
 import { SyncSidebar, SYNC_SIDEBAR_VIEW } from "./components/SyncSidebar";
-import { testEncryptionWithSpecificFile } from "./utils/testEncryption";
 import { ArPublishManager } from "./managers/arPublishManager";
+import { LogManager } from "./utils/logManager";
 
-import "buffer";
-import "process";
 import "./styles.css";
 
 export default class ArweaveSync extends Plugin {
@@ -42,13 +42,21 @@ export default class ArweaveSync extends Plugin {
   private arweave: Arweave;
   private walletAddress: string | null = null;
   private statusBarItem: HTMLElement;
-  private modifiedFiles: Set<string> = new Set();
   private activeSyncSidebar: SyncSidebar | null = null;
   private isConnecting: boolean = false;
+  private idleTimer: number | null = null;
+  private autoSyncInterval: number | null = null;
+  private logger: LogManager;
+  emitter: Events;
+
+  constructor(app: App, manifest: PluginManifest) {
+    super(app, manifest);
+    this.logger = new LogManager(this, "ArweaveSync");
+  }
 
   async onload() {
     await this.loadSettings();
-    this.initializeManagers();
+    await this.initializeManagers();
     this.setupEventListeners();
     this.setupUI();
     this.addCommands();
@@ -63,9 +71,11 @@ export default class ArweaveSync extends Plugin {
     });
 
     this.updateSyncUI();
+
+    this.emitter = new Events();
   }
 
-  private initializeManagers() {
+  private async initializeManagers() {
     initializeWalletManager();
     this.arPublishManager = new ArPublishManager(this.app, this);
 
@@ -80,11 +90,10 @@ export default class ArweaveSync extends Plugin {
       this,
       this.settings.remoteUploadConfig,
       this.settings.localUploadConfig,
+      new LogManager(this, "VaultSyncManager"),
     );
 
-    const jwk = walletManager.getJWK();
     const encryptionPassword = walletManager.getEncryptionPassword();
-    console.log(encryptionPassword);
     if (encryptionPassword) {
       this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
     }
@@ -121,12 +130,9 @@ export default class ArweaveSync extends Plugin {
       this.app.vault.on("delete", this.handleFileDelete.bind(this)),
     );
 
-    // this.registerEvent(
-    //   this.app.workspace.on(
-    //     "editor-change",
-    //     this.handleEditorChange.bind(this),
-    //   ),
-    // );
+    if (this.settings.autoExportOnIdle) {
+      this.startIdleTimer();
+    }
   }
 
   private setupUI() {
@@ -205,21 +211,6 @@ export default class ArweaveSync extends Plugin {
       id: "open-arweave-sync-sidebar",
       name: "Open Arweave sync sidebar",
       callback: () => this.activateSyncSidebar(),
-    });
-
-    this.addCommand({
-      id: "force-pull-current-file",
-      name: "Force pull current file from Arweave",
-      checkCallback: (checking: boolean) => {
-        const activeFile = this.app.workspace.getActiveFile();
-        if (activeFile) {
-          if (!checking) {
-            this.forcePullCurrentFile(activeFile);
-          }
-          return true;
-        }
-        return false;
-      },
     });
 
     this.addCommand({
@@ -446,51 +437,43 @@ export default class ArweaveSync extends Plugin {
   }
 
   async handleWalletConnection(walletJson: string) {
-    if (this.isConnecting) {
-      return;
-    }
+    if (this.isConnecting) return;
     this.isConnecting = true;
-
-    await walletManager.connect(new File([walletJson], "wallet.json"));
-    this.walletAddress = walletManager.getAddress();
 
     try {
       await walletManager.connect(new File([walletJson], "wallet.json"));
       const encryptionPassword = walletManager.getEncryptionPassword();
-      if (encryptionPassword) {
-        this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
-      } else {
+      if (!encryptionPassword) {
         throw new Error("Failed to derive encryption password from wallet");
       }
+      this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
 
       this.walletAddress = walletManager.getAddress();
       await this.aoManager.initialize(walletManager.getJWK());
 
       this.updateStatusBar();
+      await this.vaultSyncManager.updateRemoteConfig();
 
-      // this.aoManager.updateUploadConfig(this.settings.remoteUploadConfig);
-      this.vaultSyncManager.updateRemoteConfig();
-      const newOrModifiedFiles = await this.checkForNewFiles();
+      if (this.settings.fullAutoSync) {
+        this.startAutoSync();
+      }
 
-      if (
-        this.settings.autoImportUnsyncedChanges &&
-        newOrModifiedFiles.length > 0
-      ) {
-        await this.importFilesFromArweave(newOrModifiedFiles);
-        new Notice(
-          `Automatically imported ${newOrModifiedFiles.length} new or modified files.`,
-        );
-      } else if (newOrModifiedFiles.length > 0) {
-        new Notice(
-          `${newOrModifiedFiles.length} new or modified files available for import.`,
-        );
-        this.refreshSyncSidebar();
-        await this.openSyncSidebarWithImportTab();
+      if (this.settings.autoImportUnsyncedChanges) {
+        await this.performAutoImport();
       } else {
-        new Notice("Wallet connected. No new files to import.");
+        const newOrModifiedFiles = await this.checkForNewFiles();
+        if (newOrModifiedFiles.length > 0) {
+          new Notice(
+            `${newOrModifiedFiles.length} new or modified files available for import.`,
+          );
+          this.refreshSyncSidebar();
+          await this.openSyncSidebarWithImportTab();
+        } else {
+          new Notice("Wallet connected. No new files to import.");
+        }
       }
     } catch (error) {
-      console.error("Error during wallet connection:", error);
+      this.logger.error("Error during wallet connection:", error);
       new Notice(
         `Error: ${error.message}\nCheck the console for more details.`,
       );
@@ -507,10 +490,20 @@ export default class ArweaveSync extends Plugin {
     new Notice("Wallet disconnected successfully");
   }
 
-  private async checkForNewFiles() {
+  private async performAutoImport(): Promise<void> {
+    const newOrModifiedFiles = await this.checkForNewFiles();
+    if (newOrModifiedFiles.length > 0) {
+      await this.vaultSyncManager.importFilesFromArweave(newOrModifiedFiles);
+      new Notice(
+        `Automatically imported ${newOrModifiedFiles.length} new or modified files.`,
+      );
+      this.refreshSyncSidebar();
+    }
+  }
+
+  private async checkForNewFiles(): Promise<string[]> {
     const newOrModifiedFiles: string[] = [];
 
-    // Iterate through remote upload config
     for (const [filePath, remoteFileInfo] of Object.entries(
       this.settings.remoteUploadConfig,
     )) {
@@ -532,15 +525,6 @@ export default class ArweaveSync extends Plugin {
           newOrModifiedFiles.push(filePath);
         }
       }
-    }
-
-    if (newOrModifiedFiles.length > 0) {
-      new Notice(
-        `Wallet connected. ${newOrModifiedFiles.length} new or modified files available for import.`,
-      );
-      this.refreshSyncSidebar();
-      if (!this.settings.autoImportUnsyncedChanges)
-        await this.openSyncSidebarWithImportTab();
     }
 
     return newOrModifiedFiles;
@@ -581,7 +565,7 @@ export default class ArweaveSync extends Plugin {
     try {
       await this.vaultSyncManager.importFilesFromArweave(selectedFiles);
     } catch (error) {
-      console.error("Error during file import:", error);
+      this.logger.error("Error during file import:", error);
       new Notice(
         `Error: ${error.message}\nCheck the console for more details.`,
       );
@@ -595,7 +579,7 @@ export default class ArweaveSync extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
-    console.log("Settings saved");
+    this.logger.info("Settings saved");
   }
 
   async syncFile(file: TFile) {
@@ -630,6 +614,10 @@ export default class ArweaveSync extends Plugin {
   }
 
   private async handleFileModify(file: TFile) {
+    if (file instanceof TFile) {
+      this.restartIdleTimer();
+    }
+
     const { syncState, fileHash } =
       await this.vaultSyncManager.checkFileSync(file);
 
@@ -661,7 +649,7 @@ export default class ArweaveSync extends Plugin {
       delete this.settings.localUploadConfig[oldPath];
     }
 
-    console.log(`File renamed from ${oldPath} to ${file.path}`);
+    this.logger.info(`File renamed from ${oldPath} to ${file.path}`);
     await this.saveSettings();
 
     // Check if the file exists in the remote config
@@ -678,7 +666,10 @@ export default class ArweaveSync extends Plugin {
       try {
         await this.aoManager.updateUploadConfig(remoteConfig);
       } catch (error) {
-        console.error("Error updating remote config after file rename:", error);
+        this.logger.error(
+          "Error updating remote config after file rename:",
+          error,
+        );
         new Notice(
           `Failed to update remote config after rename ${file.path}. Please try again later.`,
         );
@@ -691,7 +682,7 @@ export default class ArweaveSync extends Plugin {
   async handleFileDelete(file: TFile) {
     // Update local config
     delete this.settings.localUploadConfig[file.path];
-    console.log("File deleted:", file.path);
+    this.logger.info("File deleted:", file.path);
 
     await this.saveSettings();
 
@@ -704,7 +695,7 @@ export default class ArweaveSync extends Plugin {
       try {
         await this.aoManager.updateUploadConfig(remoteConfig);
       } catch (error) {
-        console.error(
+        this.logger.error(
           "Error updating remote config after file deletion:",
           error,
         );
@@ -771,7 +762,6 @@ export default class ArweaveSync extends Plugin {
     return Arweave.utils.bufferTob64Url(await Arweave.crypto.hash(buffer));
   }
 
-
   async isFileNeedingSync(file: TFile): Promise<boolean> {
     const { syncState } = await this.vaultSyncManager.checkFileSync(file);
     return syncState !== "synced";
@@ -789,7 +779,7 @@ export default class ArweaveSync extends Plugin {
       new Notice(`Successfully pushed ${file.name} to Arweave`);
       this.updateSyncUI();
     } catch (error) {
-      console.error("Error force pushing file:", error);
+      this.logger.error("Error force pushing file:", error);
       new Notice(`Failed to push ${file.name} to Arweave: ${error.message}`);
     }
   }
@@ -820,7 +810,7 @@ export default class ArweaveSync extends Plugin {
       );
       this.updateSyncUI();
     } catch (error) {
-      console.error("Error force pulling file:", error);
+      this.logger.error("Error force pulling file:", error);
       new Notice(`Failed to pull ${file.name} from Arweave: ${error.message}`);
     }
   }
@@ -928,7 +918,7 @@ export default class ArweaveSync extends Plugin {
       await this.arPublishManager.publishWebsiteToArweave(folder);
       new Notice(`Folder "${folder.name}" published to Arweave as a website.`);
     } catch (error) {
-      console.error(
+      this.logger.error(
         `Error publishing folder ${folder.name} to Arweave:`,
         error,
       );
@@ -938,19 +928,108 @@ export default class ArweaveSync extends Plugin {
     }
   }
 
-  private async getSyncSidebarView(): Promise<SyncSidebar | null> {
-    const leaf = this.app.workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
-    if (leaf) {
-      await this.app.workspace.revealLeaf(leaf);
-      if (leaf.view instanceof SyncSidebar) {
-        return leaf.view;
-      }
-    }
-    return null;
+  private async handleIdle() {
+    new Notice("Idle timer triggered, starting auto-export");
+    await this.vaultSyncManager.syncAllFiles();
+    new Notice("Auto-export completed");
   }
 
-  onunload() {
-    console.log("Unloading ArweaveSync plugin");
-    // Perform any cleanup tasks here
+  public startIdleTimer() {
+    this.logger.info("Starting idle timer");
+    this.stopIdleTimer();
+    this.idleTimer = window.setTimeout(
+      this.handleIdle.bind(this),
+      this.settings.idleTimeForAutoExport * 60 * 1000,
+    );
+  }
+
+  public stopIdleTimer() {
+    if (this.idleTimer !== null) {
+      window.clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+  }
+
+  public restartIdleTimer() {
+    if (this.settings.autoExportOnIdle) {
+      this.startIdleTimer();
+    }
+  }
+
+  private startAutoSync() {
+    this.logger.info("Starting auto sync...");
+    this.stopAutoSync();
+    const interval = this.settings.syncInterval * 60 * 1000;
+    this.logger.info(`Auto sync interval set to ${interval / 1000} seconds`);
+    this.autoSyncInterval = window.setInterval(() => {
+      this.logger.info("Auto sync interval triggered");
+      this.performFullSync();
+    }, interval);
+    this.logger.info("Auto sync started successfully");
+  }
+
+  private stopAutoSync() {
+    if (this.autoSyncInterval) {
+      window.clearInterval(this.autoSyncInterval);
+      this.autoSyncInterval = null;
+    }
+  }
+
+  private async performFullSync() {
+    this.logger.info("Performing full sync...");
+    // Export local changes and import remote changes
+    await this.vaultSyncManager.syncAllFiles();
+
+    // Import remote changes
+    await this.vaultSyncManager.updateRemoteConfig();
+    await this.performAutoImport();
+
+    this.updateSyncUI();
+  }
+
+  async incrementFilesSynced() {
+    this.settings.monthlyFilesSynced++;
+    this.settings.lifetimeFilesSynced++;
+    await this.saveSettings();
+  }
+
+  async checkMonthlyReset() {
+    const now = new Date();
+    const lastReset = new Date(this.settings.monthlyResetDate);
+
+    if (
+      now.getMonth() !== lastReset.getMonth() ||
+      now.getFullYear() !== lastReset.getFullYear()
+    ) {
+      this.settings.monthlyFilesSynced = 0;
+      this.settings.currentMonthSpend = 0;
+      this.settings.monthlyResetDate = now.getTime();
+      await this.saveSettings();
+    }
+  }
+
+  public async checkSpendingLimit(cost: number): Promise<boolean> {
+    await this.checkMonthlyReset();
+
+    if (
+      this.settings.currentMonthSpend + cost >
+      this.settings.monthlyArweaveSpendLimit
+    ) {
+      new Notice(`Monthly spending limit reached. Skipping sync.`);
+      return false;
+    }
+
+    this.settings.currentMonthSpend += cost;
+    await this.saveSettings();
+    return true;
+  }
+
+  async onunload() {
+    this.logger.info("Unloading ArweaveSync plugin");
+    if (this.settings.autoExportOnClose) {
+      await this.vaultSyncManager.syncAllFiles();
+    }
+    this.stopAutoSync();
+    this.stopIdleTimer();
   }
 }
