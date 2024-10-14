@@ -73,6 +73,7 @@ export default class ArweaveSync extends Plugin {
     this.updateSyncUI();
 
     this.emitter = new Events();
+    this.logger.info("ArweaveSync plugin loaded");
   }
 
   private async initializeManagers() {
@@ -97,6 +98,7 @@ export default class ArweaveSync extends Plugin {
     if (encryptionPassword) {
       this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
     }
+    this.logger.info("Managers initialized");
   }
 
   private setupEventListeners() {
@@ -454,6 +456,10 @@ export default class ArweaveSync extends Plugin {
       this.updateStatusBar();
       await this.vaultSyncManager.updateRemoteConfig();
 
+      new Notice("Wallet connected successfully");
+
+      this.logger.info("Wallet connected successfully");
+
       if (this.settings.fullAutoSync) {
         this.startAutoSync();
       }
@@ -463,20 +469,14 @@ export default class ArweaveSync extends Plugin {
       } else {
         const newOrModifiedFiles = await this.checkForNewFiles();
         if (newOrModifiedFiles.length > 0) {
-          new Notice(
-            `${newOrModifiedFiles.length} new or modified files available for import.`,
-          );
+          this.logger.info(`${newOrModifiedFiles.length} new or modified files available for import`);
           this.refreshSyncSidebar();
           await this.openSyncSidebarWithImportTab();
-        } else {
-          new Notice("Wallet connected. No new files to import.");
         }
       }
     } catch (error) {
       this.logger.error("Error during wallet connection:", error);
-      new Notice(
-        `Error: ${error.message}\nCheck the console for more details.`,
-      );
+      new Notice(`Failed to connect wallet: ${error.message}`);
     } finally {
       this.isConnecting = false;
     }
@@ -591,6 +591,7 @@ export default class ArweaveSync extends Plugin {
     try {
       // Only sync the specific file
       await this.vaultSyncManager.syncFile(file);
+      new Notice(`Successfully synced ${file.name}`);
     } catch (error) {
       this.handleSyncError(file, error);
     } finally {
@@ -634,6 +635,7 @@ export default class ArweaveSync extends Plugin {
         versionNumber: (currentConfig?.versionNumber || 0) + 1,
       };
       await this.saveSettings();
+      new Notice(`File ${file.name} modified and ready for sync`);
     }
 
     this.updateSyncUI();
@@ -665,6 +667,7 @@ export default class ArweaveSync extends Plugin {
 
       try {
         await this.aoManager.updateUploadConfig(remoteConfig);
+        new Notice(`File ${file.name} renamed and synced with Arweave`);
       } catch (error) {
         this.logger.error(
           "Error updating remote config after file rename:",
@@ -694,6 +697,7 @@ export default class ArweaveSync extends Plugin {
 
       try {
         await this.aoManager.updateUploadConfig(remoteConfig);
+        new Notice(`File ${file.name} deleted and synced with Arweave`);
       } catch (error) {
         this.logger.error(
           "Error updating remote config after file deletion:",

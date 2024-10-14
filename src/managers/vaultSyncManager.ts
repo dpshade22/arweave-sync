@@ -65,41 +65,23 @@ export class VaultSyncManager {
   }
 
   async syncFiles(files: TFile[]): Promise<void> {
-    this.logger.info(`Starting sync for ${files.length} files`);
-    const syncResults = await this.checkMultipleFileSync(files);
-    const filesToSync = files.filter((file) => {
-      const result = syncResults.get(file.path);
-      return result && result.syncState !== "synced";
-    });
-
-    await this.syncFilesInternal(filesToSync);
-    this.logger.info(`Completed sync for ${filesToSync.length} files`);
+    const filesToSync = files.filter(file => this.shouldSyncFile(file));
+    if (filesToSync.length > 0) {
+      this.logger.info(`Syncing ${filesToSync.length} files`);
+      await this.syncFilesInternal(filesToSync);
+      this.logger.info(`Sync completed`);
+    }
   }
 
   private async syncFilesInternal(files: TFile[]): Promise<void> {
-    const totalFiles = files.length;
-    let processedFiles = 0;
-    const batchSize = 5;
     const updatedConfigs: { [key: string]: FileUploadInfo } = {};
 
     try {
-      for (let i = 0; i < files.length; i += batchSize) {
-        const batch = files.slice(i, i + batchSize);
-        await Promise.all(
-          batch.map(async (file) => {
-            try {
-              const result = await this.syncFileInternal(file);
-              if (result) {
-                updatedConfigs[result.filePath] = result.fileInfo;
-              }
-            } catch (error) {
-              this.logger.error(`Failed to sync file ${file.path}:`, error);
-            } finally {
-              processedFiles++;
-              this.updateSyncProgress(processedFiles, totalFiles);
-            }
-          }),
-        );
+      for (const file of files) {
+        const result = await this.syncFileInternal(file);
+        if (result) {
+          updatedConfigs[result.filePath] = result.fileInfo;
+        }
       }
 
       Object.assign(this.remoteUploadConfig, updatedConfigs);
@@ -108,7 +90,7 @@ export class VaultSyncManager {
       await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
       await this.plugin.saveSettings();
     } catch (error) {
-      this.logger.error("Error during file sync:", error);
+      this.logger.error(`Sync error: ${error.message}`);
       throw error;
     }
   }
@@ -116,10 +98,6 @@ export class VaultSyncManager {
   private async syncFileInternal(
     file: TFile,
   ): Promise<{ filePath: string; fileInfo: FileUploadInfo } | null> {
-    if (!this.shouldSyncFile(file)) {
-      return null;
-    }
-
     const { syncState, fileHash } = await this.checkFileSync(file);
 
     if (syncState === "synced") {
@@ -128,36 +106,35 @@ export class VaultSyncManager {
 
     let newFileInfo: FileUploadInfo | null = null;
 
-    switch (this.plugin.settings.syncDirection) {
-      case "uploadOnly":
-        if (syncState === "new-local" || syncState === "local-newer") {
-          newFileInfo = await this.exportFileToArweave(file, fileHash);
-        }
-        break;
-      case "downloadOnly":
-        if (syncState === "new-remote" || syncState === "remote-newer") {
-          await this.importFileFromArweave(file.path);
-          newFileInfo = this.remoteUploadConfig[file.path];
-        }
-        break;
-      case "bidirectional":
-      default:
-        if (syncState === "new-local" || syncState === "local-newer") {
-          newFileInfo = await this.exportFileToArweave(file, fileHash);
-        } else if (syncState === "new-remote" || syncState === "remote-newer") {
-          await this.importFileFromArweave(file.path);
-          newFileInfo = this.remoteUploadConfig[file.path];
-        }
-        break;
+    try {
+      switch (this.plugin.settings.syncDirection) {
+        case "uploadOnly":
+          if (syncState === "new-local" || syncState === "local-newer") {
+            newFileInfo = await this.exportFileToArweave(file, fileHash);
+          }
+          break;
+        case "downloadOnly":
+          if (syncState === "new-remote" || syncState === "remote-newer") {
+            await this.importFileFromArweave(file.path);
+            newFileInfo = this.remoteUploadConfig[file.path];
+          }
+          break;
+        case "bidirectional":
+        default:
+          if (syncState === "new-local" || syncState === "local-newer") {
+            newFileInfo = await this.exportFileToArweave(file, fileHash);
+          } else if (syncState === "new-remote" || syncState === "remote-newer") {
+            await this.importFileFromArweave(file.path);
+            newFileInfo = this.remoteUploadConfig[file.path];
+          }
+          break;
+      }
+    } catch (error) {
+      this.logger.error(`Sync failed for ${file.path}: ${error.message}`);
+
     }
 
     return newFileInfo ? { filePath: file.path, fileInfo: newFileInfo } : null;
-  }
-
-  private updateSyncProgress(processed: number, total: number): void {
-    const progress = (processed / total) * 100;
-    this.logger.debug(`Sync progress: ${progress.toFixed(2)}%`);
-    this.plugin.emitter.trigger("syncProgress", { processed, total });
   }
 
   async checkMultipleFileSync(
@@ -259,7 +236,6 @@ export class VaultSyncManager {
         importedFiles.push(filePath);
       } catch (error) {
         this.logger.error(`Failed to import file: ${filePath}`, error);
-        new Notice(`Failed to import ${filePath}. Error: ${error.message}`);
       }
     }
 
@@ -380,9 +356,9 @@ export class VaultSyncManager {
       this.updateConfigs(file.path, newFileInfo);
       await this.plugin.aoManager.updateUploadConfig(this.remoteUploadConfig);
       this.logger.info(`Force pushed file: ${file.path}`);
+      new Notice(`Successfully force pushed ${file.name} to Arweave`);
     } catch (error) {
       this.logger.error(`Failed to force push file: ${file.path}`, error);
-      throw error;
     }
   }
 
@@ -433,9 +409,9 @@ export class VaultSyncManager {
       await this.plugin.saveSettings();
 
       this.logger.info(`Force pulled file: ${file.path}`);
+      new Notice(`Successfully force pulled ${file.name} from Arweave`);
     } catch (error) {
       this.logger.error(`Failed to force pull file: ${file.path}`, error);
-      throw error;
     }
   }
 
@@ -535,10 +511,6 @@ export class VaultSyncManager {
 
     await this.plugin.incrementFilesSynced();
 
-    this.logger.info(
-      `File ${file.path} exported to Arweave. Transaction ID: ${transaction.id}`,
-    );
-
     return newFileInfo;
   }
 
@@ -619,12 +591,12 @@ export class VaultSyncManager {
 
   async checkFileSync(file: TFile): Promise<{
     syncState:
-      | "new-local"
-      | "new-remote"
-      | "local-newer"
-      | "remote-newer"
-      | "synced"
-      | "decrypt-failed";
+    | "new-local"
+    | "new-remote"
+    | "local-newer"
+    | "remote-newer"
+    | "synced"
+    | "decrypt-failed";
     fileHash: string;
   }> {
     const currentFileHash = await this.getFileHash(file);
@@ -815,14 +787,9 @@ export class VaultSyncManager {
       if (oldFile instanceof TFile) {
         try {
           await this.plugin.app.fileManager.renameFile(oldFile, filePath);
-          this.logger.info(
-            `Renamed file from ${remoteFileInfo.oldFilePath} to ${filePath}`,
-          );
+          this.logger.info(`Renamed ${remoteFileInfo.oldFilePath} to ${filePath}`);
         } catch (error) {
-          this.logger.error(
-            `Failed to rename file from ${remoteFileInfo.oldFilePath} to ${filePath}:`,
-            error,
-          );
+          this.logger.error(`Rename failed ${remoteFileInfo.oldFilePath} to ${filePath}: ${error.message}`);
           throw new Error(`Failed to rename file: ${error.message}`);
         }
       }
