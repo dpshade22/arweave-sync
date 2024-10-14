@@ -94,7 +94,7 @@ export class AOManager {
       `;
 
       const variables = {
-        owner: await this.plugin.getWalletAddress(),
+        owner: this.plugin.getWalletAddress(),
       };
       const result = await this.argql.run(query, variables);
       const edges = result.data?.transactions?.edges;
@@ -176,6 +176,7 @@ export class AOManager {
 
   private decryptUploadConfig(encryptedData: string): UploadConfig {
     const decryptedData = this.plugin.vaultSyncManager.decrypt(encryptedData);
+
     if (typeof decryptedData !== "string") {
       throw new Error("Decrypted data is not a string");
     }

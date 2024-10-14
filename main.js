@@ -26443,7 +26443,7 @@ var AOManager = class {
         }
       `;
       const variables = {
-        owner: await this.plugin.getWalletAddress()
+        owner: this.plugin.getWalletAddress()
       };
       const result2 = await this.argql.run(query, variables);
       const edges = (_b2 = (_a7 = result2.data) == null ? void 0 : _a7.transactions) == null ? void 0 : _b2.edges;
@@ -26515,6 +26515,7 @@ var AOManager = class {
   }
   decryptUploadConfig(encryptedData) {
     const decryptedData = this.plugin.vaultSyncManager.decrypt(encryptedData);
+    console.log(JSON.parse(decryptedData));
     if (typeof decryptedData !== "string") {
       throw new Error("Decrypted data is not a string");
     }
@@ -30365,8 +30366,6 @@ Check the console for more details.`
         `Automatically imported ${newOrModifiedFiles.length} new or modified files.`
       );
       this.refreshSyncSidebar();
-    } else {
-      new import_obsidian10.Notice("Wallet connected. No new files to import.");
     }
   }
   async checkForNewFiles() {

@@ -498,8 +498,6 @@ export default class ArweaveSync extends Plugin {
         `Automatically imported ${newOrModifiedFiles.length} new or modified files.`,
       );
       this.refreshSyncSidebar();
-    } else {
-      new Notice("Wallet connected. No new files to import.");
     }
   }
 
