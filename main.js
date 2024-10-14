@@ -26391,17 +26391,8 @@ var AOManager = class {
   constructor(plugin) {
     this.processId = null;
     this.initialized = false;
-    this.initializationPromise = null;
     this.plugin = plugin;
     this.argql = (0, import_ar_gql.arGql)();
-  }
-  async ensureInitialized() {
-    if (!this.initializationPromise) {
-      this.initializationPromise = this.initialize(
-        this.plugin.walletManager.getJWK()
-      );
-    }
-    return this.initializationPromise;
   }
   async initialize(wallet) {
     if (wallet) {
@@ -26452,7 +26443,7 @@ var AOManager = class {
         }
       `;
       const variables = {
-        owner: this.plugin.getWalletAddress()
+        owner: await this.plugin.getWalletAddress()
       };
       const result2 = await this.argql.run(query, variables);
       const edges = (_b2 = (_a7 = result2.data) == null ? void 0 : _a7.transactions) == null ? void 0 : _b2.edges;
@@ -26736,16 +26727,8 @@ var WalletManager = class extends import_obsidian.Events {
     this.address = null;
     this.jwk = null;
     this.walletJson = null;
-    this.isInitialized = false;
-    this.initPromise = null;
     this.arweave = import_arweave.default.init({});
-  }
-  async initialize() {
-    if (this.isInitialized) return;
-    if (this.initPromise) return this.initPromise;
-    this.initPromise = this.loadCachedWallet();
-    await this.initPromise;
-    this.isInitialized = true;
+    this.loadCachedWallet();
   }
   getEncryptionPassword() {
     if (this.jwk) {
@@ -27940,12 +27923,6 @@ var ArweaveSyncSettingTab = class extends import_obsidian6.PluginSettingTab {
         })
       );
     } else {
-      new import_obsidian6.Setting(containerEl).setName("Sync on startup").setDesc("Automatically sync when Obsidian starts").addToggle(
-        (toggle) => toggle.setValue(this.plugin.settings.syncOnStartup).onChange(async (value) => {
-          this.plugin.settings.syncOnStartup = value;
-          await this.plugin.saveSettings();
-        })
-      );
       new import_obsidian6.Setting(containerEl).setName("Sync direction").setDesc("Choose the direction of synchronization").addDropdown(
         (dropdown) => dropdown.addOption("bidirectional", "Bidirectional").addOption("uploadOnly", "Upload only").addOption("downloadOnly", "Download only").setValue(this.plugin.settings.syncDirection).onChange(
           async (value) => {
@@ -30034,11 +30011,10 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
     this.idleTimer = null;
     this.autoSyncInterval = null;
     this.logger = new LogManager(this, "ArweaveSync");
-    this.walletManager = initializeWalletManager();
   }
   async onload() {
     await this.loadSettings();
-    this.initializeManagers();
+    await this.initializeManagers();
     this.setupEventListeners();
     this.setupUI();
     this.addCommands();
@@ -30051,14 +30027,10 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
       }
     });
     this.updateSyncUI();
-    await this.aoManager.ensureInitialized();
-    await this.vaultSyncManager.syncAllFiles();
-    if (this.settings.fullAutoSync) {
-      this.startAutoSync();
-    }
     this.emitter = new import_obsidian10.Events();
   }
-  initializeManagers() {
+  async initializeManagers() {
+    initializeWalletManager();
     this.arPublishManager = new ArPublishManager(this.app, this);
     this.aoManager = new AOManager(this);
     this.arweave = import_arweave3.default.init({
@@ -30072,19 +30044,23 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
       this.settings.localUploadConfig,
       new LogManager(this, "VaultSyncManager")
     );
+    const encryptionPassword = walletManager.getEncryptionPassword();
+    if (encryptionPassword) {
+      this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
+    }
   }
   setupEventListeners() {
-    if (this.walletManager.isWalletLoaded()) {
-      const cachedWalletJson = this.walletManager.getWalletJson();
+    if (walletManager.isWalletLoaded()) {
+      const cachedWalletJson = walletManager.getWalletJson();
       if (cachedWalletJson) {
         this.handleWalletConnection(cachedWalletJson);
       }
     }
-    this.walletManager.on(
+    walletManager.on(
       "wallet-connected",
       this.handleWalletConnection.bind(this)
     );
-    this.walletManager.on(
+    walletManager.on(
       "wallet-disconnected",
       this.handleWalletDisconnection.bind(this)
     );
@@ -30224,7 +30200,7 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
     }
   }
   async disconnectWallet() {
-    await this.walletManager.disconnect();
+    await walletManager.disconnect();
     this.updateStatusBar();
     new import_obsidian10.Notice("Wallet disconnected");
   }
@@ -30335,22 +30311,22 @@ var ArweaveSync = class extends import_obsidian10.Plugin {
     this.refreshSyncSidebar();
   }
   async handleWalletConnection(walletJson) {
-    if (this.isConnecting) {
-      return;
-    }
+    if (this.isConnecting) return;
     this.isConnecting = true;
     try {
-      await this.walletManager.connect(new File([walletJson], "wallet.json"));
-      const encryptionPassword = this.walletManager.getEncryptionPassword();
-      if (encryptionPassword) {
-        this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
-      } else {
+      await walletManager.connect(new File([walletJson], "wallet.json"));
+      const encryptionPassword = walletManager.getEncryptionPassword();
+      if (!encryptionPassword) {
         throw new Error("Failed to derive encryption password from wallet");
       }
-      this.walletAddress = this.walletManager.getAddress();
-      await this.aoManager.ensureInitialized();
+      this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
+      this.walletAddress = walletManager.getAddress();
+      await this.aoManager.initialize(walletManager.getJWK());
       this.updateStatusBar();
       await this.vaultSyncManager.updateRemoteConfig();
+      if (this.settings.fullAutoSync) {
+        this.startAutoSync();
+      }
       if (this.settings.autoImportUnsyncedChanges) {
         await this.performAutoImport();
       } else {

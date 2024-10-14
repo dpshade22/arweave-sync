@@ -54,17 +54,17 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
             }),
         );
     } else {
-      new Setting(containerEl)
-        .setName("Sync on startup")
-        .setDesc("Automatically sync when Obsidian starts")
-        .addToggle((toggle) =>
-          toggle
-            .setValue(this.plugin.settings.syncOnStartup)
-            .onChange(async (value) => {
-              this.plugin.settings.syncOnStartup = value;
-              await this.plugin.saveSettings();
-            }),
-        );
+      // new Setting(containerEl)
+      //   .setName("Sync on startup")
+      //   .setDesc("Automatically sync when Obsidian starts")
+      //   .addToggle((toggle) =>
+      //     toggle
+      //       .setValue(this.plugin.settings.syncOnStartup)
+      //       .onChange(async (value) => {
+      //         this.plugin.settings.syncOnStartup = value;
+      //         await this.plugin.saveSettings();
+      //       }),
+      //   );
 
       new Setting(containerEl)
         .setName("Sync direction")
@@ -294,7 +294,7 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.debugMode = value;
             await this.plugin.saveSettings();
-          })
+          }),
       );
   }
 }

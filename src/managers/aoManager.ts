@@ -94,7 +94,7 @@ export class AOManager {
       `;
 
       const variables = {
-        owner: this.plugin.getWalletAddress(),
+        owner: await this.plugin.getWalletAddress(),
       };
       const result = await this.argql.run(query, variables);
       const edges = result.data?.transactions?.edges;

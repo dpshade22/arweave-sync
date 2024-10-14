@@ -49,9 +49,14 @@ export default class ArweaveSync extends Plugin {
   private logger: LogManager;
   emitter: Events;
 
+  constructor(app: App, manifest: PluginManifest) {
+    super(app, manifest);
+    this.logger = new LogManager(this, "ArweaveSync");
+  }
+
   async onload() {
     await this.loadSettings();
-    this.initializeManagers();
+    await this.initializeManagers();
     this.setupEventListeners();
     this.setupUI();
     this.addCommands();
@@ -67,17 +72,10 @@ export default class ArweaveSync extends Plugin {
 
     this.updateSyncUI();
 
-    // Ensure AOManager is initialized before syncing
-    await this.vaultSyncManager.syncAllFiles();
-
-    if (this.settings.fullAutoSync) {
-      this.startAutoSync();
-    }
-
     this.emitter = new Events();
   }
 
-  private initializeManagers() {
+  private async initializeManagers() {
     initializeWalletManager();
     this.arPublishManager = new ArPublishManager(this.app, this);
 
@@ -439,26 +437,26 @@ export default class ArweaveSync extends Plugin {
   }
 
   async handleWalletConnection(walletJson: string) {
-    if (this.isConnecting) {
-      return;
-    }
+    if (this.isConnecting) return;
     this.isConnecting = true;
 
     try {
       await walletManager.connect(new File([walletJson], "wallet.json"));
       const encryptionPassword = walletManager.getEncryptionPassword();
-      if (encryptionPassword) {
-        this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
-      } else {
+      if (!encryptionPassword) {
         throw new Error("Failed to derive encryption password from wallet");
       }
+      this.vaultSyncManager.setEncryptionPassword(encryptionPassword);
 
       this.walletAddress = walletManager.getAddress();
       await this.aoManager.initialize(walletManager.getJWK());
 
       this.updateStatusBar();
-
       await this.vaultSyncManager.updateRemoteConfig();
+
+      if (this.settings.fullAutoSync) {
+        this.startAutoSync();
+      }
 
       if (this.settings.autoImportUnsyncedChanges) {
         await this.performAutoImport();
