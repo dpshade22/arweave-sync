@@ -635,7 +635,6 @@ export default class ArweaveSync extends Plugin {
         versionNumber: (currentConfig?.versionNumber || 0) + 1,
       };
       await this.saveSettings();
-      new Notice(`File ${file.name} modified and ready for sync`);
     }
 
     this.updateSyncUI();

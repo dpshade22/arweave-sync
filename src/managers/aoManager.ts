@@ -176,7 +176,7 @@ export class AOManager {
 
   private decryptUploadConfig(encryptedData: string): UploadConfig {
     const decryptedData = this.plugin.vaultSyncManager.decrypt(encryptedData);
-
+    // console.log(JSON.parse(decryptedData))
     if (typeof decryptedData !== "string") {
       throw new Error("Decrypted data is not a string");
     }
