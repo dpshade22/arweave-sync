@@ -180,7 +180,7 @@ export class VaultSyncManager {
   }
 
   async syncFile(file: TFile, updateConfig: boolean = true): Promise<void> {
-    this.logger.info(`Starting sync for file: ${file.path}`);
+    this.logger.debug(`Starting sync for file: ${file.path}`);
 
     const result = await this.syncFileInternal(file);
 
@@ -193,7 +193,7 @@ export class VaultSyncManager {
       }
     }
 
-    this.logger.info(`Completed sync for file: ${file.path}`);
+    this.logger.debug(`Completed sync for file: ${file.path}`);
   }
 
   private updateConfigs(filePath: string, fileInfo: FileUploadInfo): void {
@@ -257,7 +257,6 @@ export class VaultSyncManager {
       try {
         await this.importFileFromArweave(filePath);
         importedFiles.push(filePath);
-        this.logger.info(`Successfully imported: ${filePath}`);
       } catch (error) {
         this.logger.error(`Failed to import file: ${filePath}`, error);
         new Notice(`Failed to import ${filePath}. Error: ${error.message}`);

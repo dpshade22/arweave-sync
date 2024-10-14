@@ -26515,7 +26515,6 @@ var AOManager = class {
   }
   decryptUploadConfig(encryptedData) {
     const decryptedData = this.plugin.vaultSyncManager.decrypt(encryptedData);
-    console.log(JSON.parse(decryptedData));
     if (typeof decryptedData !== "string") {
       throw new Error("Decrypted data is not a string");
     }
@@ -27028,7 +27027,7 @@ var VaultSyncManager = class {
     return results2;
   }
   async syncFile(file, updateConfig = true) {
-    this.logger.info(`Starting sync for file: ${file.path}`);
+    this.logger.debug(`Starting sync for file: ${file.path}`);
     const result2 = await this.syncFileInternal(file);
     if (result2) {
       this.updateConfigs(result2.filePath, result2.fileInfo);
@@ -27037,7 +27036,7 @@ var VaultSyncManager = class {
         await this.plugin.saveSettings();
       }
     }
-    this.logger.info(`Completed sync for file: ${file.path}`);
+    this.logger.debug(`Completed sync for file: ${file.path}`);
   }
   updateConfigs(filePath, fileInfo) {
     this.localUploadConfig[filePath] = fileInfo;
@@ -27083,7 +27082,6 @@ var VaultSyncManager = class {
       try {
         await this.importFileFromArweave(filePath);
         importedFiles.push(filePath);
-        this.logger.info(`Successfully imported: ${filePath}`);
       } catch (error) {
         this.logger.error(`Failed to import file: ${filePath}`, error);
         new import_obsidian2.Notice(`Failed to import ${filePath}. Error: ${error.message}`);
@@ -30427,7 +30425,7 @@ Check the console for more details.`
   }
   async saveSettings() {
     await this.saveData(this.settings);
-    this.logger.info("Settings saved");
+    this.logger.debug("Settings saved");
   }
   async syncFile(file) {
     const syncButton = this.getSyncButtonForFile();
@@ -30744,6 +30742,7 @@ Check the console for more details.`
   startAutoSync() {
     this.logger.info("Starting auto sync...");
     this.stopAutoSync();
+    this.performFullSync();
     const interval = this.settings.syncInterval * 60 * 1e3;
     this.logger.info(`Auto sync interval set to ${interval / 1e3} seconds`);
     this.autoSyncInterval = window.setInterval(() => {
