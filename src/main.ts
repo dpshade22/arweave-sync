@@ -469,7 +469,9 @@ export default class ArweaveSync extends Plugin {
       } else {
         const newOrModifiedFiles = await this.checkForNewFiles();
         if (newOrModifiedFiles.length > 0) {
-          this.logger.info(`${newOrModifiedFiles.length} new or modified files available for import`);
+          this.logger.info(
+            `${newOrModifiedFiles.length} new or modified files available for import`,
+          );
           this.refreshSyncSidebar();
           await this.openSyncSidebarWithImportTab();
         }
@@ -846,6 +848,11 @@ export default class ArweaveSync extends Plugin {
   }
 
   public async activateSyncSidebar() {
+    if (!this.walletAddress) {
+      this.showWalletConnectModal();
+      return;
+    }
+
     const { workspace } = this.app;
     let leaf: any = workspace.getLeavesOfType(SYNC_SIDEBAR_VIEW)[0];
 
@@ -862,6 +869,11 @@ export default class ArweaveSync extends Plugin {
   }
 
   private async openSyncSidebarWithImportTab() {
+    if (!this.walletAddress) {
+      this.showWalletConnectModal();
+      return;
+    }
+
     await this.activateSyncSidebar();
     if (this.activeSyncSidebar) {
       this.activeSyncSidebar.switchTab("import");

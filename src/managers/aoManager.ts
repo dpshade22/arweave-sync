@@ -3,8 +3,9 @@ import { UploadConfig, FileUploadInfo } from "../types";
 import { dryrun, message, result, spawn } from "@permaweb/aoconnect";
 import { encrypt, decrypt } from "../utils/encryption";
 import * as WarpArBundles from "warp-arbundles";
-import { arGql } from "ar-gql";
+import { arGql, GQLUrls } from "ar-gql";
 import ArweaveSync from "../main";
+import { LogManager } from "src/utils/logManager";
 import CryptoJS from "crypto-js";
 const { createData, ArweaveSigner } = WarpArBundles;
 
@@ -37,10 +38,12 @@ export class AOManager {
   private initialized: boolean = false;
   private argql: ReturnType<typeof arGql>;
   private plugin: ArweaveSync;
+  private logger: LogManager;
 
   constructor(plugin: ArweaveSync) {
     this.plugin = plugin;
     this.argql = arGql();
+    this.logger = new LogManager(plugin, "AOManager");
   }
 
   async initialize(wallet: JWKInterface | null) {
@@ -57,10 +60,15 @@ export class AOManager {
   }
 
   private async ensureProcessExists() {
+    if (!this.plugin.getWalletAddress()) {
+      this.logger.warn("No wallet address available. Skipping process check.");
+      return;
+    }
+
     const customProcessId = this.plugin.settings.customProcessId;
     if (customProcessId) {
       this.processId = customProcessId;
-      console.log(`Using custom process ID: ${this.processId}`);
+      this.logger.info(`Using custom process ID: ${this.processId}`);
     } else {
       const existingProcess = await this.getExistingProcess();
       if (existingProcess) {
@@ -69,7 +77,7 @@ export class AOManager {
         this.processId = await this.spawnNewProcess();
       }
     }
-    console.log(`Using process ID: ${this.processId}`);
+    this.logger.info(`Using process ID: ${this.processId}`);
   }
 
   private async getExistingProcess(): Promise<string | null> {
@@ -82,6 +90,7 @@ export class AOManager {
               { name: "App-Name", values: ["ArweaveSync"] },
               { name: "Type", values: ["Process"] }
             ],
+            first: 100,
             sort: HEIGHT_ASC
           ) {
             edges {
@@ -96,7 +105,10 @@ export class AOManager {
       const variables = {
         owner: this.plugin.getWalletAddress(),
       };
-      const result = await this.argql.run(query, variables);
+      const result = await arGql({ endpointUrl: GQLUrls.goldsky }).run(
+        query,
+        variables,
+      );
       const edges = result.data?.transactions?.edges;
       if (edges && edges.length > 0) {
         return edges[0].node.id;
