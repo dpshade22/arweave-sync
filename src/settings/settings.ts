@@ -75,21 +75,20 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
             .addOption("uploadOnly", "Upload only")
             .addOption("downloadOnly", "Download only")
             .setValue(this.plugin.settings.syncDirection)
-            .onChange(
-              async (
-                value: "bidirectional" | "uploadOnly" | "downloadOnly",
-              ) => {
-                this.plugin.settings.syncDirection = value;
-                if (value === "uploadOnly") {
-                  this.plugin.settings.autoImportUnsyncedChanges = false;
-                } else if (value === "downloadOnly") {
-                  this.plugin.settings.autoExportOnIdle = false;
-                  this.plugin.settings.autoExportOnClose = false;
-                }
-                await this.plugin.saveSettings();
-                this.display();
-              },
-            ),
+            .onChange(async (value) => {
+              this.plugin.settings.syncDirection = value as
+                | "bidirectional"
+                | "uploadOnly"
+                | "downloadOnly";
+              if (value === "uploadOnly") {
+                this.plugin.settings.autoImportUnsyncedChanges = false;
+              } else if (value === "downloadOnly") {
+                this.plugin.settings.autoExportOnIdle = false;
+                this.plugin.settings.autoExportOnClose = false;
+              }
+              await this.plugin.saveSettings();
+              this.display();
+            }),
         );
 
       new Setting(containerEl).setName("Sync behavior").setHeading();
@@ -170,8 +169,8 @@ export class ArweaveSyncSettingTab extends PluginSettingTab {
           .addOption("all", "All files")
           .addOption("selected", "Selected folders")
           .setValue(this.plugin.settings.filesToSync)
-          .onChange(async (value: "all" | "selected") => {
-            this.plugin.settings.filesToSync = value;
+          .onChange(async (value) => {
+            this.plugin.settings.filesToSync = value as "all" | "selected";
             await this.plugin.saveSettings();
             this.display(); // Refresh the settings display
           }),
