@@ -579,7 +579,7 @@ export default class ArweaveSync extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
-    this.logger.info("Settings saved");
+    this.logger.debug("Settings saved");
   }
 
   async syncFile(file: TFile) {
@@ -959,6 +959,7 @@ export default class ArweaveSync extends Plugin {
   private startAutoSync() {
     this.logger.info("Starting auto sync...");
     this.stopAutoSync();
+    this.performFullSync();
     const interval = this.settings.syncInterval * 60 * 1000;
     this.logger.info(`Auto sync interval set to ${interval / 1000} seconds`);
     this.autoSyncInterval = window.setInterval(() => {
