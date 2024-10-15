@@ -65,7 +65,7 @@ export class VaultSyncManager {
   }
 
   async syncFiles(files: TFile[]): Promise<void> {
-    const filesToSync = files.filter(file => this.shouldSyncFile(file));
+    const filesToSync = files.filter((file) => this.shouldSyncFile(file));
     if (filesToSync.length > 0) {
       this.logger.info(`Syncing ${filesToSync.length} files`);
       await this.syncFilesInternal(filesToSync);
@@ -123,15 +123,26 @@ export class VaultSyncManager {
         default:
           if (syncState === "new-local" || syncState === "local-newer") {
             newFileInfo = await this.exportFileToArweave(file, fileHash);
-          } else if (syncState === "new-remote" || syncState === "remote-newer") {
+          } else if (
+            syncState === "new-remote" ||
+            syncState === "remote-newer"
+          ) {
             await this.importFileFromArweave(file.path);
             newFileInfo = this.remoteUploadConfig[file.path];
+          } else {
+            this.logger.info(
+              "File not local newer or remote newer... something is wrong with sync state",
+            );
           }
           break;
       }
     } catch (error) {
       this.logger.error(`Sync failed for ${file.path}: ${error.message}`);
+      new Notice(`Failed to sync ${file.name}. Check console for details.`);
+    }
 
+    if (!newFileInfo) {
+      this.logger.warn(`Sync did not produce new file info for ${file.path}`);
     }
 
     return newFileInfo ? { filePath: file.path, fileInfo: newFileInfo } : null;
@@ -787,9 +798,13 @@ export class VaultSyncManager {
       if (oldFile instanceof TFile) {
         try {
           await this.plugin.app.fileManager.renameFile(oldFile, filePath);
-          this.logger.info(`Renamed ${remoteFileInfo.oldFilePath} to ${filePath}`);
+          this.logger.info(
+            `Renamed ${remoteFileInfo.oldFilePath} to ${filePath}`,
+          );
         } catch (error) {
-          this.logger.error(`Rename failed ${remoteFileInfo.oldFilePath} to ${filePath}: ${error.message}`);
+          this.logger.error(
+            `Rename failed ${remoteFileInfo.oldFilePath} to ${filePath}: ${error.message}`,
+          );
           throw new Error(`Failed to rename file: ${error.message}`);
         }
       }

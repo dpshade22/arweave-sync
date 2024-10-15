@@ -504,6 +504,8 @@ export default class ArweaveSync extends Plugin {
   }
 
   private async checkForNewFiles(): Promise<string[]> {
+    await this.vaultSyncManager.updateRemoteConfig();
+
     const newOrModifiedFiles: string[] = [];
 
     for (const [filePath, remoteFileInfo] of Object.entries(
